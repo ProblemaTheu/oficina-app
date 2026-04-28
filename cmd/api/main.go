@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-
 	"github.com/go-chi/chi/v5"
-
 	"github.com/problematheu/tech-challenge-1/internal/infra/http/handler"
 	"github.com/problematheu/tech-challenge-1/internal/infra/database"
 )
@@ -14,6 +12,11 @@ import (
 func main() {
 	db := database.Connect()
 	defer db.Close()
+
+	if err := database.RunMigrations(db); err != nil {
+		log.Fatalf("falha ao executar migrations: %v", err)
+	}
+	log.Println("migrations executadas com sucesso")
 
 	r := chi.NewRouter()
 

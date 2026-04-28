@@ -7,7 +7,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/tech_challenge_db?sslmode=disable
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: tech_challenge_db
     restart: on-failure
     depends_on:
       db:
