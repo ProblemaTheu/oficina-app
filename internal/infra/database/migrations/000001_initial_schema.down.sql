@@ -1,0 +1,26 @@
+ALTER TABLE "historicos_status" DROP CONSTRAINT IF EXISTS "historicos_status_alterado_por_usuario_id_fkey";
+ALTER TABLE "historicos_status" DROP CONSTRAINT IF EXISTS "historicos_status_status_novo_id_fkey";
+ALTER TABLE "historicos_status" DROP CONSTRAINT IF EXISTS "historicos_status_status_anterior_id_fkey";
+ALTER TABLE "historicos_status" DROP CONSTRAINT IF EXISTS "historicos_status_os_id_fkey";
+ALTER TABLE "itens_os_pecas" DROP CONSTRAINT IF EXISTS "itens_os_pecas_peca_id_fkey";
+ALTER TABLE "itens_os_pecas" DROP CONSTRAINT IF EXISTS "itens_os_pecas_os_id_fkey";
+ALTER TABLE "itens_os_servicos" DROP CONSTRAINT IF EXISTS "itens_os_servicos_servico_id_fkey";
+ALTER TABLE "itens_os_servicos" DROP CONSTRAINT IF EXISTS "itens_os_servicos_os_id_fkey";
+ALTER TABLE "ordens_servico" DROP CONSTRAINT IF EXISTS "ordens_servico_status_id_fkey";
+ALTER TABLE "ordens_servico" DROP CONSTRAINT IF EXISTS "ordens_servico_usuario_responsavel_id_fkey";
+ALTER TABLE "ordens_servico" DROP CONSTRAINT IF EXISTS "ordens_servico_veiculo_id_fkey";
+ALTER TABLE "ordens_servico" DROP CONSTRAINT IF EXISTS "ordens_servico_cliente_id_fkey";
+ALTER TABLE "veiculos" DROP CONSTRAINT IF EXISTS "veiculos_cliente_id_fkey";
+ALTER TABLE "usuarios" DROP CONSTRAINT IF EXISTS "usuarios_papel_id_fkey";
+
+DROP TABLE IF EXISTS "historicos_status";
+DROP TABLE IF EXISTS "itens_os_pecas";
+DROP TABLE IF EXISTS "itens_os_servicos";
+DROP TABLE IF EXISTS "pecas";
+DROP TABLE IF EXISTS "servicos";
+DROP TABLE IF EXISTS "ordens_servico";
+DROP TABLE IF EXISTS "veiculos";
+DROP TABLE IF EXISTS "usuarios";
+DROP TABLE IF EXISTS "clientes";
+DROP TABLE IF EXISTS "status_ordens";
+DROP TABLE IF EXISTS "papeis_usuario";
