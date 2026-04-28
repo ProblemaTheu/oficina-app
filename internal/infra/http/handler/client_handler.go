@@ -10,6 +10,7 @@ import (
 
 type ClientHandler struct {
 	createClientUseCase *usecase.CreateClientUseCase
+	listClientsUseCase  *usecase.ListClientsUseCase
 	repo                *repository.ClientRepository
 }
 
@@ -19,6 +20,7 @@ func NewClientHandler() *ClientHandler {
 	return &ClientHandler{
 		repo:                repo,
 		createClientUseCase: usecase.NewCreateClientUseCase(repo),
+		listClientsUseCase:  usecase.NewListClientsUseCase(repo),
 	}
 }
 
@@ -44,4 +46,14 @@ func (h *ClientHandler) CreateClient(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(client)
+}
+
+func (h *ClientHandler) ListClients(w http.ResponseWriter, r *http.Request) {
+	clients, err := h.listClientsUseCase.Execute()
+	if err != nil {
+		http.Error(w, "erro ao listar clientes", http.StatusBadRequest)
+		return
+	}
+
+	json.NewEncoder(w).Encode(clients)
 }
