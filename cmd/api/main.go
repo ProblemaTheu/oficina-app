@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
 	"github.com/go-chi/chi/v5"
-	"github.com/problematheu/tech-challenge-1/internal/infra/http/handler"
 	"github.com/problematheu/tech-challenge-1/internal/infra/database"
+	"github.com/problematheu/tech-challenge-1/internal/infra/http/handler"
 )
 
 func main() {
@@ -30,6 +31,7 @@ func main() {
 	})
 
 	r.Post("/clients", clientHandler.CreateClient)
+	r.Get("/clients", clientHandler.ListClients)
 
 	log.Println("servidor rodando na porta 8080")
 	http.ListenAndServe(":8080", r)
