@@ -18,7 +18,7 @@ func NewCreateClientUseCase(repo *repository.ClientRepository) *CreateClientUseC
 	}
 }
 
-func (uc *CreateClientUseCase) Execute(name string, document string) (*entity.Client, error) {
+func (uc *CreateClientUseCase) Execute(name string, document string) (*entity.Cliente, error) {
 	if name == "" {
 		return nil, errors.New("nome é obrigatório")
 	}
@@ -28,9 +28,9 @@ func (uc *CreateClientUseCase) Execute(name string, document string) (*entity.Cl
 		return nil, err
 	}
 
-	client := &entity.Client{
-		Name: name,
-		CPF:  doc.Value,
+	client := &entity.Cliente{
+		Nome:    name,
+		CpfCnpj: doc.Value,
 	}
 
 	return uc.repo.Save(client)
