@@ -1,42 +1,75 @@
 package repository
 
 import (
-	"sync"
+	"context"
+	"database/sql"
+	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 )
 
-type ClientRepository struct {
-	mu      sync.Mutex
-	storage map[uuid.UUID]*entity.Cliente
+// ClienteRepository implementa o acesso ao banco de dados para clientes.
+type ClienteRepository struct {
+	db *sql.DB
 }
 
-func NewClientRepository() *ClientRepository {
-	return &ClientRepository{
-		storage: make(map[uuid.UUID]*entity.Cliente),
+// NovoClienteRepository cria uma nova instância de ClienteRepository.
+func NovoClienteRepository(db *sql.DB) *ClienteRepository {
+	return &ClienteRepository{db: db}
+}
+
+// Salvar persiste um novo cliente no banco de dados.
+func (r *ClienteRepository) Salvar(cliente *entity.Cliente) (*entity.Cliente, error) {
+	slog.Info("salvando cliente no banco de dados")
+
+	cliente.ID = uuid.New()
+	cliente.CriadoEm = time.Now()
+	cliente.AtualizadoEm = time.Now()
+
+	query := `
+		INSERT INTO clientes (id, nome, cpf_cnpj, email, telefone, criado_em, atualizado_em)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`
+	_, err := r.db.ExecContext(context.Background(), query,
+		cliente.ID, cliente.Nome, cliente.CpfCnpj,
+		cliente.Email, cliente.Telefone,
+		cliente.CriadoEm, cliente.AtualizadoEm,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ClienteRepository.Salvar: %w", err)
 	}
+
+	slog.Info("cliente salvo com sucesso", "id", cliente.ID)
+	return cliente, nil
 }
 
-func (r *ClientRepository) Save(client *entity.Cliente) (*entity.Cliente, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// BuscarTodos retorna todos os clientes cadastrados no banco de dados.
+func (r *ClienteRepository) BuscarTodos() ([]*entity.Cliente, error) {
+	slog.Info("buscando todos os clientes no banco de dados")
 
-	client.ID = uuid.New()
-	r.storage[client.ID] = client
+	query := `
+		SELECT id, nome, cpf_cnpj, email, telefone, criado_em, atualizado_em
+		FROM clientes
+		ORDER BY criado_em DESC
+	`
+	rows, err := r.db.QueryContext(context.Background(), query)
+	if err != nil {
+		return nil, fmt.Errorf("ClienteRepository.BuscarTodos: %w", err)
+	}
+	defer rows.Close()
 
-	return client, nil
-}
-
-func (r *ClientRepository) FindAll() ([]*entity.Cliente, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	clients := []*entity.Cliente{}
-
-	for _, c := range r.storage {
-		clients = append(clients, c)
+	var clientes []*entity.Cliente
+	for rows.Next() {
+		c := &entity.Cliente{}
+		if err := rows.Scan(&c.ID, &c.Nome, &c.CpfCnpj, &c.Email, &c.Telefone, &c.CriadoEm, &c.AtualizadoEm); err != nil {
+			return nil, fmt.Errorf("ClienteRepository.BuscarTodos scan: %w", err)
+		}
+		clientes = append(clientes, c)
 	}
 
-	return clients, nil
+	slog.Info("clientes encontrados", "quantidade", len(clientes))
+	return clientes, rows.Err()
 }

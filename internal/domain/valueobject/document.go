@@ -4,10 +4,13 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"strings"
 )
 
 // ErrDocumentoInvalido é retornado quando o CPF ou CNPJ fornecido não é válido.
 var ErrDocumentoInvalido = errors.New("documento inválido")
+
+var reNaoDigito = regexp.MustCompile(`\D`)
 
 // Document representa um documento fiscal (CPF ou CNPJ) validado.
 type Document struct {
@@ -46,14 +49,18 @@ func NewDocument(value string) (*Document, error) {
 
 // apenasDigitos remove todos os caracteres não numéricos de uma string.
 func apenasDigitos(s string) string {
-	re := regexp.MustCompile(`\D`)
-	return re.ReplaceAllString(s, "")
+	return reNaoDigito.ReplaceAllString(s, "")
+}
+
+// todosIguais verifica se todos os caracteres da string são iguais.
+func todosIguais(s string) bool {
+	return strings.Count(s, string(s[0])) == len(s)
 }
 
 // validarCPF verifica os dois dígitos verificadores de um CPF com 11 dígitos.
 // Rejeita sequências repetidas como "11111111111".
 func validarCPF(cpf string) bool {
-	if regexp.MustCompile(`^(\d)\1{10}$`).MatchString(cpf) {
+	if todosIguais(cpf) {
 		return false
 	}
 
@@ -85,7 +92,7 @@ func validarCPF(cpf string) bool {
 // validarCNPJ verifica os dois dígitos verificadores de um CNPJ com 14 dígitos.
 // Rejeita sequências repetidas como "00000000000000".
 func validarCNPJ(cnpj string) bool {
-	if regexp.MustCompile(`^(\d)\1{13}$`).MatchString(cnpj) {
+	if todosIguais(cnpj) {
 		return false
 	}
 

@@ -21,7 +21,7 @@ func main() {
 
 	r := chi.NewRouter()
 
-	clientHandler := handler.NewClientHandler()
+	clientHandler := handler.NovoClienteHandler(db)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -30,8 +30,8 @@ func main() {
 		})
 	})
 
-	r.Post("/clients", clientHandler.CreateClient)
-	r.Get("/clients", clientHandler.ListClients)
+	r.Post("/clients", clientHandler.CriarCliente)
+	r.Get("/clients", clientHandler.ListarClientes)
 
 	log.Println("servidor rodando na porta 8080")
 	http.ListenAndServe(":8080", r)
