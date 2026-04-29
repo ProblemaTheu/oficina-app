@@ -59,6 +59,7 @@ func (uc *ClientUseCase) List() ([]*entity.Cliente, error) {
 	return uc.repo.BuscarTodos()
 }
 
+// FindByID retorna o cliente cadastrado pelo UUID
 func (uc *ClientUseCase) FindByID(id string) (*entity.Cliente, error) {
 	slog.Info("executando caso de uso: buscar cliente por ID", "id", id)
 
@@ -69,6 +70,7 @@ func (uc *ClientUseCase) FindByID(id string) (*entity.Cliente, error) {
 	return uc.repo.BuscarPorID(id)
 }
 
+// Update atualiza o cliente cadastrado pelo UUID, com os dados fornecidos
 func (uc *ClientUseCase) Update(id string, nome *string, email *string, telefone *string) (*entity.Cliente, error) {
 	slog.Info("executando caso de uso: atualizar cliente", "id", id)
 
@@ -101,6 +103,7 @@ func (uc *ClientUseCase) Update(id string, nome *string, email *string, telefone
 	return uc.repo.Atualizar(clienteAtual)
 }
 
+// Delete exclui o cliente cadastrado pelo UUID
 func (uc *ClientUseCase) Delete(id string) error {
 	slog.Info("executando caso de uso: remover cliente", "id", id)
 

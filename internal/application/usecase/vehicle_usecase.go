@@ -10,14 +10,17 @@ import (
 	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
+// VehicleUseCase centraliza todos os casos de uso relacionados a veiculo.
 type VehicleUseCase struct {
 	repo *repository.VeiculoRepository
 }
 
+// NewVehicleUseCase cria uma nova instância do use case de veiculos.
 func NewVehicleUseCase(repo *repository.VeiculoRepository) *VehicleUseCase {
 	return &VehicleUseCase{repo: repo}
 }
 
+// Create executa a criação de um novo veiculo.
 func (uc *VehicleUseCase) Create(clienteID string, placa string, marca string, modelo string, ano int, cor *string) (*entity.Veiculo, error) {
 	slog.Info("executando caso de uso: criar veículo")
 
@@ -58,11 +61,13 @@ func (uc *VehicleUseCase) Create(clienteID string, placa string, marca string, m
 	return uc.repo.Salvar(veiculo)
 }
 
+// List retorna todos os veiculos cadastrados.
 func (uc *VehicleUseCase) List() ([]*entity.Veiculo, error) {
 	slog.Info("executando caso de uso: listar veículos")
 	return uc.repo.BuscarTodos()
 }
 
+// FindByID retorna o veiculos cadastrado pelo UUID
 func (uc *VehicleUseCase) FindByID(id string) (*entity.Veiculo, error) {
 	slog.Info("executando caso de uso: buscar veículo por ID", "id", id)
 
@@ -77,6 +82,7 @@ func (uc *VehicleUseCase) FindByID(id string) (*entity.Veiculo, error) {
 	return uc.repo.BuscarPorID(id)
 }
 
+// Update atualiza o veiculos cadastrado pelo UUID, com os dados fornecidos
 func (uc *VehicleUseCase) Update(id string, marca *string, modelo *string, ano *int, cor *string) (*entity.Veiculo, error) {
 	slog.Info("executando caso de uso: atualizar veículo", "id", id)
 
@@ -121,6 +127,7 @@ func (uc *VehicleUseCase) Update(id string, marca *string, modelo *string, ano *
 	return uc.repo.Atualizar(veiculoAtual)
 }
 
+// Delete exclui o veiculos cadastrado pelo UUID
 func (uc *VehicleUseCase) Delete(id string) error {
 	slog.Info("executando caso de uso: remover veículo", "id", id)
 

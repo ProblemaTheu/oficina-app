@@ -13,14 +13,17 @@ import (
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
 
+// VeiculoRepository implementa o acesso ao banco de dados para clientes.
 type VeiculoRepository struct {
 	db *sql.DB
 }
 
+// NovoVeiculoRepository cria uma nova instância de VeiculoRepository.
 func NovoVeiculoRepository(db *sql.DB) *VeiculoRepository {
 	return &VeiculoRepository{db: db}
 }
 
+// Salvar persiste um novo veiculo no banco de dados.
 func (r *VeiculoRepository) Salvar(veiculo *entity.Veiculo) (*entity.Veiculo, error) {
 	slog.Info("salvando veículo no banco de dados")
 
@@ -55,6 +58,7 @@ func (r *VeiculoRepository) Salvar(veiculo *entity.Veiculo) (*entity.Veiculo, er
 	return veiculo, nil
 }
 
+// BuscarTodos retorna todos os veiculos do banco de dados
 func (r *VeiculoRepository) BuscarTodos() ([]*entity.Veiculo, error) {
 	query := `
 		SELECT id, cliente_id, placa, marca, modelo, ano, cor, criado_em, atualizado_em
@@ -92,6 +96,7 @@ func (r *VeiculoRepository) BuscarTodos() ([]*entity.Veiculo, error) {
 	return veiculos, rows.Err()
 }
 
+// BuscarPorID retorna o veiculo com o UUID passado
 func (r *VeiculoRepository) BuscarPorID(id string) (*entity.Veiculo, error) {
 	var veiculo entity.Veiculo
 
@@ -118,6 +123,7 @@ func (r *VeiculoRepository) BuscarPorID(id string) (*entity.Veiculo, error) {
 	return &veiculo, nil
 }
 
+// Atualizar atualiza o veiculo com o UUID passado pelas informações inseridas
 func (r *VeiculoRepository) Atualizar(veiculo *entity.Veiculo) (*entity.Veiculo, error) {
 	err := r.db.QueryRowContext(context.Background(), `
 		UPDATE veiculos
@@ -153,6 +159,7 @@ func (r *VeiculoRepository) Atualizar(veiculo *entity.Veiculo) (*entity.Veiculo,
 	return veiculo, nil
 }
 
+// Remover exclui, do banco de dados, o veiculo cujo UUID corresponde
 func (r *VeiculoRepository) Remover(id string) error {
 	result, err := r.db.ExecContext(context.Background(), `
 		DELETE FROM veiculos

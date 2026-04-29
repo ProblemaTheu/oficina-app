@@ -79,6 +79,7 @@ func (r *ClienteRepository) BuscarTodos() ([]*entity.Cliente, error) {
 	return clientes, rows.Err()
 }
 
+// BuscarPorID retorna o cliente com o UUID passado
 func (r *ClienteRepository) BuscarPorID(id string) (*entity.Cliente, error) {
 	var cliente entity.Cliente
 
@@ -101,6 +102,7 @@ func (r *ClienteRepository) BuscarPorID(id string) (*entity.Cliente, error) {
 	return &cliente, nil
 }
 
+// Atualizar atualiza o cliente com o UUID passado pelas informações inseridas
 func (r *ClienteRepository) Atualizar(cliente *entity.Cliente) (*entity.Cliente, error) {
 	err := r.db.QueryRow(`
 		UPDATE clientes
@@ -131,6 +133,7 @@ func (r *ClienteRepository) Atualizar(cliente *entity.Cliente) (*entity.Cliente,
 	return cliente, nil
 }
 
+// Remover exclui, do banco de dados, o cliente cujo UUID corresponde
 func (r *ClienteRepository) Remover(id string) error {
 	result, err := r.db.Exec(`
 		DELETE FROM clientes
