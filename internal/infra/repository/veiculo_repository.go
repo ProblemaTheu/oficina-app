@@ -181,3 +181,42 @@ func (r *VeiculoRepository) Remover(id string) error {
 
 	return nil
 }
+
+// BuscarPorClientID retorna veiculos de um usuário UUID passado.
+func (r *VeiculoRepository) BuscarPorClienteID(clienteID string) ([]*entity.Veiculo, error) {
+	query := `
+		SELECT id, cliente_id, placa, marca, modelo, ano, cor, criado_em, atualizado_em
+		FROM veiculos
+		WHERE cliente_id = $1
+		ORDER BY criado_em DESC
+	`
+
+	rows, err := r.db.QueryContext(context.Background(), query, clienteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var veiculos []*entity.Veiculo
+
+	for rows.Next() {
+		v := &entity.Veiculo{}
+		if err := rows.Scan(
+			&v.ID,
+			&v.ClienteID,
+			&v.Placa,
+			&v.Marca,
+			&v.Modelo,
+			&v.Ano,
+			&v.Cor,
+			&v.CriadoEm,
+			&v.AtualizadoEm,
+		); err != nil {
+			return nil, err
+		}
+
+		veiculos = append(veiculos, v)
+	}
+
+	return veiculos, rows.Err()
+}

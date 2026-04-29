@@ -12,12 +12,16 @@ import (
 
 // VehicleUseCase centraliza todos os casos de uso relacionados a veiculo.
 type VehicleUseCase struct {
-	repo *repository.VeiculoRepository
+	repo        *repository.VeiculoRepository
+	clienteRepo *repository.ClienteRepository
 }
 
 // NewVehicleUseCase cria uma nova instância do use case de veiculos.
-func NewVehicleUseCase(repo *repository.VeiculoRepository) *VehicleUseCase {
-	return &VehicleUseCase{repo: repo}
+func NewVehicleUseCase(repo *repository.VeiculoRepository, clienteRepo *repository.ClienteRepository) *VehicleUseCase {
+	return &VehicleUseCase{
+		repo:        repo,
+		clienteRepo: clienteRepo,
+	}
 }
 
 // Create executa a criação de um novo veiculo.
@@ -140,4 +144,19 @@ func (uc *VehicleUseCase) Delete(id string) error {
 	}
 
 	return uc.repo.Remover(id)
+}
+
+// ListByCliente traz veiculos de um determinado cliente por UUID
+func (uc *VehicleUseCase) ListByCliente(clienteID string) ([]*entity.Veiculo, error) {
+	if clienteID == "" {
+		return nil, errors.New("cliente_id é obrigatório")
+	}
+
+	// valida se cliente existe
+	_, err := uc.clienteRepo.BuscarPorID(clienteID)
+	if err != nil {
+		return nil, errors.New("cliente não encontrado")
+	}
+
+	return uc.repo.BuscarPorClienteID(clienteID)
 }

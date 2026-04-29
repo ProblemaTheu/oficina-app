@@ -47,7 +47,7 @@ func NovoServer(db *sql.DB) *Server {
 
 	return &Server{
 		clientUseCase:  usecase.NewClientUseCase(clienteRepo),
-		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo),
+		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo, clienteRepo),
 	}
 }
 
@@ -267,8 +267,29 @@ func (s *Server) DeleteClientsId(_ context.Context, request DeleteClientsIdReque
 //   - 404: cliente não encontrado.
 //
 // TODO: implementar listagem de veículos por cliente_id.
-func (s *Server) GetClientsIdVehicles(_ context.Context, _ GetClientsIdVehiclesRequestObject) (GetClientsIdVehiclesResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) GetClientsIdVehicles(
+	ctx context.Context,
+	request GetClientsIdVehiclesRequestObject,
+) (GetClientsIdVehiclesResponseObject, error) {
+
+	veiculos, err := s.vehicleUseCase.ListByCliente(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	page, limit := paginacaoDefaults(request.Params.Page, request.Params.Limit)
+	total := len(veiculos)
+	inicio, fim := calcularFatia(total, page, limit)
+
+	data := make([]VeiculoResponse, 0, fim-inicio)
+	for _, v := range veiculos[inicio:fim] {
+		data = append(data, veiculoParaResponse(v))
+	}
+
+	return GetClientsIdVehicles200JSONResponse(VeiculoListResponse{
+		Data: &data,
+		Meta: metaPaginacao(page, limit, total),
+	}), nil
 }
 
 // ── Veículos ──────────────────────────────────────────────────────────────────
