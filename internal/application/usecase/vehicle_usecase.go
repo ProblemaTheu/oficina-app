@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
+	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
 	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
@@ -37,8 +38,9 @@ func (uc *VehicleUseCase) Create(clienteID string, placa string, marca string, m
 		return nil, errors.New("cliente_id inválido")
 	}
 
-	if strings.TrimSpace(placa) == "" {
-		return nil, errors.New("placa é obrigatória")
+	plate, err := valueobject.NewPlate(placa)
+	if err != nil {
+		return nil, err
 	}
 
 	if strings.TrimSpace(marca) == "" {
@@ -55,7 +57,7 @@ func (uc *VehicleUseCase) Create(clienteID string, placa string, marca string, m
 
 	veiculo := &entity.Veiculo{
 		ClienteID: parsedClienteID,
-		Placa:     strings.ToUpper(strings.TrimSpace(placa)),
+		Placa:     plate.Value,
 		Marca:     marca,
 		Modelo:    modelo,
 		Ano:       ano,
