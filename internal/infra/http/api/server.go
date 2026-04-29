@@ -13,10 +13,10 @@ import (
 	"fmt"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
 	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
+	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
+	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
 	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
@@ -30,8 +30,8 @@ var errNaoImplementado = errors.New("não implementado")
 // Serviços, Peças). Novos use cases devem ser adicionados como campos e
 // injetados em NovoServer.
 type Server struct {
-	criarCliente   *usecase.CriarClienteUseCase
-	listarClientes *usecase.ListarClientesUseCase
+	clientUseCase  *usecase.ClientUseCase
+	vehicleUseCase *usecase.VehicleUseCase
 }
 
 // NovoServer constrói um Server com todas as dependências injetadas.
@@ -42,10 +42,12 @@ type Server struct {
 // Retorno:
 //   - *Server pronto para ser registrado como StrictServerInterface.
 func NovoServer(db *sql.DB) *Server {
-	repo := repository.NovoClienteRepository(db)
+	clienteRepo := repository.NovoClienteRepository(db)
+	veiculoRepo := repository.NovoVeiculoRepository(db)
+
 	return &Server{
-		criarCliente:   usecase.NovoCriarClienteUseCase(repo),
-		listarClientes: usecase.NovoListarClientesUseCase(repo),
+		clientUseCase:  usecase.NewClientUseCase(clienteRepo),
+		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo),
 	}
 }
 
@@ -80,7 +82,7 @@ func (s *Server) PostAuthLogin(_ context.Context, _ PostAuthLoginRequestObject) 
 //   - 200: ClienteListResponse com data[] e meta de paginação.
 //   - 401: token ausente ou inválido.
 func (s *Server) GetClients(_ context.Context, request GetClientsRequestObject) (GetClientsResponseObject, error) {
-	clientes, err := s.listarClientes.Executar()
+	clientes, err := s.clientUseCase.List()
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +120,12 @@ func (s *Server) GetClients(_ context.Context, request GetClientsRequestObject) 
 func (s *Server) PostClients(_ context.Context, request PostClientsRequestObject) (PostClientsResponseObject, error) {
 	body := request.Body
 
-	cliente, err := s.criarCliente.Executar(body.Nome, body.Documento, (*string)(body.Email), body.Telefone)
+	cliente, err := s.clientUseCase.Create(
+		body.Nome,
+		body.Documento,
+		(*string)(body.Email),
+		body.Telefone,
+	)
 
 	if err != nil {
 		var errConflito *domainerros.ErrConflito
@@ -134,7 +141,7 @@ func (s *Server) PostClients(_ context.Context, request PostClientsRequestObject
 			return PostClients400JSONResponse{
 				BadRequestJSONResponse{Code: "INVALID_DOCUMENT", Message: err.Error()},
 			}, nil
-			
+
 		default:
 			return PostClients400JSONResponse{
 				BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()},
@@ -164,8 +171,15 @@ func (s *Server) PostClients(_ context.Context, request PostClientsRequestObject
 //   - 404: cliente não encontrado.
 //
 // TODO: implementar busca por ID no repositório.
-func (s *Server) GetClientsId(_ context.Context, _ GetClientsIdRequestObject) (GetClientsIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) GetClientsId(_ context.Context, request GetClientsIdRequestObject) (GetClientsIdResponseObject, error) {
+	cliente, err := s.clientUseCase.FindByID(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	resp := clienteParaResponse(cliente)
+
+	return GetClientsId200JSONResponse(resp), nil
 }
 
 // PutClientsId atualiza os dados de um cliente existente.
@@ -189,8 +203,28 @@ func (s *Server) GetClientsId(_ context.Context, _ GetClientsIdRequestObject) (G
 //   - 404: cliente não encontrado.
 //
 // TODO: implementar atualização no repositório.
-func (s *Server) PutClientsId(_ context.Context, _ PutClientsIdRequestObject) (PutClientsIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PutClientsId(_ context.Context, request PutClientsIdRequestObject) (PutClientsIdResponseObject, error) {
+	body := request.Body
+
+	var email *string
+	if body.Email != nil {
+		emailValue := string(*body.Email)
+		email = &emailValue
+	}
+
+	cliente, err := s.clientUseCase.Update(
+		request.Id.String(),
+		body.Nome,
+		email,
+		body.Telefone,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := clienteParaResponse(cliente)
+
+	return PutClientsId200JSONResponse(resp), nil
 }
 
 // DeleteClientsId remove um cliente pelo seu UUID.
@@ -207,8 +241,13 @@ func (s *Server) PutClientsId(_ context.Context, _ PutClientsIdRequestObject) (P
 //   - 409: cliente possui veículos ou ordens de serviço associados.
 //
 // TODO: implementar remoção no repositório com validação de dependências.
-func (s *Server) DeleteClientsId(_ context.Context, _ DeleteClientsIdRequestObject) (DeleteClientsIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) DeleteClientsId(_ context.Context, request DeleteClientsIdRequestObject) (DeleteClientsIdResponseObject, error) {
+	err := s.clientUseCase.Delete(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return DeleteClientsId204Response{}, nil
 }
 
 // GetClientsIdVehicles lista os veículos de um cliente específico.
@@ -250,8 +289,25 @@ func (s *Server) GetClientsIdVehicles(_ context.Context, _ GetClientsIdVehiclesR
 //   - 401: token ausente ou inválido.
 //
 // TODO: implementar listagem de veículos.
-func (s *Server) GetVehicles(_ context.Context, _ GetVehiclesRequestObject) (GetVehiclesResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) GetVehicles(_ context.Context, request GetVehiclesRequestObject) (GetVehiclesResponseObject, error) {
+	veiculos, err := s.vehicleUseCase.List()
+	if err != nil {
+		return nil, err
+	}
+
+	page, limit := paginacaoDefaults(request.Params.Page, request.Params.Limit)
+	total := len(veiculos)
+	inicio, fim := calcularFatia(total, page, limit)
+
+	data := make([]VeiculoResponse, 0, fim-inicio)
+	for _, v := range veiculos[inicio:fim] {
+		data = append(data, veiculoParaResponse(v))
+	}
+
+	return GetVehicles200JSONResponse(VeiculoListResponse{
+		Data: &data,
+		Meta: metaPaginacao(page, limit, total),
+	}), nil
 }
 
 // PostVehicles cadastra um novo veículo vinculado a um cliente.
@@ -274,8 +330,29 @@ func (s *Server) GetVehicles(_ context.Context, _ GetVehiclesRequestObject) (Get
 //   - 409: placa já cadastrada.
 //
 // TODO: implementar criação de veículo.
-func (s *Server) PostVehicles(_ context.Context, _ PostVehiclesRequestObject) (PostVehiclesResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PostVehicles(_ context.Context, request PostVehiclesRequestObject) (PostVehiclesResponseObject, error) {
+	body := request.Body
+
+	veiculo, err := s.vehicleUseCase.Create(
+		body.ClienteId.String(),
+		body.Placa,
+		body.Marca,
+		body.Modelo,
+		body.Ano,
+		body.Cor,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := veiculoParaResponse(veiculo)
+
+	return PostVehicles201JSONResponse{
+		Body: resp,
+		Headers: PostVehicles201ResponseHeaders{
+			Location: fmt.Sprintf("/v1/vehicles/%s", veiculo.ID),
+		},
+	}, nil
 }
 
 // GetVehiclesId busca um veículo pelo seu UUID.
@@ -288,8 +365,14 @@ func (s *Server) PostVehicles(_ context.Context, _ PostVehiclesRequestObject) (P
 //   - 404: veículo não encontrado.
 //
 // TODO: implementar busca de veículo por ID.
-func (s *Server) GetVehiclesId(_ context.Context, _ GetVehiclesIdRequestObject) (GetVehiclesIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) GetVehiclesId(_ context.Context, request GetVehiclesIdRequestObject) (GetVehiclesIdResponseObject, error) {
+	veiculo, err := s.vehicleUseCase.FindByID(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	resp := veiculoParaResponse(veiculo)
+	return GetVehiclesId200JSONResponse(resp), nil
 }
 
 // PutVehiclesId atualiza os dados de um veículo.
@@ -311,8 +394,22 @@ func (s *Server) GetVehiclesId(_ context.Context, _ GetVehiclesIdRequestObject) 
 //   - 404: veículo não encontrado.
 //
 // TODO: implementar atualização de veículo.
-func (s *Server) PutVehiclesId(_ context.Context, _ PutVehiclesIdRequestObject) (PutVehiclesIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PutVehiclesId(_ context.Context, request PutVehiclesIdRequestObject) (PutVehiclesIdResponseObject, error) {
+	body := request.Body
+
+	veiculo, err := s.vehicleUseCase.Update(
+		request.Id.String(),
+		body.Marca,
+		body.Modelo,
+		body.Ano,
+		body.Cor,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := veiculoParaResponse(veiculo)
+	return PutVehiclesId200JSONResponse(resp), nil
 }
 
 // DeleteVehiclesId remove um veículo pelo seu UUID.
@@ -326,8 +423,13 @@ func (s *Server) PutVehiclesId(_ context.Context, _ PutVehiclesIdRequestObject) 
 //   - 409: veículo possui ordens de serviço associadas.
 //
 // TODO: implementar remoção de veículo com validação de dependências.
-func (s *Server) DeleteVehiclesId(_ context.Context, _ DeleteVehiclesIdRequestObject) (DeleteVehiclesIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) DeleteVehiclesId(_ context.Context, request DeleteVehiclesIdRequestObject) (DeleteVehiclesIdResponseObject, error) {
+	err := s.vehicleUseCase.Delete(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return DeleteVehiclesId204Response{}, nil
 }
 
 // ── Serviços ──────────────────────────────────────────────────────────────────
@@ -556,6 +658,25 @@ func clienteParaResponse(c *entity.Cliente) ClienteResponse {
 		Telefone:     c.Telefone,
 		CriadoEm:     &c.CriadoEm,
 		AtualizadoEm: &c.AtualizadoEm,
+	}
+}
+
+// veiculoParaResponse converte a entidade de domínio veiculo para o DTO de resposta
+// veiculoResponse utilizado pela camada HTTP.
+func veiculoParaResponse(v *entity.Veiculo) VeiculoResponse {
+	id := openapi_types.UUID(v.ID)
+	clienteID := openapi_types.UUID(v.ClienteID)
+
+	return VeiculoResponse{
+		Id:           &id,
+		ClienteId:    &clienteID,
+		Placa:        &v.Placa,
+		Marca:        &v.Marca,
+		Modelo:       &v.Modelo,
+		Ano:          &v.Ano,
+		Cor:          v.Cor,
+		CriadoEm:     &v.CriadoEm,
+		AtualizadoEm: &v.AtualizadoEm,
 	}
 }
 

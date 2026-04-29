@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
+	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
 
 // ClienteRepository implementa o acesso ao banco de dados para clientes.
@@ -77,6 +77,80 @@ func (r *ClienteRepository) BuscarTodos() ([]*entity.Cliente, error) {
 
 	slog.Info("clientes encontrados", "quantidade", len(clientes))
 	return clientes, rows.Err()
+}
+
+func (r *ClienteRepository) BuscarPorID(id string) (*entity.Cliente, error) {
+	var cliente entity.Cliente
+
+	err := r.db.QueryRow(`
+		SELECT id, nome, cpf_cnpj, email, telefone
+		FROM clientes
+		WHERE id = $1
+	`, id).Scan(
+		&cliente.ID,
+		&cliente.Nome,
+		&cliente.CpfCnpj,
+		&cliente.Email,
+		&cliente.Telefone,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &cliente, nil
+}
+
+func (r *ClienteRepository) Atualizar(cliente *entity.Cliente) (*entity.Cliente, error) {
+	err := r.db.QueryRow(`
+		UPDATE clientes
+		SET nome = $1,
+		    cpf_cnpj = $2,
+		    email = $3,
+		    telefone = $4
+		WHERE id = $5
+		RETURNING id, nome, cpf_cnpj, email, telefone
+	`,
+		cliente.Nome,
+		cliente.CpfCnpj,
+		cliente.Email,
+		cliente.Telefone,
+		cliente.ID,
+	).Scan(
+		&cliente.ID,
+		&cliente.Nome,
+		&cliente.CpfCnpj,
+		&cliente.Email,
+		&cliente.Telefone,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return cliente, nil
+}
+
+func (r *ClienteRepository) Remover(id string) error {
+	result, err := r.db.Exec(`
+		DELETE FROM clientes
+		WHERE id = $1
+	`, id)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 // campoDoConstraint mapeia o nome do constraint PostgreSQL para o nome legível

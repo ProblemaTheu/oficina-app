@@ -10,7 +10,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: admin #admin ou postgres
       DB_NAME: tech_challenge_db
     restart: on-failure
     depends_on:
