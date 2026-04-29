@@ -1,0 +1,729 @@
+{
+  "info": {
+    "name": "Tech Challenge — Oficina Mecânica API",
+    "description": "Collection completa da API de oficina mecânica.\n\n**Como usar:**\n1. Importe este arquivo no Postman.\n2. Selecione o environment \"Local\" (ou ajuste a variável `baseUrl`).\n3. Execute **Auth / Login** — o token JWT será salvo automaticamente na variável `token`.\n4. Todos os demais endpoints usam `{{token}}` no header Authorization.\n\n**Variáveis de coleção:**\n- `baseUrl` — URL base da API (padrão: `http://localhost:8080/v1`)\n- `token` — JWT preenchido automaticamente após login\n- `clienteId` — UUID de cliente, preenchido automaticamente após criar cliente\n- `veiculoId` — UUID de veículo, preenchido automaticamente após criar veículo\n- `servicoId` — UUID de serviço, preenchido automaticamente após criar serviço\n- `pecaId` — UUID de peça, preenchida automaticamente após criar peça",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clienteId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "veiculoId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "servicoId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pecaId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "description": "Endpoints de saúde da aplicação no estilo Spring Actuator.",
+      "item": [
+        {
+          "name": "Liveness",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8080/health/live",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8080",
+              "path": ["health", "live"]
+            },
+            "description": "Verifica se o processo está de pé. Não consulta dependências."
+          },
+          "response": []
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8080/health/ready",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8080",
+              "path": ["health", "ready"]
+            },
+            "description": "Verifica se a aplicação está pronta para receber tráfego (inclui check do banco de dados)."
+          },
+          "response": []
+        },
+        {
+          "name": "Health (alias)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:8080/health",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8080",
+              "path": ["health"]
+            },
+            "description": "Alias de /health/ready — retorna status geral da aplicação e dependências."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Autenticação e geração de token JWT.",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('token', body.access_token);",
+                  "    console.log('Token salvo na variável de coleção: token');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"mecanico@oficina.com\",\n  \"senha\": \"s3nh@segura\"\n}",
+              "options": {
+                "raw": { "language": "json" }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Autentica o usuário e retorna um JWT Bearer token.\n\nO token é salvo automaticamente na variável de coleção `token` via script de teste."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Clientes",
+      "description": "Gerenciamento de clientes — pessoa física (CPF) ou jurídica (CNPJ).",
+      "item": [
+        {
+          "name": "Listar clientes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/clients?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "nome", "value": "João", "disabled": true },
+                { "key": "documento", "value": "12345678901", "disabled": true }
+              ]
+            },
+            "description": "Retorna a lista paginada de clientes.\n\nParâmetros opcionais (desabilitados por padrão):\n- `nome` — busca parcial case-insensitive pelo nome\n- `documento` — busca exata pelo CPF ou CNPJ (apenas dígitos)"
+          },
+          "response": []
+        },
+        {
+          "name": "Criar cliente (CPF)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('clienteId', body.id);",
+                  "    console.log('clienteId salvo:', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"João Silva\",\n  \"documento\": \"123.456.789-09\",\n  \"email\": \"joao.silva@email.com\",\n  \"telefone\": \"(11) 99999-1234\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients"]
+            },
+            "description": "Cadastra um novo cliente pessoa física (CPF).\n\nO `id` do cliente criado é salvo automaticamente na variável `clienteId`.\n\nO campo `documento` aceita CPF com ou sem formatação."
+          },
+          "response": []
+        },
+        {
+          "name": "Criar cliente (CNPJ)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Transportes ABC Ltda\",\n  \"documento\": \"11.222.333/0001-81\",\n  \"email\": \"contato@transportesabc.com.br\",\n  \"telefone\": \"(11) 3333-4444\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients"]
+            },
+            "description": "Cadastra um novo cliente pessoa jurídica (CNPJ).\n\nO campo `documento` aceita CNPJ com ou sem formatação."
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar cliente por ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clienteId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "{{clienteId}}"]
+            },
+            "description": "Busca um cliente pelo UUID. Usa a variável `clienteId` salva após criar cliente."
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar cliente",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"João Silva Santos\",\n  \"email\": \"joao.santos@email.com\",\n  \"telefone\": \"(11) 98888-5678\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clienteId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "{{clienteId}}"]
+            },
+            "description": "Atualiza nome, e-mail e/ou telefone do cliente. CPF/CNPJ não pode ser alterado.\n\nTodos os campos são opcionais — envie apenas os que deseja atualizar."
+          },
+          "response": []
+        },
+        {
+          "name": "Remover cliente",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clienteId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "{{clienteId}}"]
+            },
+            "description": "Remove o cliente. Retorna 409 se houver veículos ou ordens de serviço vinculados."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar veículos do cliente",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clienteId}}/vehicles?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "{{clienteId}}", "vehicles"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "description": "Retorna todos os veículos cadastrados para o cliente informado."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Veículos",
+      "description": "Gerenciamento de veículos vinculados a clientes.",
+      "item": [
+        {
+          "name": "Listar veículos",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/vehicles?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["vehicles"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "placa", "value": "ABC1D23", "disabled": true },
+                { "key": "marca", "value": "Toyota", "disabled": true },
+                { "key": "cliente_id", "value": "{{clienteId}}", "disabled": true }
+              ]
+            },
+            "description": "Retorna a lista paginada de veículos.\n\nFiltros opcionais (desabilitados por padrão):\n- `placa` — busca exata ou parcial pela placa\n- `marca` — busca parcial case-insensitive pela marca\n- `cliente_id` — filtra pelo ID do cliente proprietário"
+          },
+          "response": []
+        },
+        {
+          "name": "Cadastrar veículo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('veiculoId', body.id);",
+                  "    console.log('veiculoId salvo:', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cliente_id\": \"{{clienteId}}\",\n  \"placa\": \"ABC1D23\",\n  \"marca\": \"Toyota\",\n  \"modelo\": \"Corolla\",\n  \"ano\": 2022,\n  \"cor\": \"Prata\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vehicles",
+              "host": ["{{baseUrl}}"],
+              "path": ["vehicles"]
+            },
+            "description": "Vincula um novo veículo a um cliente existente. Placa deve ser única.\n\nO `id` do veículo criado é salvo automaticamente na variável `veiculoId`.\n\nUsa a variável `clienteId` para o campo `cliente_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar veículo por ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{veiculoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vehicles", "{{veiculoId}}"]
+            },
+            "description": "Busca um veículo pelo UUID. Usa a variável `veiculoId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar veículo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"marca\": \"Toyota\",\n  \"modelo\": \"Corolla XEi\",\n  \"ano\": 2023,\n  \"cor\": \"Branco\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{veiculoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vehicles", "{{veiculoId}}"]
+            },
+            "description": "Atualiza marca, modelo, ano e/ou cor. Placa e cliente_id não são alteráveis após o cadastro."
+          },
+          "response": []
+        },
+        {
+          "name": "Remover veículo",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{veiculoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vehicles", "{{veiculoId}}"]
+            },
+            "description": "Remove o veículo. Retorna 409 se houver ordens de serviço vinculadas."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Serviços",
+      "description": "Catálogo de serviços oferecidos pela oficina.",
+      "item": [
+        {
+          "name": "Listar serviços",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/services?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["services"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "nome", "value": "óleo", "disabled": true }
+              ]
+            },
+            "description": "Retorna o catálogo de serviços paginado.\n\nFiltro opcional: `nome` — busca parcial case-insensitive pelo nome do serviço."
+          },
+          "response": []
+        },
+        {
+          "name": "Cadastrar serviço",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('servicoId', body.id);",
+                  "    console.log('servicoId salvo:', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Troca de óleo\",\n  \"descricao\": \"Troca de óleo do motor com substituição do filtro\",\n  \"preco_base\": 89.90,\n  \"tempo_minutos\": 30\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services",
+              "host": ["{{baseUrl}}"],
+              "path": ["services"]
+            },
+            "description": "Adiciona um novo serviço ao catálogo. Nome deve ser único.\n\nO `id` do serviço criado é salvo automaticamente na variável `servicoId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Cadastrar serviço (revisão)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Revisão completa\",\n  \"descricao\": \"Revisão completa com 30.000 km — inclui troca de óleo, filtros, velas e correia\",\n  \"preco_base\": 450.00,\n  \"tempo_minutos\": 180\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services",
+              "host": ["{{baseUrl}}"],
+              "path": ["services"]
+            },
+            "description": "Exemplo alternativo de criação de serviço."
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar serviço por ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/services/{{servicoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "{{servicoId}}"]
+            },
+            "description": "Busca um serviço pelo UUID. Usa a variável `servicoId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar serviço",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Troca de óleo e filtro\",\n  \"descricao\": \"Troca de óleo sintético 5W30 com filtro original\",\n  \"preco_base\": 99.90,\n  \"tempo_minutos\": 45\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/{{servicoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "{{servicoId}}"]
+            },
+            "description": "Atualiza os dados de um serviço. Retorna 409 se o novo nome já estiver em uso."
+          },
+          "response": []
+        },
+        {
+          "name": "Remover serviço",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/services/{{servicoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "{{servicoId}}"]
+            },
+            "description": "Remove o serviço. Retorna 409 se houver ordens de serviço que o referenciam."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Peças",
+      "description": "Catálogo e controle de estoque de peças e insumos.",
+      "item": [
+        {
+          "name": "Listar peças",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/parts?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "nome", "value": "filtro", "disabled": true },
+                { "key": "codigo", "value": "FO-001", "disabled": true },
+                { "key": "estoque_baixo", "value": "true", "disabled": true }
+              ]
+            },
+            "description": "Retorna o catálogo de peças e insumos paginado.\n\nFiltros opcionais (desabilitados por padrão):\n- `nome` — busca parcial pelo nome\n- `codigo` — busca pelo código interno\n- `estoque_baixo=true` — retorna apenas peças com estoque abaixo do mínimo"
+          },
+          "response": []
+        },
+        {
+          "name": "Cadastrar peça",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('pecaId', body.id);",
+                  "    console.log('pecaId salvo:', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Filtro de óleo\",\n  \"codigo\": \"FO-001\",\n  \"preco\": 35.50,\n  \"estoque_atual\": 20,\n  \"estoque_minimo\": 5\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parts",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts"]
+            },
+            "description": "Adiciona uma nova peça ao catálogo. Código deve ser único.\n\nO `id` da peça criada é salvo automaticamente na variável `pecaId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Cadastrar peça (vela)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Vela de ignição NGK\",\n  \"codigo\": \"VI-NGK-001\",\n  \"preco\": 22.90,\n  \"estoque_atual\": 40,\n  \"estoque_minimo\": 8\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parts",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts"]
+            },
+            "description": "Exemplo alternativo de criação de peça."
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar peça por ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/parts/{{pecaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts", "{{pecaId}}"]
+            },
+            "description": "Busca uma peça pelo UUID. Usa a variável `pecaId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar peça",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Filtro de óleo original\",\n  \"preco\": 38.90,\n  \"estoque_minimo\": 8\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parts/{{pecaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts", "{{pecaId}}"]
+            },
+            "description": "Atualiza nome, preço e/ou estoque mínimo da peça. Código não é alterável."
+          },
+          "response": []
+        },
+        {
+          "name": "Remover peça",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/parts/{{pecaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts", "{{pecaId}}"]
+            },
+            "description": "Remove a peça do catálogo. Retorna 409 se houver ordens de serviço que a referenciam."
+          },
+          "response": []
+        },
+        {
+          "name": "Ajustar estoque — entrada",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantidade\": 10,\n  \"tipo\": \"entrada\",\n  \"motivo\": \"Compra NF 1234\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parts/{{pecaId}}/stock",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts", "{{pecaId}}", "stock"]
+            },
+            "description": "Adiciona unidades ao estoque atual da peça (`tipo: entrada`)."
+          },
+          "response": []
+        },
+        {
+          "name": "Ajustar estoque — saída",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantidade\": 3,\n  \"tipo\": \"saida\",\n  \"motivo\": \"Uso em OS 00042\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parts/{{pecaId}}/stock",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts", "{{pecaId}}", "stock"]
+            },
+            "description": "Subtrai unidades do estoque atual (`tipo: saida`). Retorna 422 se o estoque for insuficiente."
+          },
+          "response": []
+        },
+        {
+          "name": "Ajustar estoque — ajuste absoluto",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantidade\": 15,\n  \"tipo\": \"ajuste\",\n  \"motivo\": \"Contagem de inventário — divergência corrigida\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parts/{{pecaId}}/stock",
+              "host": ["{{baseUrl}}"],
+              "path": ["parts", "{{pecaId}}", "stock"]
+            },
+            "description": "Define o valor absoluto do estoque atual (`tipo: ajuste`), independente do valor anterior."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

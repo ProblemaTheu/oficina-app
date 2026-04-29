@@ -1,0 +1,1144 @@
+openapi: 3.1.0
+
+info:
+  title: Tech Challenge – Oficina Mecânica API
+  description: |
+    API REST para gerenciamento de oficina mecânica.
+
+    ## Autenticação
+    Todos os endpoints (exceto `/auth/login`) requerem um **JWT Bearer token** no header:
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    ## Paginação
+    Endpoints de listagem aceitam os query params `page` e `limit`.
+    A resposta inclui o objeto `meta` com informações de paginação.
+
+    ## Convenções de erros
+    | Status | Significado |
+    |--------|-------------|
+    | 400    | Payload inválido ou regra de negócio violada |
+    | 401    | Token ausente ou inválido |
+    | 403    | Sem permissão para o recurso |
+    | 404    | Recurso não encontrado |
+    | 409    | Conflito (duplicidade de dado único) |
+    | 422    | Entidade não processável (ex: estoque insuficiente) |
+    | 500    | Erro interno |
+  version: 1.0.0
+  contact:
+    name: Tech Challenge
+
+servers:
+  - url: http://localhost:8080/v1
+    description: Desenvolvimento local
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Autenticação e geração de token
+  - name: Clientes
+    description: Gerenciamento de clientes (pessoa física ou jurídica)
+  - name: Veículos
+    description: Gerenciamento de veículos vinculados a clientes
+  - name: Serviços
+    description: Catálogo de serviços oferecidos pela oficina
+  - name: Peças
+    description: Catálogo e controle de estoque de peças e insumos
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Número da página (começa em 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      description: Quantidade de itens por página (máximo 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    IdParam:
+      name: id
+      in: path
+      required: true
+      description: UUID do recurso
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Token ausente ou inválido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: UNAUTHORIZED
+            message: token inválido ou expirado
+    Forbidden:
+      description: Sem permissão para executar esta ação
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: FORBIDDEN
+            message: sem permissão para este recurso
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: NOT_FOUND
+            message: recurso não encontrado
+    BadRequest:
+      description: Payload inválido ou regra de negócio violada
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Conflito – dado único já cadastrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: CONFLICT
+            message: registro já existe com este valor
+
+  schemas:
+
+    # ── Utilitários ────────────────────────────────────────────────────────────
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Código de erro legível por máquina
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Descrição legível por humanos
+          example: campo 'nome' é obrigatório
+
+    PaginationMeta:
+      type: object
+      required: [page, limit, total, total_pages]
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          description: Total de registros encontrados
+          example: 87
+        total_pages:
+          type: integer
+          example: 5
+
+    # ── Auth ───────────────────────────────────────────────────────────────────
+
+    LoginRequest:
+      type: object
+      required: [email, senha]
+      properties:
+        email:
+          type: string
+          format: email
+          example: mecanico@oficina.com
+        senha:
+          type: string
+          format: password
+          minLength: 6
+          example: "s3nh@segura"
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT para uso nos demais endpoints
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Tempo de expiração em segundos
+          example: 3600
+
+    # ── Cliente ────────────────────────────────────────────────────────────────
+
+    ClienteResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+          example: João Silva
+        cpf_cnpj:
+          type: string
+          description: Apenas dígitos, sem formatação
+          example: "12345678901"
+        email:
+          type: ["string", "null"]
+          format: email
+          example: joao@email.com
+        telefone:
+          type: ["string", "null"]
+          example: "11999999999"
+        criado_em:
+          type: string
+          format: date-time
+        atualizado_em:
+          type: string
+          format: date-time
+
+    CriarClienteRequest:
+      type: object
+      required: [nome, documento]
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 255
+          example: João Silva
+        documento:
+          type: string
+          description: CPF (11 dígitos) ou CNPJ (14 dígitos). Aceita com ou sem formatação.
+          example: "123.456.789-01"
+        email:
+          type: ["string", "null"]
+          format: email
+          example: joao@email.com
+        telefone:
+          type: ["string", "null"]
+          maxLength: 20
+          example: "(11) 99999-9999"
+
+    AtualizarClienteRequest:
+      type: object
+      description: Apenas os campos informados serão atualizados. CPF/CNPJ não é alterável.
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 255
+        email:
+          type: ["string", "null"]
+          format: email
+        telefone:
+          type: ["string", "null"]
+          maxLength: 20
+
+    ClienteListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClienteResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Veículo ────────────────────────────────────────────────────────────────
+
+    VeiculoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        cliente_id:
+          type: string
+          format: uuid
+        placa:
+          type: string
+          example: ABC1D23
+        marca:
+          type: string
+          example: Toyota
+        modelo:
+          type: string
+          example: Corolla
+        ano:
+          type: integer
+          example: 2022
+        cor:
+          type: ["string", "null"]
+          example: Prata
+        criado_em:
+          type: string
+          format: date-time
+        atualizado_em:
+          type: string
+          format: date-time
+
+    CriarVeiculoRequest:
+      type: object
+      required: [cliente_id, placa, marca, modelo, ano]
+      properties:
+        cliente_id:
+          type: string
+          format: uuid
+          description: ID do cliente proprietário do veículo
+        placa:
+          type: string
+          maxLength: 20
+          description: Placa no formato antigo (ABC-1234) ou Mercosul (ABC1D23)
+          example: ABC1D23
+        marca:
+          type: string
+          maxLength: 100
+          example: Toyota
+        modelo:
+          type: string
+          maxLength: 100
+          example: Corolla
+        ano:
+          type: integer
+          minimum: 1900
+          maximum: 2100
+          example: 2022
+        cor:
+          type: ["string", "null"]
+          maxLength: 50
+          example: Prata
+
+    AtualizarVeiculoRequest:
+      type: object
+      description: Placa e cliente_id não são alteráveis após o cadastro.
+      properties:
+        marca:
+          type: string
+          maxLength: 100
+        modelo:
+          type: string
+          maxLength: 100
+        ano:
+          type: integer
+          minimum: 1900
+          maximum: 2100
+        cor:
+          type: ["string", "null"]
+          maxLength: 50
+
+    VeiculoListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/VeiculoResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Serviço ────────────────────────────────────────────────────────────────
+
+    ServicoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+          example: Troca de óleo
+        descricao:
+          type: ["string", "null"]
+          example: Troca de óleo do motor com filtro
+        preco_base:
+          type: number
+          format: double
+          example: 89.90
+        tempo_minutos:
+          type: integer
+          description: Tempo estimado de execução em minutos
+          example: 30
+        criado_em:
+          type: string
+          format: date-time
+        atualizado_em:
+          type: string
+          format: date-time
+
+    CriarServicoRequest:
+      type: object
+      required: [nome, preco_base, tempo_minutos]
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 255
+          example: Troca de óleo
+        descricao:
+          type: ["string", "null"]
+          example: Troca de óleo do motor com filtro
+        preco_base:
+          type: number
+          format: double
+          minimum: 0
+          example: 89.90
+        tempo_minutos:
+          type: integer
+          minimum: 0
+          example: 30
+
+    AtualizarServicoRequest:
+      type: object
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 255
+        descricao:
+          type: ["string", "null"]
+        preco_base:
+          type: number
+          format: double
+          minimum: 0
+        tempo_minutos:
+          type: integer
+          minimum: 0
+
+    ServicoListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServicoResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Peça ───────────────────────────────────────────────────────────────────
+
+    PecaResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+          example: Filtro de óleo
+        codigo:
+          type: string
+          description: Código interno de identificação da peça
+          example: FO-001
+        preco:
+          type: number
+          format: double
+          example: 35.50
+        estoque_atual:
+          type: integer
+          example: 15
+        estoque_minimo:
+          type: integer
+          example: 5
+        estoque_baixo:
+          type: boolean
+          description: true quando estoque_atual < estoque_minimo
+          example: false
+        criado_em:
+          type: string
+          format: date-time
+        atualizado_em:
+          type: string
+          format: date-time
+
+    CriarPecaRequest:
+      type: object
+      required: [nome, codigo, preco, estoque_minimo]
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 255
+          example: Filtro de óleo
+        codigo:
+          type: string
+          maxLength: 100
+          example: FO-001
+        preco:
+          type: number
+          format: double
+          minimum: 0
+          example: 35.50
+        estoque_atual:
+          type: integer
+          minimum: 0
+          default: 0
+          example: 0
+        estoque_minimo:
+          type: integer
+          minimum: 0
+          example: 5
+
+    AtualizarPecaRequest:
+      type: object
+      description: Código da peça não é alterável após o cadastro.
+      properties:
+        nome:
+          type: string
+          maxLength: 255
+        preco:
+          type: number
+          format: double
+          minimum: 0
+        estoque_minimo:
+          type: integer
+          minimum: 0
+
+    AjustarEstoqueRequest:
+      type: object
+      required: [quantidade, tipo]
+      properties:
+        quantidade:
+          type: integer
+          minimum: 1
+          example: 10
+        tipo:
+          type: string
+          enum: [entrada, saida, ajuste]
+          description: |
+            - `entrada`: adiciona ao estoque atual
+            - `saida`: subtrai do estoque atual (retorna 422 se insuficiente)
+            - `ajuste`: define o valor absoluto do estoque
+          example: entrada
+        motivo:
+          type: ["string", "null"]
+          example: Compra NF 1234
+
+    PecaListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PecaResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── Auth ─────────────────────────────────────────────────────────────────────
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      description: Autentica o usuário e retorna um JWT Bearer token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Token gerado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: E-mail ou senha inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_CREDENTIALS
+                message: e-mail ou senha inválidos
+
+  # ── Clientes ─────────────────────────────────────────────────────────────────
+
+  /clients:
+    get:
+      tags: [Clientes]
+      summary: Listar clientes
+      description: Retorna a lista paginada de clientes com filtros opcionais.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: nome
+          in: query
+          description: Busca parcial (case-insensitive) pelo nome do cliente
+          schema:
+            type: string
+            example: João
+        - name: documento
+          in: query
+          description: Busca exata pelo CPF ou CNPJ (apenas dígitos)
+          schema:
+            type: string
+            example: "12345678901"
+      responses:
+        '200':
+          description: Lista de clientes retornada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Clientes]
+      summary: Criar cliente
+      description: Cadastra um novo cliente. CPF/CNPJ é validado e deve ser único.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarClienteRequest'
+      responses:
+        '201':
+          description: Cliente criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteResponse'
+          headers:
+            Location:
+              description: URI do recurso criado
+              schema:
+                type: string
+                example: /v1/clients/550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: CPF/CNPJ ou e-mail já cadastrado
+          $ref: '#/components/responses/Conflict'
+
+  /clients/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    get:
+      tags: [Clientes]
+      summary: Buscar cliente por ID
+      responses:
+        '200':
+          description: Cliente encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Clientes]
+      summary: Atualizar cliente
+      description: Atualiza nome, e-mail e/ou telefone. CPF/CNPJ não pode ser alterado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarClienteRequest'
+      responses:
+        '200':
+          description: Cliente atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Clientes]
+      summary: Remover cliente
+      description: Remove o cliente. Retorna 409 se houver veículos ou ordens de serviço vinculados.
+      responses:
+        '204':
+          description: Cliente removido com sucesso
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cliente possui veículos ou ordens de serviço associados
+          $ref: '#/components/responses/Conflict'
+
+  /clients/{id}/vehicles:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    get:
+      tags: [Veículos]
+      summary: Listar veículos de um cliente
+      description: Retorna todos os veículos cadastrados para o cliente informado.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Lista de veículos do cliente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VeiculoListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Cliente não encontrado
+          $ref: '#/components/responses/NotFound'
+
+  # ── Veículos ──────────────────────────────────────────────────────────────────
+
+  /vehicles:
+    get:
+      tags: [Veículos]
+      summary: Listar veículos
+      description: Retorna a lista paginada de veículos com filtros opcionais.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: placa
+          in: query
+          description: Busca exata ou parcial pela placa
+          schema:
+            type: string
+            example: ABC1D23
+        - name: cliente_id
+          in: query
+          description: Filtra veículos pelo ID do cliente proprietário
+          schema:
+            type: string
+            format: uuid
+        - name: marca
+          in: query
+          description: Busca parcial (case-insensitive) pela marca
+          schema:
+            type: string
+            example: Toyota
+      responses:
+        '200':
+          description: Lista de veículos retornada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VeiculoListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Veículos]
+      summary: Cadastrar veículo
+      description: Vincula um novo veículo a um cliente existente. Placa deve ser única.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarVeiculoRequest'
+      responses:
+        '201':
+          description: Veículo cadastrado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VeiculoResponse'
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /v1/vehicles/550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Cliente informado não encontrado
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Placa já cadastrada
+          $ref: '#/components/responses/Conflict'
+
+  /vehicles/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    get:
+      tags: [Veículos]
+      summary: Buscar veículo por ID
+      responses:
+        '200':
+          description: Veículo encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VeiculoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Veículos]
+      summary: Atualizar veículo
+      description: Atualiza marca, modelo, ano e/ou cor. Placa e cliente_id não são alteráveis.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarVeiculoRequest'
+      responses:
+        '200':
+          description: Veículo atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VeiculoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Veículos]
+      summary: Remover veículo
+      description: Remove o veículo. Retorna 409 se houver ordens de serviço vinculadas.
+      responses:
+        '204':
+          description: Veículo removido com sucesso
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Veículo possui ordens de serviço associadas
+          $ref: '#/components/responses/Conflict'
+
+  # ── Serviços ──────────────────────────────────────────────────────────────────
+
+  /services:
+    get:
+      tags: [Serviços]
+      summary: Listar serviços
+      description: Retorna o catálogo de serviços paginado.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: nome
+          in: query
+          description: Busca parcial (case-insensitive) pelo nome do serviço
+          schema:
+            type: string
+            example: óleo
+      responses:
+        '200':
+          description: Catálogo de serviços retornado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicoListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Serviços]
+      summary: Cadastrar serviço
+      description: Adiciona um novo serviço ao catálogo. Nome deve ser único.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarServicoRequest'
+      responses:
+        '201':
+          description: Serviço cadastrado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicoResponse'
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /v1/services/550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Já existe um serviço com este nome
+          $ref: '#/components/responses/Conflict'
+
+  /services/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    get:
+      tags: [Serviços]
+      summary: Buscar serviço por ID
+      responses:
+        '200':
+          description: Serviço encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Serviços]
+      summary: Atualizar serviço
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarServicoRequest'
+      responses:
+        '200':
+          description: Serviço atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Já existe outro serviço com este nome
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      tags: [Serviços]
+      summary: Remover serviço
+      description: Remove o serviço. Retorna 409 se houver ordens de serviço que o referenciam.
+      responses:
+        '204':
+          description: Serviço removido com sucesso
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Serviço referenciado em ordens de serviço existentes
+          $ref: '#/components/responses/Conflict'
+
+  # ── Peças ─────────────────────────────────────────────────────────────────────
+
+  /parts:
+    get:
+      tags: [Peças]
+      summary: Listar peças
+      description: Retorna o catálogo de peças e insumos paginado.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: nome
+          in: query
+          description: Busca parcial (case-insensitive) pelo nome da peça
+          schema:
+            type: string
+            example: filtro
+        - name: codigo
+          in: query
+          description: Busca exata ou parcial pelo código da peça
+          schema:
+            type: string
+            example: FO-001
+        - name: estoque_baixo
+          in: query
+          description: Quando `true`, retorna apenas peças com estoque_atual < estoque_minimo
+          schema:
+            type: boolean
+            example: true
+      responses:
+        '200':
+          description: Catálogo de peças retornado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PecaListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Peças]
+      summary: Cadastrar peça
+      description: Adiciona uma nova peça ao catálogo. Código deve ser único.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarPecaRequest'
+      responses:
+        '201':
+          description: Peça cadastrada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PecaResponse'
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /v1/parts/550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Já existe uma peça com este código
+          $ref: '#/components/responses/Conflict'
+
+  /parts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    get:
+      tags: [Peças]
+      summary: Buscar peça por ID
+      responses:
+        '200':
+          description: Peça encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PecaResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Peças]
+      summary: Atualizar peça
+      description: Atualiza nome, preço e/ou estoque mínimo. Código não é alterável. Para ajustar estoque use `PATCH /parts/{id}/stock`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarPecaRequest'
+      responses:
+        '200':
+          description: Peça atualizada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PecaResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Peças]
+      summary: Remover peça
+      description: Remove a peça. Retorna 409 se houver ordens de serviço que a referenciam.
+      responses:
+        '204':
+          description: Peça removida com sucesso
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Peça referenciada em ordens de serviço existentes
+          $ref: '#/components/responses/Conflict'
+
+  /parts/{id}/stock:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    patch:
+      tags: [Peças]
+      summary: Ajustar estoque
+      description: |
+        Registra uma movimentação de estoque:
+        - **entrada**: `estoque_atual += quantidade`
+        - **saida**: `estoque_atual -= quantidade` (retorna 422 se estoque insuficiente)
+        - **ajuste**: `estoque_atual = quantidade` (acerto manual de inventário)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AjustarEstoqueRequest'
+      responses:
+        '200':
+          description: Estoque ajustado com sucesso. Retorna a peça com os valores atualizados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PecaResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Estoque insuficiente para realizar a saída
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INSUFFICIENT_STOCK
+                message: "estoque insuficiente (atual: 3, solicitado: 10)"

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
+	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 )
 
@@ -39,6 +41,9 @@ func (r *ClienteRepository) Salvar(cliente *entity.Cliente) (*entity.Cliente, er
 		cliente.CriadoEm, cliente.AtualizadoEm,
 	)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			return nil, &domainerros.ErrConflito{Campo: campoDoConstraint(pqErr.Constraint)}
+		}
 		return nil, fmt.Errorf("ClienteRepository.Salvar: %w", err)
 	}
 
@@ -72,4 +77,17 @@ func (r *ClienteRepository) BuscarTodos() ([]*entity.Cliente, error) {
 
 	slog.Info("clientes encontrados", "quantidade", len(clientes))
 	return clientes, rows.Err()
+}
+
+// campoDoConstraint mapeia o nome do constraint PostgreSQL para o nome legível
+// do campo, usado para compor a mensagem de ErrConflito.
+func campoDoConstraint(constraint string) string {
+	switch constraint {
+	case "clientes_cpf_cnpj_key":
+		return "cpf_cnpj"
+	case "clientes_email_key":
+		return "email"
+	default:
+		return constraint
+	}
 }
