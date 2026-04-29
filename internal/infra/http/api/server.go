@@ -33,6 +33,7 @@ type Server struct {
 	clientUseCase  *usecase.ClientUseCase
 	vehicleUseCase *usecase.VehicleUseCase
 	serviceUseCase *usecase.ServiceUseCase
+	partUseCase    *usecase.PartUseCase
 }
 
 // NovoServer constrói um Server com todas as dependências injetadas.
@@ -46,11 +47,13 @@ func NovoServer(db *sql.DB) *Server {
 	clienteRepo := repository.NovoClienteRepository(db)
 	veiculoRepo := repository.NovoVeiculoRepository(db)
 	servicoRepo := repository.NovoServicoRepository(db)
+	pecaRepo := repository.NovoPecaRepository(db)
 
 	return &Server{
 		clientUseCase:  usecase.NewClientUseCase(clienteRepo),
 		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo, clienteRepo),
 		serviceUseCase: usecase.NewServiceUseCase(servicoRepo),
+		partUseCase:    usecase.NewPartUseCase(pecaRepo),
 	}
 }
 
@@ -627,8 +630,25 @@ func (s *Server) DeleteServicesId(_ context.Context, request DeleteServicesIdReq
 //   - 401: token ausente ou inválido.
 //
 // TODO: implementar listagem de peças.
-func (s *Server) GetParts(_ context.Context, _ GetPartsRequestObject) (GetPartsResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) GetParts(_ context.Context, request GetPartsRequestObject) (GetPartsResponseObject, error) {
+	pecas, err := s.partUseCase.List()
+	if err != nil {
+		return nil, err
+	}
+
+	page, limit := paginacaoDefaults(request.Params.Page, request.Params.Limit)
+	total := len(pecas)
+	inicio, fim := calcularFatia(total, page, limit)
+
+	data := make([]PecaResponse, 0, fim-inicio)
+	for _, peca := range pecas[inicio:fim] {
+		data = append(data, pecaParaResponse(peca))
+	}
+
+	return GetParts200JSONResponse(PecaListResponse{
+		Data: &data,
+		Meta: metaPaginacao(page, limit, total),
+	}), nil
 }
 
 // PostParts cadastra uma nova peça no catálogo.
@@ -649,8 +669,28 @@ func (s *Server) GetParts(_ context.Context, _ GetPartsRequestObject) (GetPartsR
 //   - 409: já existe uma peça com este código.
 //
 // TODO: implementar criação de peça.
-func (s *Server) PostParts(_ context.Context, _ PostPartsRequestObject) (PostPartsResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PostParts(_ context.Context, request PostPartsRequestObject) (PostPartsResponseObject, error) {
+	body := request.Body
+
+	peca, err := s.partUseCase.Create(
+		body.Nome,
+		body.Codigo,
+		body.Preco,
+		body.EstoqueAtual,
+		body.EstoqueMinimo,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := pecaParaResponse(peca)
+
+	return PostParts201JSONResponse{
+		Body: resp,
+		Headers: PostParts201ResponseHeaders{
+			Location: fmt.Sprintf("/v1/parts/%s", peca.ID),
+		},
+	}, nil
 }
 
 // GetPartsId busca uma peça pelo seu UUID.
@@ -663,8 +703,14 @@ func (s *Server) PostParts(_ context.Context, _ PostPartsRequestObject) (PostPar
 //   - 404: peça não encontrada.
 //
 // TODO: implementar busca de peça por ID.
-func (s *Server) GetPartsId(_ context.Context, _ GetPartsIdRequestObject) (GetPartsIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) GetPartsId(_ context.Context, request GetPartsIdRequestObject) (GetPartsIdResponseObject, error) {
+	peca, err := s.partUseCase.FindByID(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	resp := pecaParaResponse(peca)
+	return GetPartsId200JSONResponse(resp), nil
 }
 
 // PutPartsId atualiza os dados de uma peça.
@@ -685,8 +731,21 @@ func (s *Server) GetPartsId(_ context.Context, _ GetPartsIdRequestObject) (GetPa
 //   - 404: peça não encontrada.
 //
 // TODO: implementar atualização de peça.
-func (s *Server) PutPartsId(_ context.Context, _ PutPartsIdRequestObject) (PutPartsIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PutPartsId(_ context.Context, request PutPartsIdRequestObject) (PutPartsIdResponseObject, error) {
+	body := request.Body
+
+	peca, err := s.partUseCase.Update(
+		request.Id.String(),
+		body.Nome,
+		body.Preco,
+		body.EstoqueMinimo,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := pecaParaResponse(peca)
+	return PutPartsId200JSONResponse(resp), nil
 }
 
 // DeletePartsId remove uma peça do catálogo.
@@ -700,8 +759,13 @@ func (s *Server) PutPartsId(_ context.Context, _ PutPartsIdRequestObject) (PutPa
 //   - 409: peça referenciada em ordens de serviço existentes.
 //
 // TODO: implementar remoção de peça com validação de dependências.
-func (s *Server) DeletePartsId(_ context.Context, _ DeletePartsIdRequestObject) (DeletePartsIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) DeletePartsId(_ context.Context, request DeletePartsIdRequestObject) (DeletePartsIdResponseObject, error) {
+	err := s.partUseCase.Delete(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return DeletePartsId204Response{}, nil
 }
 
 // PatchPartsIdStock registra uma movimentação de estoque para uma peça.
@@ -724,8 +788,27 @@ func (s *Server) DeletePartsId(_ context.Context, _ DeletePartsIdRequestObject) 
 //   - 422: estoque insuficiente para realizar saída.
 //
 // TODO: implementar movimentação de estoque.
-func (s *Server) PatchPartsIdStock(_ context.Context, _ PatchPartsIdStockRequestObject) (PatchPartsIdStockResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PatchPartsIdStock(_ context.Context, request PatchPartsIdStockRequestObject) (PatchPartsIdStockResponseObject, error) {
+	body := request.Body
+
+	peca, err := s.partUseCase.AdjustStock(
+		request.Id.String(),
+		string(body.Tipo),
+		body.Quantidade,
+	)
+	if err != nil {
+		if errors.Is(err, usecase.ErrEstoqueInsuficiente) {
+			return PatchPartsIdStock422JSONResponse{
+				Code:    "INSUFFICIENT_STOCK",
+				Message: err.Error(),
+			}, nil
+		}
+
+		return nil, err
+	}
+
+	resp := pecaParaResponse(peca)
+	return PatchPartsIdStock200JSONResponse(resp), nil
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -778,6 +861,25 @@ func servicoParaResponse(s *entity.Servico) ServicoResponse {
 		TempoMinutos: &s.TempoMinutos,
 		CriadoEm:     &s.CriadoEm,
 		AtualizadoEm: &s.AtualizadoEm,
+	}
+}
+
+// pecaParaResponse a entidade de domínio servicos para o DTO de resposta
+// pecaResponse utilizado pela camada HTTP.
+func pecaParaResponse(p *entity.Peca) PecaResponse {
+	id := openapi_types.UUID(p.ID)
+	estoqueBaixo := p.EstoqueAtual < p.EstoqueMinimo
+
+	return PecaResponse{
+		Id:            &id,
+		Nome:          &p.Nome,
+		Codigo:        &p.Codigo,
+		Preco:         &p.Preco,
+		EstoqueAtual:  &p.EstoqueAtual,
+		EstoqueMinimo: &p.EstoqueMinimo,
+		EstoqueBaixo:  &estoqueBaixo,
+		CriadoEm:      &p.CriadoEm,
+		AtualizadoEm:  &p.AtualizadoEm,
 	}
 }
 
