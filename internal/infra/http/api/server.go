@@ -32,6 +32,7 @@ var errNaoImplementado = errors.New("não implementado")
 type Server struct {
 	clientUseCase  *usecase.ClientUseCase
 	vehicleUseCase *usecase.VehicleUseCase
+	serviceUseCase *usecase.ServiceUseCase
 }
 
 // NovoServer constrói um Server com todas as dependências injetadas.
@@ -44,10 +45,12 @@ type Server struct {
 func NovoServer(db *sql.DB) *Server {
 	clienteRepo := repository.NovoClienteRepository(db)
 	veiculoRepo := repository.NovoVeiculoRepository(db)
+	servicoRepo := repository.NovoServicoRepository(db)
 
 	return &Server{
 		clientUseCase:  usecase.NewClientUseCase(clienteRepo),
 		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo, clienteRepo),
+		serviceUseCase: usecase.NewServiceUseCase(servicoRepo),
 	}
 }
 
@@ -469,8 +472,25 @@ func (s *Server) DeleteVehiclesId(_ context.Context, request DeleteVehiclesIdReq
 //   - 401: token ausente ou inválido.
 //
 // TODO: implementar listagem de serviços.
-func (s *Server) GetServices(_ context.Context, _ GetServicesRequestObject) (GetServicesResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) GetServices(_ context.Context, request GetServicesRequestObject) (GetServicesResponseObject, error) {
+	servicos, err := s.serviceUseCase.List()
+	if err != nil {
+		return nil, err
+	}
+
+	page, limit := paginacaoDefaults(request.Params.Page, request.Params.Limit)
+	total := len(servicos)
+	inicio, fim := calcularFatia(total, page, limit)
+
+	data := make([]ServicoResponse, 0, fim-inicio)
+	for _, servico := range servicos[inicio:fim] {
+		data = append(data, servicoParaResponse(servico))
+	}
+
+	return GetServices200JSONResponse(ServicoListResponse{
+		Data: &data,
+		Meta: metaPaginacao(page, limit, total),
+	}), nil
 }
 
 // PostServices cadastra um novo serviço no catálogo.
@@ -490,8 +510,27 @@ func (s *Server) GetServices(_ context.Context, _ GetServicesRequestObject) (Get
 //   - 409: já existe um serviço com este nome.
 //
 // TODO: implementar criação de serviço.
-func (s *Server) PostServices(_ context.Context, _ PostServicesRequestObject) (PostServicesResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PostServices(_ context.Context, request PostServicesRequestObject) (PostServicesResponseObject, error) {
+	body := request.Body
+
+	servico, err := s.serviceUseCase.Create(
+		body.Nome,
+		body.Descricao,
+		body.PrecoBase,
+		body.TempoMinutos,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := servicoParaResponse(servico)
+
+	return PostServices201JSONResponse{
+		Body: resp,
+		Headers: PostServices201ResponseHeaders{
+			Location: fmt.Sprintf("/v1/services/%s", servico.ID),
+		},
+	}, nil
 }
 
 // GetServicesId busca um serviço pelo seu UUID.
@@ -504,8 +543,14 @@ func (s *Server) PostServices(_ context.Context, _ PostServicesRequestObject) (P
 //   - 404: serviço não encontrado.
 //
 // TODO: implementar busca de serviço por ID.
-func (s *Server) GetServicesId(_ context.Context, _ GetServicesIdRequestObject) (GetServicesIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) GetServicesId(_ context.Context, request GetServicesIdRequestObject) (GetServicesIdResponseObject, error) {
+	servico, err := s.serviceUseCase.FindByID(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	resp := servicoParaResponse(servico)
+	return GetServicesId200JSONResponse(resp), nil
 }
 
 // PutServicesId atualiza um serviço existente.
@@ -526,8 +571,22 @@ func (s *Server) GetServicesId(_ context.Context, _ GetServicesIdRequestObject) 
 //   - 409: já existe outro serviço com este nome.
 //
 // TODO: implementar atualização de serviço.
-func (s *Server) PutServicesId(_ context.Context, _ PutServicesIdRequestObject) (PutServicesIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PutServicesId(_ context.Context, request PutServicesIdRequestObject) (PutServicesIdResponseObject, error) {
+	body := request.Body
+
+	servico, err := s.serviceUseCase.Update(
+		request.Id.String(),
+		body.Nome,
+		body.Descricao,
+		body.PrecoBase,
+		body.TempoMinutos,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := servicoParaResponse(servico)
+	return PutServicesId200JSONResponse(resp), nil
 }
 
 // DeleteServicesId remove um serviço do catálogo.
@@ -541,8 +600,13 @@ func (s *Server) PutServicesId(_ context.Context, _ PutServicesIdRequestObject) 
 //   - 409: serviço referenciado em ordens de serviço existentes.
 //
 // TODO: implementar remoção de serviço com validação de dependências.
-func (s *Server) DeleteServicesId(_ context.Context, _ DeleteServicesIdRequestObject) (DeleteServicesIdResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) DeleteServicesId(_ context.Context, request DeleteServicesIdRequestObject) (DeleteServicesIdResponseObject, error) {
+	err := s.serviceUseCase.Delete(request.Id.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return DeleteServicesId204Response{}, nil
 }
 
 // ── Peças ─────────────────────────────────────────────────────────────────────
@@ -698,6 +762,22 @@ func veiculoParaResponse(v *entity.Veiculo) VeiculoResponse {
 		Cor:          v.Cor,
 		CriadoEm:     &v.CriadoEm,
 		AtualizadoEm: &v.AtualizadoEm,
+	}
+}
+
+// servicoParaResponse a entidade de domínio servicos para o DTO de resposta
+// servicoResponse utilizado pela camada HTTP.
+func servicoParaResponse(s *entity.Servico) ServicoResponse {
+	id := openapi_types.UUID(s.ID)
+
+	return ServicoResponse{
+		Id:           &id,
+		Nome:         &s.Nome,
+		Descricao:    s.Descricao,
+		PrecoBase:    &s.PrecoBase,
+		TempoMinutos: &s.TempoMinutos,
+		CriadoEm:     &s.CriadoEm,
+		AtualizadoEm: &s.AtualizadoEm,
 	}
 }
 
