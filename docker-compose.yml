@@ -12,6 +12,7 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: tech_challenge_db
+      JWT_SECRET: "tech-challenge-super-secret-key-change-in-production"
     restart: on-failure
     depends_on:
       db:
