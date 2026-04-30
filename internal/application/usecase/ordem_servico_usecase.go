@@ -45,13 +45,19 @@ type CriarOSInput struct {
 	ClienteID string
 	VeiculoID string
 	Descricao *string
-	Itens     []ItemOSInput
+	Servicos  []ItemServicoOSInput
+	Pecas     []ItemPecaOSInput
 }
 
-// ItemOSInput representa um item (serviço ou peça) para criação de OS.
-type ItemOSInput struct {
-	Tipo       string // "servico" ou "peca"
-	ID         string
+// ItemServicoOSInput representa um item serviço para criação de OS.
+type ItemServicoOSInput struct {
+	ServicoID  string
+	Quantidade int
+}
+
+// ItemPecaOSInput representa um item peça para criação de OS.
+type ItemPecaOSInput struct {
+	PecaID     string
 	Quantidade int
 }
 
@@ -59,7 +65,7 @@ type ItemOSInput struct {
 func (uc *OrdemServicoUseCase) CriarOS(ctx context.Context, input CriarOSInput) (*entity.OrdemServicoCompleta, error) {
 	slog.Info("executando caso de uso: criar OS")
 
-	if len(input.Itens) == 0 {
+	if len(input.Servicos) == 0 && len(input.Pecas) == 0 {
 		return nil, &domainerros.ErrNaoProcessavel{
 			Codigo:   "VALIDATION_ERROR",
 			Mensagem: "a OS deve ter ao menos 1 item",
@@ -97,48 +103,51 @@ func (uc *OrdemServicoUseCase) CriarOS(ctx context.Context, input CriarOSInput) 
 	var itensPeca []entity.ItemOsPeca
 	var valorTotal float64
 
-	for _, item := range input.Itens {
+	for _, item := range input.Servicos {
 		if item.Quantidade <= 0 {
 			item.Quantidade = 1
 		}
-		switch item.Tipo {
-		case "servico":
-			servico, err := uc.servicoRepo.BuscarPorID(item.ID)
-			if err != nil {
-				return nil, err
-			}
-			preco := servico.PrecoBase
-			itensServico = append(itensServico, entity.ItemOsServico{
-				ServicoID:     servico.ID,
-				Quantidade:    item.Quantidade,
-				PrecoUnitario: preco,
-			})
-			valorTotal += float64(item.Quantidade) * preco
 
-		case "peca":
-			peca, err := uc.pecaRepo.BuscarPorID(item.ID)
-			if err != nil {
-				return nil, err
-			}
-			if peca.EstoqueAtual < item.Quantidade {
-				return nil, &domainerros.ErrNaoProcessavel{
-					Codigo:   "INSUFFICIENT_STOCK",
-					Mensagem: fmt.Sprintf("estoque insuficiente para peça '%s': disponível %d, necessário %d", peca.Nome, peca.EstoqueAtual, item.Quantidade),
-				}
-			}
-			itensPeca = append(itensPeca, entity.ItemOsPeca{
-				PecaID:        peca.ID,
-				Quantidade:    item.Quantidade,
-				PrecoUnitario: peca.Preco,
-			})
-			valorTotal += float64(item.Quantidade) * peca.Preco
+		servico, err := uc.servicoRepo.BuscarPorID(item.ServicoID)
+		if err != nil {
+			return nil, err
+		}
 
-		default:
+		preco := servico.PrecoBase
+
+		itensServico = append(itensServico, entity.ItemOsServico{
+			ServicoID:     servico.ID,
+			Quantidade:    item.Quantidade,
+			PrecoUnitario: preco,
+		})
+
+		valorTotal += float64(item.Quantidade) * preco
+	}
+
+	for _, item := range input.Pecas {
+		if item.Quantidade <= 0 {
+			item.Quantidade = 1
+		}
+
+		peca, err := uc.pecaRepo.BuscarPorID(item.PecaID)
+		if err != nil {
+			return nil, err
+		}
+
+		if peca.EstoqueAtual < item.Quantidade {
 			return nil, &domainerros.ErrNaoProcessavel{
-				Codigo:   "VALIDATION_ERROR",
-				Mensagem: fmt.Sprintf("tipo de item inválido: %s", item.Tipo),
+				Codigo:   "INSUFFICIENT_STOCK",
+				Mensagem: fmt.Sprintf("estoque insuficiente para peça '%s': disponível %d, necessário %d", peca.Nome, peca.EstoqueAtual, item.Quantidade),
 			}
 		}
+
+		itensPeca = append(itensPeca, entity.ItemOsPeca{
+			PecaID:        peca.ID,
+			Quantidade:    item.Quantidade,
+			PrecoUnitario: peca.Preco,
+		})
+
+		valorTotal += float64(item.Quantidade) * peca.Preco
 	}
 
 	// Status inicial "recebida"

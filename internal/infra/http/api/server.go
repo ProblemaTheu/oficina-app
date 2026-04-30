@@ -1032,26 +1032,41 @@ func (s *Server) GetWorkOrders(ctx context.Context, request GetWorkOrdersRequest
 func (s *Server) PostWorkOrders(ctx context.Context, request PostWorkOrdersRequestObject) (PostWorkOrdersResponseObject, error) {
 	body := request.Body
 
-	itens := make([]usecase.ItemOSInput, 0, len(body.Itens))
-	for _, item := range body.Itens {
-		itens = append(itens, usecase.ItemOSInput{
-			Tipo:       string(item.Tipo),
-			ID:         item.ReferenciaId.String(),
-			Quantidade: item.Quantidade,
-		})
+	servicos := []usecase.ItemServicoOSInput{}
+
+	if body.Servicos != nil {
+		for _, item := range *body.Servicos {
+			servicos = append(servicos, usecase.ItemServicoOSInput{
+				ServicoID:  item.ServicoId.String(),
+				Quantidade: quantidadeOuPadrao(item.Quantidade),
+			})
+		}
+	}
+
+	pecas := []usecase.ItemPecaOSInput{}
+
+	if body.Pecas != nil {
+		for _, item := range *body.Pecas {
+			pecas = append(pecas, usecase.ItemPecaOSInput{
+				PecaID:     item.PecaId.String(),
+				Quantidade: quantidadeOuPadrao(item.Quantidade),
+			})
+		}
 	}
 
 	input := usecase.CriarOSInput{
 		ClienteID: body.ClienteId.String(),
 		VeiculoID: body.VeiculoId.String(),
 		Descricao: body.Descricao,
-		Itens:     itens,
+		Servicos:  servicos,
+		Pecas:     pecas,
 	}
 
 	osCompleta, err := s.osUseCase.CriarOS(ctx, input)
 	if err != nil {
 		var errNaoEncontrado *domainerros.ErrNaoEncontrado
 		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+
 		switch {
 		case errors.As(err, &errNaoEncontrado):
 			return PostWorkOrders404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
@@ -1388,11 +1403,38 @@ func osParaResponse(os *entity.OrdemServico) OrdemServicoResponse {
 func osCompletaParaResponse(osC *entity.OrdemServicoCompleta) OrdemServicoResponse {
 	resp := osParaResponse(&osC.OrdemServico)
 
-	itens := make([]ItemOsResponse, 0, len(osC.Itens))
+	servicos := make([]ItemServicoOSResponse, 0)
+	pecas := make([]ItemPecaOSResponse, 0)
+
 	for _, item := range osC.Itens {
-		itens = append(itens, itemOsParaResponse(item))
+		id := openapi_types.UUID(item.ID)
+		refID := openapi_types.UUID(item.ReferenciaID)
+
+		switch item.Tipo {
+		case "servico":
+			servicos = append(servicos, ItemServicoOSResponse{
+				Id:            &id,
+				ServicoId:     &refID,
+				Nome:          &item.Nome,
+				Quantidade:    &item.Quantidade,
+				PrecoUnitario: &item.PrecoUnitario,
+				Subtotal:      &item.Subtotal,
+			})
+
+		case "peca":
+			pecas = append(pecas, ItemPecaOSResponse{
+				Id:            &id,
+				PecaId:        &refID,
+				Nome:          &item.Nome,
+				Quantidade:    &item.Quantidade,
+				PrecoUnitario: &item.PrecoUnitario,
+				Subtotal:      &item.Subtotal,
+			})
+		}
 	}
-	resp.Itens = &itens
+
+	resp.Servicos = &servicos
+	resp.Pecas = &pecas
 
 	clienteID := openapi_types.UUID(osC.Cliente.ID)
 	resp.Cliente = &ClienteResumoResponse{
@@ -1409,20 +1451,15 @@ func osCompletaParaResponse(osC *entity.OrdemServicoCompleta) OrdemServicoRespon
 		Modelo: &osC.Veiculo.Modelo,
 		Ano:    &osC.Veiculo.Ano,
 	}
+
 	return resp
 }
 
-// itemOsParaResponse converte um ItemOS (serviço ou peça de uma OS) para o DTO ItemOsResponse.
-func itemOsParaResponse(item entity.ItemOS) ItemOsResponse {
-	id := openapi_types.UUID(item.ID)
-	refID := openapi_types.UUID(item.ReferenciaID)
-	return ItemOsResponse{
-		Id:            &id,
-		Tipo:          &item.Tipo,
-		ReferenciaId:  &refID,
-		Nome:          &item.Nome,
-		Quantidade:    &item.Quantidade,
-		PrecoUnitario: &item.PrecoUnitario,
-		Subtotal:      &item.Subtotal,
+// quantidadeOuPadrao retorna a quantidade a ser usada para um item de OS, aplicando o valor padrão 1
+func quantidadeOuPadrao(qtd *int) int {
+	if qtd == nil || *qtd <= 0 {
+		return 1
 	}
+
+	return *qtd
 }
