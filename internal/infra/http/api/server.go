@@ -34,6 +34,8 @@ type Server struct {
 	vehicleUseCase *usecase.VehicleUseCase
 	serviceUseCase *usecase.ServiceUseCase
 	partUseCase    *usecase.PartUseCase
+	osUseCase      *usecase.OrdemServicoUseCase
+	authUseCase    *usecase.AuthUseCase
 }
 
 // NovoServer constrói um Server com todas as dependências injetadas.
@@ -48,13 +50,22 @@ func NovoServer(db *sql.DB) *Server {
 	veiculoRepo := repository.NovoVeiculoRepository(db)
 	servicoRepo := repository.NovoServicoRepository(db)
 	pecaRepo := repository.NovoPecaRepository(db)
+	osRepo := repository.NovoOrdemServicoRepository(db)
+	usuarioRepo := repository.NovoUsuarioRepository(db)
 
 	return &Server{
 		clientUseCase:  usecase.NewClientUseCase(clienteRepo),
 		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo, clienteRepo),
 		serviceUseCase: usecase.NewServiceUseCase(servicoRepo),
 		partUseCase:    usecase.NewPartUseCase(pecaRepo),
+		osUseCase:      usecase.NewOrdemServicoUseCase(osRepo, clienteRepo, veiculoRepo, servicoRepo, pecaRepo),
+		authUseCase:    usecase.NewAuthUseCase(usuarioRepo),
 	}
+}
+
+// InicializarCaches pré-carrega os caches internos (ex: status_ordens) na inicialização.
+func (s *Server) InicializarCaches(ctx context.Context) error {
+	return s.osUseCase.InicializarStatusCache(ctx)
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -66,10 +77,22 @@ func NovoServer(db *sql.DB) *Server {
 // Respostas:
 //   - 200: token gerado com sucesso.
 //   - 401: e-mail ou senha inválidos.
-//
-// TODO: implementar autenticação JWT.
-func (s *Server) PostAuthLogin(_ context.Context, _ PostAuthLoginRequestObject) (PostAuthLoginResponseObject, error) {
-	return nil, errNaoImplementado
+func (s *Server) PostAuthLogin(ctx context.Context, request PostAuthLoginRequestObject) (PostAuthLoginResponseObject, error) {
+	out, err := s.authUseCase.Login(ctx, usecase.LoginInput{
+		Email: string(request.Body.Email),
+		Senha: request.Body.Senha,
+	})
+	if err != nil {
+		return PostAuthLogin401JSONResponse(Error{Code: "credenciais_invalidas", Message: "e-mail ou senha inválidos"}), nil
+	}
+
+	tokenType := out.TokenType
+	expiresIn := out.ExpiresIn
+	return PostAuthLogin200JSONResponse(LoginResponse{
+		AccessToken: &out.AccessToken,
+		TokenType:   &tokenType,
+		ExpiresIn:   &expiresIn,
+	}), nil
 }
 
 // ── Clientes ──────────────────────────────────────────────────────────────────
@@ -933,5 +956,473 @@ func metaPaginacao(page, limit, total int) *PaginationMeta {
 		Limit:      limit,
 		Total:      total,
 		TotalPages: totalPages,
+	}
+}
+
+// ── Ordens de Serviço ─────────────────────────────────────────────────────────
+
+// GetWorkOrders retorna a lista paginada de ordens de serviço.
+//
+// Rota: GET /v1/work-orders
+//
+// Query params (via request.Params):
+//   - page       (int):  número da página (default 1).
+//   - limit      (int):  itens por página (default 20).
+//   - status     (string): filtra pelo status da OS (ex: "em_execucao").
+//   - cliente_id (uuid):  filtra por cliente.
+//   - veiculo_id (uuid):  filtra por veículo.
+//
+// Respostas:
+//   - 200: OrdemServicoListResponse com data[] e meta de paginação.
+//   - 401: token ausente ou inválido.
+func (s *Server) GetWorkOrders(ctx context.Context, request GetWorkOrdersRequestObject) (GetWorkOrdersResponseObject, error) {
+	page, limit := paginacaoDefaults(request.Params.Page, request.Params.Limit)
+
+	input := usecase.ListarOSInput{Page: page, Limit: limit}
+	if request.Params.Status != nil {
+		input.Status = request.Params.Status
+	}
+	if request.Params.ClienteId != nil {
+		s := request.Params.ClienteId.String()
+		input.ClienteID = &s
+	}
+	if request.Params.VeiculoId != nil {
+		s := request.Params.VeiculoId.String()
+		input.VeiculoID = &s
+	}
+
+	lista, total, err := s.osUseCase.ListarOS(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	data := make([]OrdemServicoResponse, 0, len(lista))
+	for _, os := range lista {
+		data = append(data, osParaResponse(os))
+	}
+
+	return GetWorkOrders200JSONResponse(OrdemServicoListResponse{
+		Data: &data,
+		Meta: metaPaginacao(page, limit, total),
+	}), nil
+}
+
+// PostWorkOrders cria uma nova Ordem de Serviço.
+//
+// Rota: POST /v1/work-orders
+//
+// Body (via request.Body — CriarOrdemServicoRequest):
+//   - cliente_id (uuid, obrigatório): cliente proprietário do veículo.
+//   - veiculo_id (uuid, obrigatório): veículo a ser atendido — deve pertencer ao cliente.
+//   - descricao  (string, opcional):  descrição do problema relatado.
+//   - itens      (array):             serviços e peças incluídos na OS:
+//   - tipo          (string): "servico" ou "peca".
+//   - referencia_id (uuid):   ID do serviço ou peça.
+//   - quantidade    (int):    quantidade desejada.
+//
+// A OS é criada no status inicial "recebida".
+// Peças incluídas têm seu estoque verificado (422 se insuficiente).
+//
+// Respostas:
+//   - 201: OrdemServicoResponse com os dados da OS criada.
+//   - 400: payload inválido.
+//   - 401: token ausente ou inválido.
+//   - 404: cliente, veículo, serviço ou peça não encontrados.
+//   - 422: veículo não pertence ao cliente, ou estoque insuficiente.
+func (s *Server) PostWorkOrders(ctx context.Context, request PostWorkOrdersRequestObject) (PostWorkOrdersResponseObject, error) {
+	body := request.Body
+
+	itens := make([]usecase.ItemOSInput, 0, len(body.Itens))
+	for _, item := range body.Itens {
+		itens = append(itens, usecase.ItemOSInput{
+			Tipo:       string(item.Tipo),
+			ID:         item.ReferenciaId.String(),
+			Quantidade: item.Quantidade,
+		})
+	}
+
+	input := usecase.CriarOSInput{
+		ClienteID: body.ClienteId.String(),
+		VeiculoID: body.VeiculoId.String(),
+		Descricao: body.Descricao,
+		Itens:     itens,
+	}
+
+	osCompleta, err := s.osUseCase.CriarOS(ctx, input)
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PostWorkOrders404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PostWorkOrders422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return PostWorkOrders400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
+		}
+	}
+
+	resp := osCompletaParaResponse(osCompleta)
+	return PostWorkOrders201JSONResponse(resp), nil
+}
+
+// GetWorkOrdersId retorna os detalhes completos de uma OS, incluindo itens,
+// resumo do cliente e do veículo.
+//
+// Rota: GET /v1/work-orders/{id}
+//
+// Path params:
+//   - id (uuid, obrigatório): identificador único da OS.
+//
+// Respostas:
+//   - 200: OrdemServicoResponse completo (com itens, cliente e veículo embutidos).
+//   - 401: token ausente ou inválido.
+//   - 404: OS não encontrada.
+func (s *Server) GetWorkOrdersId(ctx context.Context, request GetWorkOrdersIdRequestObject) (GetWorkOrdersIdResponseObject, error) {
+	osCompleta, err := s.osUseCase.GetOS(ctx, request.Id.String())
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		if errors.As(err, &errNaoEncontrado) {
+			return GetWorkOrdersId404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		}
+		return nil, err
+	}
+	return GetWorkOrdersId200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
+// GetWorkOrdersIdStatus retorna o status atual de uma OS de forma simplificada.
+//
+// Rota: GET /v1/work-orders/{id}/status
+//
+// Endpoint público — não requer autenticação JWT. Destinado ao cliente final
+// para acompanhar o andamento do serviço sem necessidade de conta.
+//
+// Path params:
+//   - id (uuid, obrigatório): identificador único da OS.
+//
+// Respostas:
+//   - 200: OrdemServicoStatusPublicoResponse com id, numero, status e timestamps.
+//   - 404: OS não encontrada.
+func (s *Server) GetWorkOrdersIdStatus(ctx context.Context, request GetWorkOrdersIdStatusRequestObject) (GetWorkOrdersIdStatusResponseObject, error) {
+	os, err := s.osUseCase.ConsultarStatusPublico(ctx, request.Id.String())
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		if errors.As(err, &errNaoEncontrado) {
+			return GetWorkOrdersIdStatus404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		}
+		return nil, err
+	}
+
+	id := openapi_types.UUID(os.ID)
+	numero := os.Numero
+	status := string(os.StatusNome)
+	return GetWorkOrdersIdStatus200JSONResponse(OrdemServicoStatusPublicoResponse{
+		Id:           &id,
+		Numero:       &numero,
+		Status:       &status,
+		Descricao:    os.Descricao,
+		CriadoEm:     &os.CriadoEm,
+		AtualizadoEm: &os.AtualizadoEm,
+	}), nil
+}
+
+// PatchWorkOrdersIdStatus avança o status de uma OS seguindo a máquina de estados.
+//
+// Rota: PATCH /v1/work-orders/{id}/status
+//
+// Máquina de estados:
+//
+//	recebida → em_diagnostico → aguardando_aprovacao → em_execucao → finalizada → entregue
+//
+// Body (via request.Body — AvancarStatusRequest):
+//   - status      (string, obrigatório): próximo status desejado.
+//   - diagnostico (string, opcional):   laudo técnico (relevante ao ir para aguardando_aprovacao).
+//   - observacao  (string, opcional):   observação livre sobre a transição.
+//
+// Transições inválidas (ex: pular etapas ou voltar status) retornam 422.
+//
+// Respostas:
+//   - 200: OrdemServicoResponse com o novo status aplicado.
+//   - 400: payload inválido.
+//   - 401: token ausente ou inválido.
+//   - 404: OS não encontrada.
+//   - 422: transição de status não permitida pela máquina de estados.
+func (s *Server) PatchWorkOrdersIdStatus(ctx context.Context, request PatchWorkOrdersIdStatusRequestObject) (PatchWorkOrdersIdStatusResponseObject, error) {
+	body := request.Body
+	input := usecase.AvancarStatusInput{
+		OsID:        request.Id.String(),
+		NovoStatus:  entity.Status(body.Status),
+		Diagnostico: body.Diagnostico,
+		Observacao:  body.Observacao,
+	}
+
+	osCompleta, err := s.osUseCase.AvancarStatus(ctx, input)
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PatchWorkOrdersIdStatus404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PatchWorkOrdersIdStatus422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return PatchWorkOrdersIdStatus400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
+		}
+	}
+	return PatchWorkOrdersIdStatus200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
+// PostWorkOrdersIdApprove aprova o orçamento de uma OS em status "aguardando_aprovacao",
+// avançando-a para "em_execucao".
+//
+// Rota: POST /v1/work-orders/{id}/approve
+//
+// Não requer body. A aprovação deduz o estoque das peças incluídas na OS.
+//
+// Path params:
+//   - id (uuid, obrigatório): identificador único da OS.
+//
+// Respostas:
+//   - 200: OrdemServicoResponse com status "em_execucao".
+//   - 401: token ausente ou inválido.
+//   - 404: OS não encontrada.
+//   - 422: OS não está em status "aguardando_aprovacao".
+func (s *Server) PostWorkOrdersIdApprove(ctx context.Context, request PostWorkOrdersIdApproveRequestObject) (PostWorkOrdersIdApproveResponseObject, error) {
+	osCompleta, err := s.osUseCase.AprovarOrcamento(ctx, request.Id.String())
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PostWorkOrdersIdApprove404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PostWorkOrdersIdApprove422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return nil, err
+		}
+	}
+	return PostWorkOrdersIdApprove200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
+// PostWorkOrdersIdReject rejeita o orçamento de uma OS em status "aguardando_aprovacao".
+//
+// Rota: POST /v1/work-orders/{id}/reject
+//
+// O estoque das peças NÃO é deduzido em caso de rejeição.
+//
+// Body (via request.Body — RejeitarOrcamentoRequest, opcional):
+//   - motivo (string, opcional): justificativa da rejeição informada pelo cliente.
+//
+// Path params:
+//   - id (uuid, obrigatório): identificador único da OS.
+//
+// Respostas:
+//   - 200: OrdemServicoResponse com status "aguardando_aprovacao" rejeitada.
+//   - 401: token ausente ou inválido.
+//   - 404: OS não encontrada.
+//   - 422: OS não está em status "aguardando_aprovacao".
+func (s *Server) PostWorkOrdersIdReject(ctx context.Context, request PostWorkOrdersIdRejectRequestObject) (PostWorkOrdersIdRejectResponseObject, error) {
+	var motivo *string
+	if request.Body != nil {
+		motivo = request.Body.Motivo
+	}
+
+	osCompleta, err := s.osUseCase.RejeitarOrcamento(ctx, request.Id.String(), motivo)
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PostWorkOrdersIdReject404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PostWorkOrdersIdReject422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return nil, err
+		}
+	}
+	return PostWorkOrdersIdReject200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
+// ── Relatórios ────────────────────────────────────────────────────────────────
+
+// GetReportsAvgExecutionTime retorna o tempo médio de execução por serviço.
+//
+// Rota: GET /v1/reports/avg-execution-time
+//
+// O cálculo considera apenas OSs nos status "finalizada" ou "entregue".
+// OSs rejeitadas são excluídas do cálculo.
+//
+// Query params (via request.Params):
+//   - servico_id  (uuid):   filtra o relatório para um serviço específico.
+//   - data_inicio (date):   considera apenas OSs finalizadas a partir desta data.
+//   - data_fim    (date):   considera apenas OSs finalizadas até esta data.
+//
+// Respostas:
+//   - 200: array de TempoMedioExecucaoItem com servico_id, servico_nome,
+//     total_execucoes e tempo_medio_minutos.
+//   - 401: token ausente ou inválido.
+func (s *Server) GetReportsAvgExecutionTime(ctx context.Context, request GetReportsAvgExecutionTimeRequestObject) (GetReportsAvgExecutionTimeResponseObject, error) {
+	input := usecase.RelatorioTempoMedioInput{}
+
+	if request.Params.ServicoId != nil {
+		id := request.Params.ServicoId.String()
+		input.ServicoID = &id
+	}
+	if request.Params.DataInicio != nil {
+		s := request.Params.DataInicio.Time.Format("2006-01-02")
+		input.DataInicio = &s
+	}
+	if request.Params.DataFim != nil {
+		s := request.Params.DataFim.Time.Format("2006-01-02")
+		input.DataFim = &s
+	}
+
+	itens, err := s.osUseCase.RelatorioTempoMedio(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := make(GetReportsAvgExecutionTime200JSONResponse, 0, len(itens))
+	for _, item := range itens {
+		id := openapi_types.UUID(item.ServicoID)
+		total := item.TotalExecucoes
+		tempo := item.TempoMedioMinutos
+		nome := item.ServicoNome
+		resp = append(resp, TempoMedioExecucaoItem{
+			ServicoId:         &id,
+			ServicoNome:       &nome,
+			TotalExecucoes:    &total,
+			TempoMedioMinutos: &tempo,
+		})
+	}
+	return resp, nil
+}
+
+// ── Auth — Register ───────────────────────────────────────────────────────────
+
+// PostAuthRegister cria uma nova conta de usuário no sistema.
+//
+// Rota: POST /v1/auth/register
+//
+// Endpoint público — não requer autenticação JWT.
+//
+// Body (via request.Body — CadastrarUsuarioRequest):
+//   - nome  (string, obrigatório):  nome completo do usuário.
+//   - email (string, obrigatório):  e-mail único; usado para login.
+//   - senha (string, obrigatório):  senha em texto plano — armazenada como bcrypt hash.
+//   - papel (string, opcional):     papel do usuário: "administrador", "mecanico", "atendente".
+//     Padrão: "atendente".
+//
+// A senha nunca é retornada na resposta.
+//
+// Respostas:
+//   - 201: UsuarioResponse com id, nome, email, papel e criado_em.
+//   - 400: payload inválido ou papel inexistente.
+//   - 409: e-mail já cadastrado.
+func (s *Server) PostAuthRegister(ctx context.Context, request PostAuthRegisterRequestObject) (PostAuthRegisterResponseObject, error) {
+	body := request.Body
+
+	papel := ""
+	if body.Papel != nil {
+		papel = string(*body.Papel)
+	}
+
+	usuario, nomePapel, err := s.authUseCase.CadastrarUsuario(ctx, usecase.CadastrarUsuarioInput{
+		Nome:  body.Nome,
+		Email: string(body.Email),
+		Senha: body.Senha,
+		Papel: papel,
+	})
+	if err != nil {
+		var errConflito *domainerros.ErrConflito
+		if errors.As(err, &errConflito) {
+			return PostAuthRegister409JSONResponse{ConflictJSONResponse{Code: "CONFLICT", Message: err.Error()}}, nil
+		}
+		return PostAuthRegister400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
+	}
+
+	id := openapi_types.UUID(usuario.ID)
+	email := openapi_types.Email(usuario.Email)
+	return PostAuthRegister201JSONResponse(UsuarioResponse{
+		Id:       &id,
+		Nome:     &usuario.Nome,
+		Email:    &email,
+		Papel:    &nomePapel,
+		CriadoEm: &usuario.CriadoEm,
+	}), nil
+}
+
+// ── helpers OS ────────────────────────────────────────────────────────────────
+
+// osParaResponse converte a entidade OrdemServico para o DTO OrdemServicoResponse.
+// Não inclui itens, cliente e veículo embutidos — use osCompletaParaResponse para isso.
+func osParaResponse(os *entity.OrdemServico) OrdemServicoResponse {
+	id := openapi_types.UUID(os.ID)
+	clienteID := openapi_types.UUID(os.ClienteID)
+	veiculoID := openapi_types.UUID(os.VeiculoID)
+	numero := os.Numero
+	status := string(os.StatusNome)
+	valor := os.ValorTotal
+
+	return OrdemServicoResponse{
+		Id:           &id,
+		Numero:       &numero,
+		ClienteId:    &clienteID,
+		VeiculoId:    &veiculoID,
+		Status:       &status,
+		Descricao:    os.Descricao,
+		Diagnostico:  os.Diagnostico,
+		ValorTotal:   &valor,
+		AprovadoEm:   os.AprovadoEm,
+		ReprovadoEm:  os.ReprovadoEm,
+		IniciadoEm:   os.IniciadoEm,
+		FinalizadoEm: os.FinalizadoEm,
+		EntregueEm:   os.EntregueEm,
+		CriadoEm:     &os.CriadoEm,
+		AtualizadoEm: &os.AtualizadoEm,
+	}
+}
+
+// osCompletaParaResponse converte OrdemServicoCompleta (OS + itens + cliente + veículo)
+// para o DTO OrdemServicoResponse com todos os campos embutidos preenchidos.
+func osCompletaParaResponse(osC *entity.OrdemServicoCompleta) OrdemServicoResponse {
+	resp := osParaResponse(&osC.OrdemServico)
+
+	itens := make([]ItemOsResponse, 0, len(osC.Itens))
+	for _, item := range osC.Itens {
+		itens = append(itens, itemOsParaResponse(item))
+	}
+	resp.Itens = &itens
+
+	clienteID := openapi_types.UUID(osC.Cliente.ID)
+	resp.Cliente = &ClienteResumoResponse{
+		Id:      &clienteID,
+		Nome:    &osC.Cliente.Nome,
+		CpfCnpj: &osC.Cliente.CpfCnpj,
+	}
+
+	veiculoID := openapi_types.UUID(osC.Veiculo.ID)
+	resp.Veiculo = &VeiculoResumoResponse{
+		Id:     &veiculoID,
+		Placa:  &osC.Veiculo.Placa,
+		Marca:  &osC.Veiculo.Marca,
+		Modelo: &osC.Veiculo.Modelo,
+		Ano:    &osC.Veiculo.Ano,
+	}
+	return resp
+}
+
+// itemOsParaResponse converte um ItemOS (serviço ou peça de uma OS) para o DTO ItemOsResponse.
+func itemOsParaResponse(item entity.ItemOS) ItemOsResponse {
+	id := openapi_types.UUID(item.ID)
+	refID := openapi_types.UUID(item.ReferenciaID)
+	return ItemOsResponse{
+		Id:            &id,
+		Tipo:          &item.Tipo,
+		ReferenciaId:  &refID,
+		Nome:          &item.Nome,
+		Quantidade:    &item.Quantidade,
+		PrecoUnitario: &item.PrecoUnitario,
+		Subtotal:      &item.Subtotal,
 	}
 }

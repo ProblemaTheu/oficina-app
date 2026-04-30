@@ -9,7 +9,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -42,6 +44,72 @@ func (e AjustarEstoqueRequestTipo) Valid() bool {
 	case Entrada:
 		return true
 	case Saida:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AvancarStatusRequestStatus.
+const (
+	AguardandoAprovacao AvancarStatusRequestStatus = "aguardando_aprovacao"
+	EmDiagnostico       AvancarStatusRequestStatus = "em_diagnostico"
+	EmExecucao          AvancarStatusRequestStatus = "em_execucao"
+	Entregue            AvancarStatusRequestStatus = "entregue"
+	Finalizada          AvancarStatusRequestStatus = "finalizada"
+)
+
+// Valid indicates whether the value is a known member of the AvancarStatusRequestStatus enum.
+func (e AvancarStatusRequestStatus) Valid() bool {
+	switch e {
+	case AguardandoAprovacao:
+		return true
+	case EmDiagnostico:
+		return true
+	case EmExecucao:
+		return true
+	case Entregue:
+		return true
+	case Finalizada:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CadastrarUsuarioRequestPapel.
+const (
+	Administrador CadastrarUsuarioRequestPapel = "administrador"
+	Atendente     CadastrarUsuarioRequestPapel = "atendente"
+	Mecanico      CadastrarUsuarioRequestPapel = "mecanico"
+)
+
+// Valid indicates whether the value is a known member of the CadastrarUsuarioRequestPapel enum.
+func (e CadastrarUsuarioRequestPapel) Valid() bool {
+	switch e {
+	case Administrador:
+		return true
+	case Atendente:
+		return true
+	case Mecanico:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ItemOsRequestTipo.
+const (
+	Peca    ItemOsRequestTipo = "peca"
+	Servico ItemOsRequestTipo = "servico"
+)
+
+// Valid indicates whether the value is a known member of the ItemOsRequestTipo enum.
+func (e ItemOsRequestTipo) Valid() bool {
+	switch e {
+	case Peca:
+		return true
+	case Servico:
 		return true
 	default:
 		return false
@@ -94,6 +162,27 @@ type AtualizarVeiculoRequest struct {
 	Modelo *string `json:"modelo,omitempty"`
 }
 
+// AvancarStatusRequest defines model for AvancarStatusRequest.
+type AvancarStatusRequest struct {
+	Diagnostico *string                    `json:"diagnostico,omitempty"`
+	Observacao  *string                    `json:"observacao,omitempty"`
+	Status      AvancarStatusRequestStatus `json:"status"`
+}
+
+// AvancarStatusRequestStatus defines model for AvancarStatusRequest.Status.
+type AvancarStatusRequestStatus string
+
+// CadastrarUsuarioRequest defines model for CadastrarUsuarioRequest.
+type CadastrarUsuarioRequest struct {
+	Email openapi_types.Email           `json:"email"`
+	Nome  string                        `json:"nome"`
+	Papel *CadastrarUsuarioRequestPapel `json:"papel,omitempty"`
+	Senha string                        `json:"senha"`
+}
+
+// CadastrarUsuarioRequestPapel defines model for CadastrarUsuarioRequest.Papel.
+type CadastrarUsuarioRequestPapel string
+
 // ClienteListResponse defines model for ClienteListResponse.
 type ClienteListResponse struct {
 	Data *[]ClienteResponse `json:"data,omitempty"`
@@ -113,6 +202,13 @@ type ClienteResponse struct {
 	Telefone *string              `json:"telefone,omitempty"`
 }
 
+// ClienteResumoResponse defines model for ClienteResumoResponse.
+type ClienteResumoResponse struct {
+	CpfCnpj *string             `json:"cpf_cnpj,omitempty"`
+	Id      *openapi_types.UUID `json:"id,omitempty"`
+	Nome    *string             `json:"nome,omitempty"`
+}
+
 // CriarClienteRequest defines model for CriarClienteRequest.
 type CriarClienteRequest struct {
 	// Documento CPF (11 dígitos) ou CNPJ (14 dígitos). Aceita com ou sem formatação.
@@ -120,6 +216,14 @@ type CriarClienteRequest struct {
 	Email     *openapi_types.Email `json:"email,omitempty"`
 	Nome      string               `json:"nome"`
 	Telefone  *string              `json:"telefone,omitempty"`
+}
+
+// CriarOrdemServicoRequest defines model for CriarOrdemServicoRequest.
+type CriarOrdemServicoRequest struct {
+	ClienteId openapi_types.UUID `json:"cliente_id"`
+	Descricao *string            `json:"descricao,omitempty"`
+	Itens     []ItemOsRequest    `json:"itens"`
+	VeiculoId openapi_types.UUID `json:"veiculo_id"`
 }
 
 // CriarPecaRequest defines model for CriarPecaRequest.
@@ -162,6 +266,27 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// ItemOsRequest defines model for ItemOsRequest.
+type ItemOsRequest struct {
+	Quantidade   int                `json:"quantidade"`
+	ReferenciaId openapi_types.UUID `json:"referencia_id"`
+	Tipo         ItemOsRequestTipo  `json:"tipo"`
+}
+
+// ItemOsRequestTipo defines model for ItemOsRequest.Tipo.
+type ItemOsRequestTipo string
+
+// ItemOsResponse defines model for ItemOsResponse.
+type ItemOsResponse struct {
+	Id            *openapi_types.UUID `json:"id,omitempty"`
+	Nome          *string             `json:"nome,omitempty"`
+	PrecoUnitario *float64            `json:"preco_unitario,omitempty"`
+	Quantidade    *int                `json:"quantidade,omitempty"`
+	ReferenciaId  *openapi_types.UUID `json:"referencia_id,omitempty"`
+	Subtotal      *float64            `json:"subtotal,omitempty"`
+	Tipo          *string             `json:"tipo,omitempty"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email openapi_types.Email `json:"email"`
@@ -176,6 +301,44 @@ type LoginResponse struct {
 	// ExpiresIn Tempo de expiração em segundos
 	ExpiresIn *int    `json:"expires_in,omitempty"`
 	TokenType *string `json:"token_type,omitempty"`
+}
+
+// OrdemServicoListResponse defines model for OrdemServicoListResponse.
+type OrdemServicoListResponse struct {
+	Data *[]OrdemServicoResponse `json:"data,omitempty"`
+	Meta *PaginationMeta         `json:"meta,omitempty"`
+}
+
+// OrdemServicoResponse defines model for OrdemServicoResponse.
+type OrdemServicoResponse struct {
+	AprovadoEm   *time.Time             `json:"aprovado_em,omitempty"`
+	AtualizadoEm *time.Time             `json:"atualizado_em,omitempty"`
+	Cliente      *ClienteResumoResponse `json:"cliente,omitempty"`
+	ClienteId    *openapi_types.UUID    `json:"cliente_id,omitempty"`
+	CriadoEm     *time.Time             `json:"criado_em,omitempty"`
+	Descricao    *string                `json:"descricao,omitempty"`
+	Diagnostico  *string                `json:"diagnostico,omitempty"`
+	EntregueEm   *time.Time             `json:"entregue_em,omitempty"`
+	FinalizadoEm *time.Time             `json:"finalizado_em,omitempty"`
+	Id           *openapi_types.UUID    `json:"id,omitempty"`
+	IniciadoEm   *time.Time             `json:"iniciado_em,omitempty"`
+	Itens        *[]ItemOsResponse      `json:"itens,omitempty"`
+	Numero       *string                `json:"numero,omitempty"`
+	ReprovadoEm  *time.Time             `json:"reprovado_em,omitempty"`
+	Status       *string                `json:"status,omitempty"`
+	ValorTotal   *float64               `json:"valor_total,omitempty"`
+	Veiculo      *VeiculoResumoResponse `json:"veiculo,omitempty"`
+	VeiculoId    *openapi_types.UUID    `json:"veiculo_id,omitempty"`
+}
+
+// OrdemServicoStatusPublicoResponse defines model for OrdemServicoStatusPublicoResponse.
+type OrdemServicoStatusPublicoResponse struct {
+	AtualizadoEm *time.Time          `json:"atualizado_em,omitempty"`
+	CriadoEm     *time.Time          `json:"criado_em,omitempty"`
+	Descricao    *string             `json:"descricao,omitempty"`
+	Id           *openapi_types.UUID `json:"id,omitempty"`
+	Numero       *string             `json:"numero,omitempty"`
+	Status       *string             `json:"status,omitempty"`
 }
 
 // PaginationMeta defines model for PaginationMeta.
@@ -211,6 +374,11 @@ type PecaResponse struct {
 	Preco         *float64            `json:"preco,omitempty"`
 }
 
+// RejeitarOrcamentoRequest defines model for RejeitarOrcamentoRequest.
+type RejeitarOrcamentoRequest struct {
+	Motivo *string `json:"motivo,omitempty"`
+}
+
 // ServicoListResponse defines model for ServicoListResponse.
 type ServicoListResponse struct {
 	Data *[]ServicoResponse `json:"data,omitempty"`
@@ -230,6 +398,23 @@ type ServicoResponse struct {
 	TempoMinutos *int `json:"tempo_minutos,omitempty"`
 }
 
+// TempoMedioExecucaoItem defines model for TempoMedioExecucaoItem.
+type TempoMedioExecucaoItem struct {
+	ServicoId         *openapi_types.UUID `json:"servico_id,omitempty"`
+	ServicoNome       *string             `json:"servico_nome,omitempty"`
+	TempoMedioMinutos *float64            `json:"tempo_medio_minutos,omitempty"`
+	TotalExecucoes    *int                `json:"total_execucoes,omitempty"`
+}
+
+// UsuarioResponse defines model for UsuarioResponse.
+type UsuarioResponse struct {
+	CriadoEm *time.Time           `json:"criado_em,omitempty"`
+	Email    *openapi_types.Email `json:"email,omitempty"`
+	Id       *openapi_types.UUID  `json:"id,omitempty"`
+	Nome     *string              `json:"nome,omitempty"`
+	Papel    *string              `json:"papel,omitempty"`
+}
+
 // VeiculoListResponse defines model for VeiculoListResponse.
 type VeiculoListResponse struct {
 	Data *[]VeiculoResponse `json:"data,omitempty"`
@@ -247,6 +432,15 @@ type VeiculoResponse struct {
 	Marca        *string             `json:"marca,omitempty"`
 	Modelo       *string             `json:"modelo,omitempty"`
 	Placa        *string             `json:"placa,omitempty"`
+}
+
+// VeiculoResumoResponse defines model for VeiculoResumoResponse.
+type VeiculoResumoResponse struct {
+	Ano    *int                `json:"ano,omitempty"`
+	Id     *openapi_types.UUID `json:"id,omitempty"`
+	Marca  *string             `json:"marca,omitempty"`
+	Modelo *string             `json:"modelo,omitempty"`
+	Placa  *string             `json:"placa,omitempty"`
 }
 
 // IdParam defines model for IdParam.
@@ -312,6 +506,13 @@ type GetPartsParams struct {
 	EstoqueBaixo *bool `form:"estoque_baixo,omitempty" json:"estoque_baixo,omitempty"`
 }
 
+// GetReportsAvgExecutionTimeParams defines parameters for GetReportsAvgExecutionTime.
+type GetReportsAvgExecutionTimeParams struct {
+	ServicoId  *openapi_types.UUID `form:"servico_id,omitempty" json:"servico_id,omitempty"`
+	DataInicio *openapi_types.Date `form:"data_inicio,omitempty" json:"data_inicio,omitempty"`
+	DataFim    *openapi_types.Date `form:"data_fim,omitempty" json:"data_fim,omitempty"`
+}
+
 // GetServicesParams defines parameters for GetServices.
 type GetServicesParams struct {
 	// Page Número da página (começa em 1)
@@ -342,8 +543,23 @@ type GetVehiclesParams struct {
 	Marca *string `form:"marca,omitempty" json:"marca,omitempty"`
 }
 
+// GetWorkOrdersParams defines parameters for GetWorkOrders.
+type GetWorkOrdersParams struct {
+	// Page Número da página (começa em 1)
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Quantidade de itens por página (máximo 100)
+	Limit     *LimitParam         `form:"limit,omitempty" json:"limit,omitempty"`
+	Status    *string             `form:"status,omitempty" json:"status,omitempty"`
+	ClienteId *openapi_types.UUID `form:"cliente_id,omitempty" json:"cliente_id,omitempty"`
+	VeiculoId *openapi_types.UUID `form:"veiculo_id,omitempty" json:"veiculo_id,omitempty"`
+}
+
 // PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
 type PostAuthLoginJSONRequestBody = LoginRequest
+
+// PostAuthRegisterJSONRequestBody defines body for PostAuthRegister for application/json ContentType.
+type PostAuthRegisterJSONRequestBody = CadastrarUsuarioRequest
 
 // PostClientsJSONRequestBody defines body for PostClients for application/json ContentType.
 type PostClientsJSONRequestBody = CriarClienteRequest
@@ -372,11 +588,23 @@ type PostVehiclesJSONRequestBody = CriarVeiculoRequest
 // PutVehiclesIdJSONRequestBody defines body for PutVehiclesId for application/json ContentType.
 type PutVehiclesIdJSONRequestBody = AtualizarVeiculoRequest
 
+// PostWorkOrdersJSONRequestBody defines body for PostWorkOrders for application/json ContentType.
+type PostWorkOrdersJSONRequestBody = CriarOrdemServicoRequest
+
+// PostWorkOrdersIdRejectJSONRequestBody defines body for PostWorkOrdersIdReject for application/json ContentType.
+type PostWorkOrdersIdRejectJSONRequestBody = RejeitarOrcamentoRequest
+
+// PatchWorkOrdersIdStatusJSONRequestBody defines body for PatchWorkOrdersIdStatus for application/json ContentType.
+type PatchWorkOrdersIdStatusJSONRequestBody = AvancarStatusRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Login
 	// (POST /auth/login)
 	PostAuthLogin(w http.ResponseWriter, r *http.Request)
+	// Cadastrar usuário
+	// (POST /auth/register)
+	PostAuthRegister(w http.ResponseWriter, r *http.Request)
 	// Listar clientes
 	// (GET /clients)
 	GetClients(w http.ResponseWriter, r *http.Request, params GetClientsParams)
@@ -413,6 +641,9 @@ type ServerInterface interface {
 	// Ajustar estoque
 	// (PATCH /parts/{id}/stock)
 	PatchPartsIdStock(w http.ResponseWriter, r *http.Request, id IdParam)
+	// Tempo médio de execução por serviço
+	// (GET /reports/avg-execution-time)
+	GetReportsAvgExecutionTime(w http.ResponseWriter, r *http.Request, params GetReportsAvgExecutionTimeParams)
 	// Listar serviços
 	// (GET /services)
 	GetServices(w http.ResponseWriter, r *http.Request, params GetServicesParams)
@@ -443,14 +674,42 @@ type ServerInterface interface {
 	// Atualizar veículo
 	// (PUT /vehicles/{id})
 	PutVehiclesId(w http.ResponseWriter, r *http.Request, id IdParam)
+	// Listar ordens de serviço
+	// (GET /work-orders)
+	GetWorkOrders(w http.ResponseWriter, r *http.Request, params GetWorkOrdersParams)
+	// Criar ordem de serviço
+	// (POST /work-orders)
+	PostWorkOrders(w http.ResponseWriter, r *http.Request)
+	// Detalhar ordem de serviço
+	// (GET /work-orders/{id})
+	GetWorkOrdersId(w http.ResponseWriter, r *http.Request, id IdParam)
+	// Aprovar orçamento
+	// (POST /work-orders/{id}/approve)
+	PostWorkOrdersIdApprove(w http.ResponseWriter, r *http.Request, id IdParam)
+	// Rejeitar orçamento
+	// (POST /work-orders/{id}/reject)
+	PostWorkOrdersIdReject(w http.ResponseWriter, r *http.Request, id IdParam)
+	// Consulta pública de status
+	// (GET /work-orders/{id}/status)
+	GetWorkOrdersIdStatus(w http.ResponseWriter, r *http.Request, id IdParam)
+	// Avançar status da OS
+	// (PATCH /work-orders/{id}/status)
+	PatchWorkOrdersIdStatus(w http.ResponseWriter, r *http.Request, id IdParam)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
+
 type Unimplemented struct{}
 
 // Login
 // (POST /auth/login)
 func (_ Unimplemented) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Cadastrar usuário
+// (POST /auth/register)
+func (_ Unimplemented) PostAuthRegister(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -526,6 +785,12 @@ func (_ Unimplemented) PatchPartsIdStock(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Tempo médio de execução por serviço
+// (GET /reports/avg-execution-time)
+func (_ Unimplemented) GetReportsAvgExecutionTime(w http.ResponseWriter, r *http.Request, params GetReportsAvgExecutionTimeParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Listar serviços
 // (GET /services)
 func (_ Unimplemented) GetServices(w http.ResponseWriter, r *http.Request, params GetServicesParams) {
@@ -586,6 +851,48 @@ func (_ Unimplemented) PutVehiclesId(w http.ResponseWriter, r *http.Request, id 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Listar ordens de serviço
+// (GET /work-orders)
+func (_ Unimplemented) GetWorkOrders(w http.ResponseWriter, r *http.Request, params GetWorkOrdersParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Criar ordem de serviço
+// (POST /work-orders)
+func (_ Unimplemented) PostWorkOrders(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Detalhar ordem de serviço
+// (GET /work-orders/{id})
+func (_ Unimplemented) GetWorkOrdersId(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Aprovar orçamento
+// (POST /work-orders/{id}/approve)
+func (_ Unimplemented) PostWorkOrdersIdApprove(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rejeitar orçamento
+// (POST /work-orders/{id}/reject)
+func (_ Unimplemented) PostWorkOrdersIdReject(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Consulta pública de status
+// (GET /work-orders/{id}/status)
+func (_ Unimplemented) GetWorkOrdersIdStatus(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Avançar status da OS
+// (PATCH /work-orders/{id}/status)
+func (_ Unimplemented) PatchWorkOrdersIdStatus(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ServerInterfaceWrapper converts contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler            ServerInterface
@@ -600,6 +907,20 @@ func (siw *ServerInterfaceWrapper) PostAuthLogin(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostAuthLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAuthRegister operation middleware
+func (siw *ServerInterfaceWrapper) PostAuthRegister(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAuthRegister(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1038,6 +1359,55 @@ func (siw *ServerInterfaceWrapper) PatchPartsIdStock(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetReportsAvgExecutionTime operation middleware
+func (siw *ServerInterfaceWrapper) GetReportsAvgExecutionTime(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetReportsAvgExecutionTimeParams
+
+	// ------------- Optional query parameter "servico_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "servico_id", r.URL.Query(), &params.ServicoId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "servico_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "data_inicio" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "data_inicio", r.URL.Query(), &params.DataInicio, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "data_inicio", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "data_fim" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "data_fim", r.URL.Query(), &params.DataFim, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "data_fim", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReportsAvgExecutionTime(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetServices operation middleware
 func (siw *ServerInterfaceWrapper) GetServices(w http.ResponseWriter, r *http.Request) {
 
@@ -1378,6 +1748,240 @@ func (siw *ServerInterfaceWrapper) PutVehiclesId(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkOrders operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkOrders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetWorkOrdersParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "cliente_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cliente_id", r.URL.Query(), &params.ClienteId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cliente_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "veiculo_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "veiculo_id", r.URL.Query(), &params.VeiculoId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "veiculo_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkOrders(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostWorkOrders operation middleware
+func (siw *ServerInterfaceWrapper) PostWorkOrders(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostWorkOrders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkOrdersId operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkOrdersId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkOrdersId(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostWorkOrdersIdApprove operation middleware
+func (siw *ServerInterfaceWrapper) PostWorkOrdersIdApprove(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostWorkOrdersIdApprove(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostWorkOrdersIdReject operation middleware
+func (siw *ServerInterfaceWrapper) PostWorkOrdersIdReject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostWorkOrdersIdReject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkOrdersIdStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkOrdersIdStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkOrdersIdStatus(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchWorkOrdersIdStatus operation middleware
+func (siw *ServerInterfaceWrapper) PatchWorkOrdersIdStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchWorkOrdersIdStatus(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1495,6 +2099,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/auth/login", wrapper.PostAuthLogin)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/register", wrapper.PostAuthRegister)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/clients", wrapper.GetClients)
 	})
 	r.Group(func(r chi.Router) {
@@ -1531,6 +2138,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/parts/{id}/stock", wrapper.PatchPartsIdStock)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/reports/avg-execution-time", wrapper.GetReportsAvgExecutionTime)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/services", wrapper.GetServices)
 	})
 	r.Group(func(r chi.Router) {
@@ -1559,6 +2169,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/vehicles/{id}", wrapper.PutVehiclesId)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/work-orders", wrapper.GetWorkOrders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/work-orders", wrapper.PostWorkOrders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/work-orders/{id}", wrapper.GetWorkOrdersId)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/work-orders/{id}/approve", wrapper.PostWorkOrdersIdApprove)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/work-orders/{id}/reject", wrapper.PostWorkOrdersIdReject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/work-orders/{id}/status", wrapper.GetWorkOrdersIdStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/work-orders/{id}/status", wrapper.PatchWorkOrdersIdStatus)
 	})
 
 	return r
@@ -1594,6 +2225,41 @@ type PostAuthLogin401JSONResponse Error
 func (response PostAuthLogin401JSONResponse) VisitPostAuthLoginResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostAuthRegisterRequestObject struct {
+	Body *PostAuthRegisterJSONRequestBody
+}
+
+type PostAuthRegisterResponseObject interface {
+	VisitPostAuthRegisterResponse(w http.ResponseWriter) error
+}
+
+type PostAuthRegister201JSONResponse UsuarioResponse
+
+func (response PostAuthRegister201JSONResponse) VisitPostAuthRegisterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostAuthRegister400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PostAuthRegister400JSONResponse) VisitPostAuthRegisterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostAuthRegister409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PostAuthRegister409JSONResponse) VisitPostAuthRegisterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2090,6 +2756,32 @@ func (response PatchPartsIdStock422JSONResponse) VisitPatchPartsIdStockResponse(
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetReportsAvgExecutionTimeRequestObject struct {
+	Params GetReportsAvgExecutionTimeParams
+}
+
+type GetReportsAvgExecutionTimeResponseObject interface {
+	VisitGetReportsAvgExecutionTimeResponse(w http.ResponseWriter) error
+}
+
+type GetReportsAvgExecutionTime200JSONResponse []TempoMedioExecucaoItem
+
+func (response GetReportsAvgExecutionTime200JSONResponse) VisitGetReportsAvgExecutionTimeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetReportsAvgExecutionTime401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetReportsAvgExecutionTime401JSONResponse) VisitGetReportsAvgExecutionTimeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetServicesRequestObject struct {
 	Params GetServicesParams
 }
@@ -2510,11 +3202,297 @@ func (response PutVehiclesId404JSONResponse) VisitPutVehiclesIdResponse(w http.R
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetWorkOrdersRequestObject struct {
+	Params GetWorkOrdersParams
+}
+
+type GetWorkOrdersResponseObject interface {
+	VisitGetWorkOrdersResponse(w http.ResponseWriter) error
+}
+
+type GetWorkOrders200JSONResponse OrdemServicoListResponse
+
+func (response GetWorkOrders200JSONResponse) VisitGetWorkOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetWorkOrders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetWorkOrders401JSONResponse) VisitGetWorkOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersRequestObject struct {
+	Body *PostWorkOrdersJSONRequestBody
+}
+
+type PostWorkOrdersResponseObject interface {
+	VisitPostWorkOrdersResponse(w http.ResponseWriter) error
+}
+
+type PostWorkOrders201JSONResponse OrdemServicoResponse
+
+func (response PostWorkOrders201JSONResponse) VisitPostWorkOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrders400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PostWorkOrders400JSONResponse) VisitPostWorkOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PostWorkOrders401JSONResponse) VisitPostWorkOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrders404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PostWorkOrders404JSONResponse) VisitPostWorkOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrders422JSONResponse Error
+
+func (response PostWorkOrders422JSONResponse) VisitPostWorkOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetWorkOrdersIdRequestObject struct {
+	Id IdParam `json:"id"`
+}
+
+type GetWorkOrdersIdResponseObject interface {
+	VisitGetWorkOrdersIdResponse(w http.ResponseWriter) error
+}
+
+type GetWorkOrdersId200JSONResponse OrdemServicoResponse
+
+func (response GetWorkOrdersId200JSONResponse) VisitGetWorkOrdersIdResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetWorkOrdersId401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetWorkOrdersId401JSONResponse) VisitGetWorkOrdersIdResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetWorkOrdersId404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetWorkOrdersId404JSONResponse) VisitGetWorkOrdersIdResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersIdApproveRequestObject struct {
+	Id IdParam `json:"id"`
+}
+
+type PostWorkOrdersIdApproveResponseObject interface {
+	VisitPostWorkOrdersIdApproveResponse(w http.ResponseWriter) error
+}
+
+type PostWorkOrdersIdApprove200JSONResponse OrdemServicoResponse
+
+func (response PostWorkOrdersIdApprove200JSONResponse) VisitPostWorkOrdersIdApproveResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersIdApprove401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PostWorkOrdersIdApprove401JSONResponse) VisitPostWorkOrdersIdApproveResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersIdApprove404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PostWorkOrdersIdApprove404JSONResponse) VisitPostWorkOrdersIdApproveResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersIdApprove422JSONResponse Error
+
+func (response PostWorkOrdersIdApprove422JSONResponse) VisitPostWorkOrdersIdApproveResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersIdRejectRequestObject struct {
+	Id   IdParam `json:"id"`
+	Body *PostWorkOrdersIdRejectJSONRequestBody
+}
+
+type PostWorkOrdersIdRejectResponseObject interface {
+	VisitPostWorkOrdersIdRejectResponse(w http.ResponseWriter) error
+}
+
+type PostWorkOrdersIdReject200JSONResponse OrdemServicoResponse
+
+func (response PostWorkOrdersIdReject200JSONResponse) VisitPostWorkOrdersIdRejectResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersIdReject401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PostWorkOrdersIdReject401JSONResponse) VisitPostWorkOrdersIdRejectResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersIdReject404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PostWorkOrdersIdReject404JSONResponse) VisitPostWorkOrdersIdRejectResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostWorkOrdersIdReject422JSONResponse Error
+
+func (response PostWorkOrdersIdReject422JSONResponse) VisitPostWorkOrdersIdRejectResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetWorkOrdersIdStatusRequestObject struct {
+	Id IdParam `json:"id"`
+}
+
+type GetWorkOrdersIdStatusResponseObject interface {
+	VisitGetWorkOrdersIdStatusResponse(w http.ResponseWriter) error
+}
+
+type GetWorkOrdersIdStatus200JSONResponse OrdemServicoStatusPublicoResponse
+
+func (response GetWorkOrdersIdStatus200JSONResponse) VisitGetWorkOrdersIdStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetWorkOrdersIdStatus404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetWorkOrdersIdStatus404JSONResponse) VisitGetWorkOrdersIdStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchWorkOrdersIdStatusRequestObject struct {
+	Id   IdParam `json:"id"`
+	Body *PatchWorkOrdersIdStatusJSONRequestBody
+}
+
+type PatchWorkOrdersIdStatusResponseObject interface {
+	VisitPatchWorkOrdersIdStatusResponse(w http.ResponseWriter) error
+}
+
+type PatchWorkOrdersIdStatus200JSONResponse OrdemServicoResponse
+
+func (response PatchWorkOrdersIdStatus200JSONResponse) VisitPatchWorkOrdersIdStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchWorkOrdersIdStatus400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PatchWorkOrdersIdStatus400JSONResponse) VisitPatchWorkOrdersIdStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchWorkOrdersIdStatus401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PatchWorkOrdersIdStatus401JSONResponse) VisitPatchWorkOrdersIdStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchWorkOrdersIdStatus404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PatchWorkOrdersIdStatus404JSONResponse) VisitPatchWorkOrdersIdStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchWorkOrdersIdStatus422JSONResponse Error
+
+func (response PatchWorkOrdersIdStatus422JSONResponse) VisitPatchWorkOrdersIdStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Login
 	// (POST /auth/login)
 	PostAuthLogin(ctx context.Context, request PostAuthLoginRequestObject) (PostAuthLoginResponseObject, error)
+	// Cadastrar usuário
+	// (POST /auth/register)
+	PostAuthRegister(ctx context.Context, request PostAuthRegisterRequestObject) (PostAuthRegisterResponseObject, error)
 	// Listar clientes
 	// (GET /clients)
 	GetClients(ctx context.Context, request GetClientsRequestObject) (GetClientsResponseObject, error)
@@ -2551,6 +3529,9 @@ type StrictServerInterface interface {
 	// Ajustar estoque
 	// (PATCH /parts/{id}/stock)
 	PatchPartsIdStock(ctx context.Context, request PatchPartsIdStockRequestObject) (PatchPartsIdStockResponseObject, error)
+	// Tempo médio de execução por serviço
+	// (GET /reports/avg-execution-time)
+	GetReportsAvgExecutionTime(ctx context.Context, request GetReportsAvgExecutionTimeRequestObject) (GetReportsAvgExecutionTimeResponseObject, error)
 	// Listar serviços
 	// (GET /services)
 	GetServices(ctx context.Context, request GetServicesRequestObject) (GetServicesResponseObject, error)
@@ -2581,6 +3562,27 @@ type StrictServerInterface interface {
 	// Atualizar veículo
 	// (PUT /vehicles/{id})
 	PutVehiclesId(ctx context.Context, request PutVehiclesIdRequestObject) (PutVehiclesIdResponseObject, error)
+	// Listar ordens de serviço
+	// (GET /work-orders)
+	GetWorkOrders(ctx context.Context, request GetWorkOrdersRequestObject) (GetWorkOrdersResponseObject, error)
+	// Criar ordem de serviço
+	// (POST /work-orders)
+	PostWorkOrders(ctx context.Context, request PostWorkOrdersRequestObject) (PostWorkOrdersResponseObject, error)
+	// Detalhar ordem de serviço
+	// (GET /work-orders/{id})
+	GetWorkOrdersId(ctx context.Context, request GetWorkOrdersIdRequestObject) (GetWorkOrdersIdResponseObject, error)
+	// Aprovar orçamento
+	// (POST /work-orders/{id}/approve)
+	PostWorkOrdersIdApprove(ctx context.Context, request PostWorkOrdersIdApproveRequestObject) (PostWorkOrdersIdApproveResponseObject, error)
+	// Rejeitar orçamento
+	// (POST /work-orders/{id}/reject)
+	PostWorkOrdersIdReject(ctx context.Context, request PostWorkOrdersIdRejectRequestObject) (PostWorkOrdersIdRejectResponseObject, error)
+	// Consulta pública de status
+	// (GET /work-orders/{id}/status)
+	GetWorkOrdersIdStatus(ctx context.Context, request GetWorkOrdersIdStatusRequestObject) (GetWorkOrdersIdStatusResponseObject, error)
+	// Avançar status da OS
+	// (PATCH /work-orders/{id}/status)
+	PatchWorkOrdersIdStatus(ctx context.Context, request PatchWorkOrdersIdStatusRequestObject) (PatchWorkOrdersIdStatusResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -2636,6 +3638,37 @@ func (sh *strictHandler) PostAuthLogin(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostAuthLoginResponseObject); ok {
 		if err := validResponse.VisitPostAuthLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostAuthRegister operation middleware
+func (sh *strictHandler) PostAuthRegister(w http.ResponseWriter, r *http.Request) {
+	var request PostAuthRegisterRequestObject
+
+	var body PostAuthRegisterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostAuthRegister(ctx, request.(PostAuthRegisterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostAuthRegister")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostAuthRegisterResponseObject); ok {
+		if err := validResponse.VisitPostAuthRegisterResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2987,6 +4020,32 @@ func (sh *strictHandler) PatchPartsIdStock(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// GetReportsAvgExecutionTime operation middleware
+func (sh *strictHandler) GetReportsAvgExecutionTime(w http.ResponseWriter, r *http.Request, params GetReportsAvgExecutionTimeParams) {
+	var request GetReportsAvgExecutionTimeRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReportsAvgExecutionTime(ctx, request.(GetReportsAvgExecutionTimeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReportsAvgExecutionTime")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReportsAvgExecutionTimeResponseObject); ok {
+		if err := validResponse.VisitGetReportsAvgExecutionTimeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetServices operation middleware
 func (sh *strictHandler) GetServices(w http.ResponseWriter, r *http.Request, params GetServicesParams) {
 	var request GetServicesRequestObject
@@ -3271,84 +4330,306 @@ func (sh *strictHandler) PutVehiclesId(w http.ResponseWriter, r *http.Request, i
 	}
 }
 
+// GetWorkOrders operation middleware
+func (sh *strictHandler) GetWorkOrders(w http.ResponseWriter, r *http.Request, params GetWorkOrdersParams) {
+	var request GetWorkOrdersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkOrders(ctx, request.(GetWorkOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkOrdersResponseObject); ok {
+		if err := validResponse.VisitGetWorkOrdersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostWorkOrders operation middleware
+func (sh *strictHandler) PostWorkOrders(w http.ResponseWriter, r *http.Request) {
+	var request PostWorkOrdersRequestObject
+
+	var body PostWorkOrdersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostWorkOrders(ctx, request.(PostWorkOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostWorkOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostWorkOrdersResponseObject); ok {
+		if err := validResponse.VisitPostWorkOrdersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkOrdersId operation middleware
+func (sh *strictHandler) GetWorkOrdersId(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request GetWorkOrdersIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkOrdersId(ctx, request.(GetWorkOrdersIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkOrdersId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkOrdersIdResponseObject); ok {
+		if err := validResponse.VisitGetWorkOrdersIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostWorkOrdersIdApprove operation middleware
+func (sh *strictHandler) PostWorkOrdersIdApprove(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request PostWorkOrdersIdApproveRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostWorkOrdersIdApprove(ctx, request.(PostWorkOrdersIdApproveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostWorkOrdersIdApprove")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostWorkOrdersIdApproveResponseObject); ok {
+		if err := validResponse.VisitPostWorkOrdersIdApproveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostWorkOrdersIdReject operation middleware
+func (sh *strictHandler) PostWorkOrdersIdReject(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request PostWorkOrdersIdRejectRequestObject
+
+	request.Id = id
+
+	var body PostWorkOrdersIdRejectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostWorkOrdersIdReject(ctx, request.(PostWorkOrdersIdRejectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostWorkOrdersIdReject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostWorkOrdersIdRejectResponseObject); ok {
+		if err := validResponse.VisitPostWorkOrdersIdRejectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkOrdersIdStatus operation middleware
+func (sh *strictHandler) GetWorkOrdersIdStatus(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request GetWorkOrdersIdStatusRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkOrdersIdStatus(ctx, request.(GetWorkOrdersIdStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkOrdersIdStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkOrdersIdStatusResponseObject); ok {
+		if err := validResponse.VisitGetWorkOrdersIdStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchWorkOrdersIdStatus operation middleware
+func (sh *strictHandler) PatchWorkOrdersIdStatus(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request PatchWorkOrdersIdStatusRequestObject
+
+	request.Id = id
+
+	var body PatchWorkOrdersIdStatusJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchWorkOrdersIdStatus(ctx, request.(PatchWorkOrdersIdStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchWorkOrdersIdStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchWorkOrdersIdStatusResponseObject); ok {
+		if err := validResponse.VisitPatchWorkOrdersIdStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"NwAA//+KFuFmuoQAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
@@ -3388,12 +4669,6 @@ func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
 		res[pathToFile] = rawSpec
 	}
 
-	for rawPath, rawFunc := range PathToRawSpec(path.Join(path.Dir(pathToFile), "uuid")) {
-		if _, ok := res[rawPath]; ok {
-			// it is not possible to compare functions in golang, so always overwrite the old value
-		}
-		res[rawPath] = rawFunc
-	}
 	return res
 }
 

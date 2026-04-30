@@ -47,6 +47,10 @@ tags:
     description: Catálogo de serviços oferecidos pela oficina
   - name: Peças
     description: Catálogo e controle de estoque de peças e insumos
+  - name: Ordens de Serviço
+    description: Criação, acompanhamento e gestão do ciclo de vida das OSs
+  - name: Relatórios
+    description: Métricas e relatórios gerenciais
 
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPONENTS
@@ -211,11 +215,11 @@ components:
           description: Apenas dígitos, sem formatação
           example: "12345678901"
         email:
-          type: ["string", "null"]
+          type: string
           format: email
           example: joao@email.com
         telefone:
-          type: ["string", "null"]
+          type: string
           example: "11999999999"
         criado_em:
           type: string
@@ -238,11 +242,11 @@ components:
           description: CPF (11 dígitos) ou CNPJ (14 dígitos). Aceita com ou sem formatação.
           example: "123.456.789-01"
         email:
-          type: ["string", "null"]
+          type: string
           format: email
           example: joao@email.com
         telefone:
-          type: ["string", "null"]
+          type: string
           maxLength: 20
           example: "(11) 99999-9999"
 
@@ -255,10 +259,10 @@ components:
           minLength: 2
           maxLength: 255
         email:
-          type: ["string", "null"]
+          type: string
           format: email
         telefone:
-          type: ["string", "null"]
+          type: string
           maxLength: 20
 
     ClienteListResponse:
@@ -295,7 +299,7 @@ components:
           type: integer
           example: 2022
         cor:
-          type: ["string", "null"]
+          type: string
           example: Prata
         criado_em:
           type: string
@@ -331,7 +335,7 @@ components:
           maximum: 2100
           example: 2022
         cor:
-          type: ["string", "null"]
+          type: string
           maxLength: 50
           example: Prata
 
@@ -350,7 +354,7 @@ components:
           minimum: 1900
           maximum: 2100
         cor:
-          type: ["string", "null"]
+          type: string
           maxLength: 50
 
     VeiculoListResponse:
@@ -375,7 +379,7 @@ components:
           type: string
           example: Troca de óleo
         descricao:
-          type: ["string", "null"]
+          type: string
           example: Troca de óleo do motor com filtro
         preco_base:
           type: number
@@ -402,7 +406,7 @@ components:
           maxLength: 255
           example: Troca de óleo
         descricao:
-          type: ["string", "null"]
+          type: string
           example: Troca de óleo do motor com filtro
         preco_base:
           type: number
@@ -422,7 +426,7 @@ components:
           minLength: 2
           maxLength: 255
         descricao:
-          type: ["string", "null"]
+          type: string
         preco_base:
           type: number
           format: double
@@ -537,7 +541,7 @@ components:
             - `ajuste`: define o valor absoluto do estoque
           example: entrada
         motivo:
-          type: ["string", "null"]
+          type: string
           example: Compra NF 1234
 
     PecaListResponse:
@@ -549,6 +553,239 @@ components:
             $ref: '#/components/schemas/PecaResponse'
         meta:
           $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Ordens de Serviço ─────────────────────────────────────────────────────
+
+    ItemOsRequest:
+      type: object
+      required: [tipo, referencia_id, quantidade]
+      properties:
+        tipo:
+          type: string
+          enum: [servico, peca]
+        referencia_id:
+          type: string
+          format: uuid
+        quantidade:
+          type: integer
+          minimum: 1
+
+    ItemOsResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+        referencia_id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        quantidade:
+          type: integer
+        preco_unitario:
+          type: number
+          format: double
+        subtotal:
+          type: number
+          format: double
+
+    ClienteResumoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        cpf_cnpj:
+          type: string
+
+    VeiculoResumoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        placa:
+          type: string
+        marca:
+          type: string
+        modelo:
+          type: string
+        ano:
+          type: integer
+
+    CriarOrdemServicoRequest:
+      type: object
+      required: [cliente_id, veiculo_id, itens]
+      properties:
+        cliente_id:
+          type: string
+          format: uuid
+        veiculo_id:
+          type: string
+          format: uuid
+        descricao:
+          type: string
+        itens:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ItemOsRequest'
+
+    OrdemServicoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero:
+          type: string
+        cliente_id:
+          type: string
+          format: uuid
+        veiculo_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        descricao:
+          type: string
+        diagnostico:
+          type: string
+        valor_total:
+          type: number
+          format: double
+        aprovado_em:
+          type: string
+          format: date-time
+        reprovado_em:
+          type: string
+          format: date-time
+        iniciado_em:
+          type: string
+          format: date-time
+        finalizado_em:
+          type: string
+          format: date-time
+        entregue_em:
+          type: string
+          format: date-time
+        criado_em:
+          type: string
+          format: date-time
+        atualizado_em:
+          type: string
+          format: date-time
+        itens:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemOsResponse'
+        cliente:
+          $ref: '#/components/schemas/ClienteResumoResponse'
+        veiculo:
+          $ref: '#/components/schemas/VeiculoResumoResponse'
+
+    OrdemServicoListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrdemServicoResponse'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    AvancarStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [em_diagnostico, aguardando_aprovacao, em_execucao, finalizada, entregue]
+        diagnostico:
+          type: string
+        observacao:
+          type: string
+
+    RejeitarOrcamentoRequest:
+      type: object
+      properties:
+        motivo:
+          type: string
+
+    OrdemServicoStatusPublicoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero:
+          type: string
+        status:
+          type: string
+        descricao:
+          type: string
+        criado_em:
+          type: string
+          format: date-time
+        atualizado_em:
+          type: string
+          format: date-time
+
+    TempoMedioExecucaoItem:
+      type: object
+      properties:
+        servico_id:
+          type: string
+          format: uuid
+        servico_nome:
+          type: string
+        total_execucoes:
+          type: integer
+        tempo_medio_minutos:
+          type: number
+          format: double
+
+    # ── Usuário ───────────────────────────────────────────────────────────────
+
+    CadastrarUsuarioRequest:
+      type: object
+      required: [nome, email, senha]
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 255
+        email:
+          type: string
+          format: email
+        senha:
+          type: string
+          minLength: 6
+        papel:
+          type: string
+          enum: [administrador, mecanico, atendente]
+
+    UsuarioResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        email:
+          type: string
+          format: email
+        papel:
+          type: string
+        criado_em:
+          type: string
+          format: date-time
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PATHS
@@ -1142,3 +1379,246 @@ paths:
               example:
                 code: INSUFFICIENT_STOCK
                 message: "estoque insuficiente (atual: 3, solicitado: 10)"
+
+  # ── Ordens de Serviço ─────────────────────────────────────────────────────────
+
+  /work-orders:
+    get:
+      tags: [Ordens de Serviço]
+      summary: Listar ordens de serviço
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: cliente_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: veiculo_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Ordens de Serviço]
+      summary: Criar ordem de serviço
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarOrdemServicoRequest'
+      responses:
+        '201':
+          description: OS criada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Entidade não processável
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /work-orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    get:
+      tags: [Ordens de Serviço]
+      summary: Detalhar ordem de serviço
+      responses:
+        '200':
+          description: OS encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /work-orders/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    get:
+      tags: [Ordens de Serviço]
+      summary: Consulta pública de status
+      security: []
+      responses:
+        '200':
+          description: Status da OS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoStatusPublicoResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Ordens de Serviço]
+      summary: Avançar status da OS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvancarStatusRequest'
+      responses:
+        '200':
+          description: Status atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Transição inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /work-orders/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    post:
+      tags: [Ordens de Serviço]
+      summary: Aprovar orçamento
+      responses:
+        '200':
+          description: Orçamento aprovado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Entidade não processável
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /work-orders/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    post:
+      tags: [Ordens de Serviço]
+      summary: Rejeitar orçamento
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejeitarOrcamentoRequest'
+      responses:
+        '200':
+          description: Orçamento rejeitado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Entidade não processável
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Relatórios ────────────────────────────────────────────────────────────────
+
+  /reports/avg-execution-time:
+    get:
+      tags: [Relatórios]
+      summary: Tempo médio de execução por serviço
+      parameters:
+        - name: servico_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: data_inicio
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: data_fim
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Relatório retornado com sucesso
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TempoMedioExecucaoItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Auth — Register ───────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Cadastrar usuário
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CadastrarUsuarioRequest'
+      responses:
+        '201':
+          description: Usuário criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsuarioResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'

@@ -1,15 +1,17 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"time"
-	
+
 	"github.com/go-chi/chi/v5"
 	"github.com/problematheu/tech-challenge-1/internal/infra/database"
 	"github.com/problematheu/tech-challenge-1/internal/infra/http/api"
+	apimiddleware "github.com/problematheu/tech-challenge-1/internal/infra/http/middleware"
 )
 
 func main() {
@@ -22,10 +24,17 @@ func main() {
 	log.Println("migrations executadas com sucesso")
 
 	server := api.NovoServer(db)
+
+	ctx := context.Background()
+	if err := server.InicializarCaches(ctx); err != nil {
+		log.Printf("aviso: falha ao pré-carregar caches: %v", err)
+	}
+
 	strictHandler := api.NewStrictHandler(server, nil)
 
 	r := chi.NewRouter()
 
+	// ── Rotas de health (sem autenticação) ────────────────────────────────────
 	// Liveness: a aplicação está de pé (não verifica dependências externas)
 	r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -39,8 +48,16 @@ func main() {
 	// Alias raiz — retorna o mesmo que /health/ready (compatível com probes simples)
 	r.Get("/health", healthReadyHandler(db))
 
-	// Todos os endpoints do OpenAPI montados sob /v1
-	api.HandlerFromMuxWithBaseURL(strictHandler, r, "/v1")
+	// ── Rotas da API /v1 (protegidas por JWT, exceto rotas públicas) ──────────
+	// Equivalente ao SecurityConfig do Spring Security:
+	//   - /v1/auth/login       → permitAll
+	//   - /v1/auth/register    → permitAll
+	//   - /v1/work-orders/{id}/status → permitAll
+	//   - demais rotas         → authenticated (Bearer JWT HS256)
+	r.Group(func(r chi.Router) {
+		r.Use(apimiddleware.JWT())
+		api.HandlerFromMuxWithBaseURL(strictHandler, r, "/v1")
+	})
 
 	log.Println("servidor rodando na porta 8080")
 	http.ListenAndServe(":8080", r)

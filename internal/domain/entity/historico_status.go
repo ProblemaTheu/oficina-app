@@ -13,6 +13,7 @@ type HistoricoStatus struct {
 	StatusNovoID         uuid.UUID
 	AlteradoEm           time.Time
 	AlteradoPorUsuarioID *uuid.UUID
+	Observacao           *string
 	CriadoEm             time.Time
 	AtualizadoEm         time.Time
 }
