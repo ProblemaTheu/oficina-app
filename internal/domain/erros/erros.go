@@ -24,3 +24,15 @@ type ErrNaoEncontrado struct {
 func (e *ErrNaoEncontrado) Error() string {
 	return fmt.Sprintf("%s não encontrado", e.Recurso)
 }
+
+// ErrNaoProcessavel é retornado quando uma regra de negócio impede o
+// processamento da requisição (HTTP 422). O campo Codigo identifica a regra
+// violada de forma legível por máquina.
+type ErrNaoProcessavel struct {
+	Codigo   string
+	Mensagem string
+}
+
+func (e *ErrNaoProcessavel) Error() string {
+	return e.Mensagem
+}

@@ -34,6 +34,11 @@
       "key": "pecaId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "osId",
+      "value": "",
+      "type": "string"
     }
   ],
   "auth": {
@@ -144,6 +149,28 @@
               "path": ["auth", "login"]
             },
             "description": "Autentica o usuário e retorna um JWT Bearer token.\n\nO token é salvo automaticamente na variável de coleção `token` via script de teste."
+          },
+          "response": []
+        },
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Carlos Mecânico\",\n  \"email\": \"carlos@oficina.com\",\n  \"senha\": \"s3nh@segura\",\n  \"papel\": \"mecanico\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Cria uma nova conta de usuário. A senha é armazenada como bcrypt hash e **nunca** retornada.\n\nValores válidos para `papel`: `administrador`, `mecanico`, `atendente`.\n\nEndpoint público — não requer token."
           },
           "response": []
         }
@@ -720,6 +747,173 @@
               "path": ["parts", "{{pecaId}}", "stock"]
             },
             "description": "Define o valor absoluto do estoque atual (`tipo: ajuste`), independente do valor anterior."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ordens de Serviço",
+      "description": "Criação e gerenciamento de Ordens de Serviço (OS), incluindo ciclo de vida de status e consulta pública.",
+      "item": [
+        {
+          "name": "Listar OSs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/work-orders?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-orders"],
+              "query": [
+                { "key": "page",       "value": "1",  "description": "Página (começa em 1)" },
+                { "key": "limit",      "value": "20", "description": "Itens por página (max 100)" },
+                { "key": "status",     "value": "",   "description": "Filtrar por status (ex: em_execucao)", "disabled": true },
+                { "key": "cliente_id", "value": "",   "description": "Filtrar por cliente UUID", "disabled": true },
+                { "key": "veiculo_id", "value": "",   "description": "Filtrar por veículo UUID", "disabled": true }
+              ]
+            },
+            "description": "Retorna lista paginada de ordens de serviço. Suporta filtros por `status`, `cliente_id` e `veiculo_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Criar OS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('osId', body.id);",
+                  "    console.log('OS criada, ID salvo:', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cliente_id\": \"{{clienteId}}\",\n  \"veiculo_id\": \"{{veiculoId}}\",\n  \"descricao\": \"Revisão completa + troca de óleo\",\n  \"servicos\": [\n    {\n      \"servico_id\": \"{{servicoId}}\",\n      \"quantidade\": 1\n    }\n  ],\n  \"pecas\": [\n    {\n      \"peca_id\": \"{{pecaId}}\",\n      \"quantidade\": 2\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/work-orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-orders"]
+            },
+            "description": "Cria uma nova OS no status `recebida`. O `osId` é salvo automaticamente na variável de coleção."
+          },
+          "response": []
+        },
+        {
+          "name": "Detalhar OS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/work-orders/{{osId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-orders", "{{osId}}"]
+            },
+            "description": "Retorna todos os detalhes de uma OS, incluindo itens de serviço, peças e histórico de status."
+          },
+          "response": []
+        },
+        {
+          "name": "Status público",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/work-orders/{{osId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-orders", "{{osId}}", "status"]
+            },
+            "description": "Consulta o status atual de uma OS pelo número ou ID. **Endpoint público** — não requer autenticação. Ideal para o cliente final verificar o andamento do serviço."
+          },
+          "response": []
+        },
+        {
+          "name": "Avançar status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"em_diagnostico\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/work-orders/{{osId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-orders", "{{osId}}", "status"]
+            },
+            "description": "Avança o status da OS seguindo a máquina de estados:\n\n`recebida` → `em_diagnostico` → `aguardando_aprovacao` → `em_execucao` → `finalizada` → `entregue`\n\nTransições inválidas retornam **422 Unprocessable Entity**."
+          },
+          "response": []
+        },
+        {
+          "name": "Aprovar orçamento",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/work-orders/{{osId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-orders", "{{osId}}", "approve"]
+            },
+            "description": "Aprova o orçamento de uma OS em status `aguardando_aprovacao`, movendo-a para `em_execucao`."
+          },
+          "response": []
+        },
+        {
+          "name": "Rejeitar orçamento",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Valor acima do esperado pelo cliente\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/work-orders/{{osId}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-orders", "{{osId}}", "reject"]
+            },
+            "description": "Rejeita o orçamento de uma OS em status `aguardando_aprovacao`. O estoque reservado das peças **não** é deduzido."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Relatórios",
+      "description": "Endpoints de relatórios e métricas operacionais da oficina.",
+      "item": [
+        {
+          "name": "Tempo médio de execução",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/avg-execution-time",
+              "host": ["{{baseUrl}}"],
+              "path": ["reports", "avg-execution-time"],
+              "query": [
+                { "key": "servico_id", "value": "",   "description": "Filtrar por serviço UUID", "disabled": true },
+                { "key": "data_inicio","value": "",   "description": "Data inicial ISO 8601 (ex: 2025-01-01)", "disabled": true },
+                { "key": "data_fim",   "value": "",   "description": "Data final ISO 8601 (ex: 2025-12-31)", "disabled": true }
+              ]
+            },
+            "description": "Retorna o tempo médio de execução (em minutos) por serviço, calculado apenas sobre OSs no status `finalizada` ou `entregue`. OSs rejeitadas são excluídas do cálculo."
           },
           "response": []
         }

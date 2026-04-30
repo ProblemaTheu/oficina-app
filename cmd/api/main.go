@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"time"
-	
+
 	"github.com/go-chi/chi/v5"
 	"github.com/problematheu/tech-challenge-1/internal/infra/database"
 	"github.com/problematheu/tech-challenge-1/internal/infra/http/api"
@@ -22,6 +23,12 @@ func main() {
 	log.Println("migrations executadas com sucesso")
 
 	server := api.NovoServer(db)
+
+	ctx := context.Background()
+	if err := server.InicializarCaches(ctx); err != nil {
+		log.Printf("aviso: falha ao pré-carregar caches: %v", err)
+	}
+
 	strictHandler := api.NewStrictHandler(server, nil)
 
 	r := chi.NewRouter()

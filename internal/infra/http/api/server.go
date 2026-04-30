@@ -34,6 +34,8 @@ type Server struct {
 	vehicleUseCase *usecase.VehicleUseCase
 	serviceUseCase *usecase.ServiceUseCase
 	partUseCase    *usecase.PartUseCase
+	osUseCase      *usecase.OrdemServicoUseCase
+	authUseCase    *usecase.AuthUseCase
 }
 
 // NovoServer constrói um Server com todas as dependências injetadas.
@@ -48,13 +50,22 @@ func NovoServer(db *sql.DB) *Server {
 	veiculoRepo := repository.NovoVeiculoRepository(db)
 	servicoRepo := repository.NovoServicoRepository(db)
 	pecaRepo := repository.NovoPecaRepository(db)
+	osRepo := repository.NovoOrdemServicoRepository(db)
+	usuarioRepo := repository.NovoUsuarioRepository(db)
 
 	return &Server{
 		clientUseCase:  usecase.NewClientUseCase(clienteRepo),
 		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo, clienteRepo),
 		serviceUseCase: usecase.NewServiceUseCase(servicoRepo),
 		partUseCase:    usecase.NewPartUseCase(pecaRepo),
+		osUseCase:      usecase.NewOrdemServicoUseCase(osRepo, clienteRepo, veiculoRepo, servicoRepo, pecaRepo),
+		authUseCase:    usecase.NewAuthUseCase(usuarioRepo),
 	}
+}
+
+// InicializarCaches pré-carrega os caches internos (ex: status_ordens) na inicialização.
+func (s *Server) InicializarCaches(ctx context.Context) error {
+	return s.osUseCase.InicializarStatusCache(ctx)
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -933,5 +944,319 @@ func metaPaginacao(page, limit, total int) *PaginationMeta {
 		Limit:      limit,
 		Total:      total,
 		TotalPages: totalPages,
+	}
+}
+
+// ── Ordens de Serviço ─────────────────────────────────────────────────────────
+
+func (s *Server) GetWorkOrders(ctx context.Context, request GetWorkOrdersRequestObject) (GetWorkOrdersResponseObject, error) {
+	page, limit := paginacaoDefaults(request.Params.Page, request.Params.Limit)
+
+	input := usecase.ListarOSInput{Page: page, Limit: limit}
+	if request.Params.Status != nil {
+		input.Status = request.Params.Status
+	}
+	if request.Params.ClienteId != nil {
+		s := request.Params.ClienteId.String()
+		input.ClienteID = &s
+	}
+	if request.Params.VeiculoId != nil {
+		s := request.Params.VeiculoId.String()
+		input.VeiculoID = &s
+	}
+
+	lista, total, err := s.osUseCase.ListarOS(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	data := make([]OrdemServicoResponse, 0, len(lista))
+	for _, os := range lista {
+		data = append(data, osParaResponse(os))
+	}
+
+	return GetWorkOrders200JSONResponse(OrdemServicoListResponse{
+		Data: &data,
+		Meta: metaPaginacao(page, limit, total),
+	}), nil
+}
+
+func (s *Server) PostWorkOrders(ctx context.Context, request PostWorkOrdersRequestObject) (PostWorkOrdersResponseObject, error) {
+	body := request.Body
+
+	itens := make([]usecase.ItemOSInput, 0, len(body.Itens))
+	for _, item := range body.Itens {
+		itens = append(itens, usecase.ItemOSInput{
+			Tipo:       string(item.Tipo),
+			ID:         item.ReferenciaId.String(),
+			Quantidade: item.Quantidade,
+		})
+	}
+
+	input := usecase.CriarOSInput{
+		ClienteID: body.ClienteId.String(),
+		VeiculoID: body.VeiculoId.String(),
+		Descricao: body.Descricao,
+		Itens:     itens,
+	}
+
+	osCompleta, err := s.osUseCase.CriarOS(ctx, input)
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PostWorkOrders404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PostWorkOrders422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return PostWorkOrders400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
+		}
+	}
+
+	resp := osCompletaParaResponse(osCompleta)
+	return PostWorkOrders201JSONResponse(resp), nil
+}
+
+func (s *Server) GetWorkOrdersId(ctx context.Context, request GetWorkOrdersIdRequestObject) (GetWorkOrdersIdResponseObject, error) {
+	osCompleta, err := s.osUseCase.GetOS(ctx, request.Id.String())
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		if errors.As(err, &errNaoEncontrado) {
+			return GetWorkOrdersId404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		}
+		return nil, err
+	}
+	return GetWorkOrdersId200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
+func (s *Server) GetWorkOrdersIdStatus(ctx context.Context, request GetWorkOrdersIdStatusRequestObject) (GetWorkOrdersIdStatusResponseObject, error) {
+	os, err := s.osUseCase.ConsultarStatusPublico(ctx, request.Id.String())
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		if errors.As(err, &errNaoEncontrado) {
+			return GetWorkOrdersIdStatus404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		}
+		return nil, err
+	}
+
+	id := openapi_types.UUID(os.ID)
+	numero := os.Numero
+	status := string(os.StatusNome)
+	return GetWorkOrdersIdStatus200JSONResponse(OrdemServicoStatusPublicoResponse{
+		Id:           &id,
+		Numero:       &numero,
+		Status:       &status,
+		Descricao:    os.Descricao,
+		CriadoEm:     &os.CriadoEm,
+		AtualizadoEm: &os.AtualizadoEm,
+	}), nil
+}
+
+func (s *Server) PatchWorkOrdersIdStatus(ctx context.Context, request PatchWorkOrdersIdStatusRequestObject) (PatchWorkOrdersIdStatusResponseObject, error) {
+	body := request.Body
+	input := usecase.AvancarStatusInput{
+		OsID:        request.Id.String(),
+		NovoStatus:  entity.Status(body.Status),
+		Diagnostico: body.Diagnostico,
+		Observacao:  body.Observacao,
+	}
+
+	osCompleta, err := s.osUseCase.AvancarStatus(ctx, input)
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PatchWorkOrdersIdStatus404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PatchWorkOrdersIdStatus422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return PatchWorkOrdersIdStatus400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
+		}
+	}
+	return PatchWorkOrdersIdStatus200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
+func (s *Server) PostWorkOrdersIdApprove(ctx context.Context, request PostWorkOrdersIdApproveRequestObject) (PostWorkOrdersIdApproveResponseObject, error) {
+	osCompleta, err := s.osUseCase.AprovarOrcamento(ctx, request.Id.String())
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PostWorkOrdersIdApprove404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PostWorkOrdersIdApprove422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return nil, err
+		}
+	}
+	return PostWorkOrdersIdApprove200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
+func (s *Server) PostWorkOrdersIdReject(ctx context.Context, request PostWorkOrdersIdRejectRequestObject) (PostWorkOrdersIdRejectResponseObject, error) {
+	var motivo *string
+	if request.Body != nil {
+		motivo = request.Body.Motivo
+	}
+
+	osCompleta, err := s.osUseCase.RejeitarOrcamento(ctx, request.Id.String(), motivo)
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PostWorkOrdersIdReject404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PostWorkOrdersIdReject422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return nil, err
+		}
+	}
+	return PostWorkOrdersIdReject200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
+// ── Relatórios ────────────────────────────────────────────────────────────────
+
+func (s *Server) GetReportsAvgExecutionTime(ctx context.Context, request GetReportsAvgExecutionTimeRequestObject) (GetReportsAvgExecutionTimeResponseObject, error) {
+	input := usecase.RelatorioTempoMedioInput{}
+
+	if request.Params.ServicoId != nil {
+		id := request.Params.ServicoId.String()
+		input.ServicoID = &id
+	}
+	if request.Params.DataInicio != nil {
+		s := request.Params.DataInicio.Time.Format("2006-01-02")
+		input.DataInicio = &s
+	}
+	if request.Params.DataFim != nil {
+		s := request.Params.DataFim.Time.Format("2006-01-02")
+		input.DataFim = &s
+	}
+
+	itens, err := s.osUseCase.RelatorioTempoMedio(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := make(GetReportsAvgExecutionTime200JSONResponse, 0, len(itens))
+	for _, item := range itens {
+		id := openapi_types.UUID(item.ServicoID)
+		total := item.TotalExecucoes
+		tempo := item.TempoMedioMinutos
+		nome := item.ServicoNome
+		resp = append(resp, TempoMedioExecucaoItem{
+			ServicoId:         &id,
+			ServicoNome:       &nome,
+			TotalExecucoes:    &total,
+			TempoMedioMinutos: &tempo,
+		})
+	}
+	return resp, nil
+}
+
+// ── Auth — Register ───────────────────────────────────────────────────────────
+
+func (s *Server) PostAuthRegister(ctx context.Context, request PostAuthRegisterRequestObject) (PostAuthRegisterResponseObject, error) {
+	body := request.Body
+
+	papel := ""
+	if body.Papel != nil {
+		papel = string(*body.Papel)
+	}
+
+	usuario, nomePapel, err := s.authUseCase.CadastrarUsuario(ctx, usecase.CadastrarUsuarioInput{
+		Nome:  body.Nome,
+		Email: string(body.Email),
+		Senha: body.Senha,
+		Papel: papel,
+	})
+	if err != nil {
+		var errConflito *domainerros.ErrConflito
+		if errors.As(err, &errConflito) {
+			return PostAuthRegister409JSONResponse{ConflictJSONResponse{Code: "CONFLICT", Message: err.Error()}}, nil
+		}
+		return PostAuthRegister400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
+	}
+
+	id := openapi_types.UUID(usuario.ID)
+	email := openapi_types.Email(usuario.Email)
+	return PostAuthRegister201JSONResponse(UsuarioResponse{
+		Id:       &id,
+		Nome:     &usuario.Nome,
+		Email:    &email,
+		Papel:    &nomePapel,
+		CriadoEm: &usuario.CriadoEm,
+	}), nil
+}
+
+// ── helpers OS ────────────────────────────────────────────────────────────────
+
+func osParaResponse(os *entity.OrdemServico) OrdemServicoResponse {
+	id := openapi_types.UUID(os.ID)
+	clienteID := openapi_types.UUID(os.ClienteID)
+	veiculoID := openapi_types.UUID(os.VeiculoID)
+	numero := os.Numero
+	status := string(os.StatusNome)
+	valor := os.ValorTotal
+
+	return OrdemServicoResponse{
+		Id:           &id,
+		Numero:       &numero,
+		ClienteId:    &clienteID,
+		VeiculoId:    &veiculoID,
+		Status:       &status,
+		Descricao:    os.Descricao,
+		Diagnostico:  os.Diagnostico,
+		ValorTotal:   &valor,
+		AprovadoEm:   os.AprovadoEm,
+		ReprovadoEm:  os.ReprovadoEm,
+		IniciadoEm:   os.IniciadoEm,
+		FinalizadoEm: os.FinalizadoEm,
+		EntregueEm:   os.EntregueEm,
+		CriadoEm:     &os.CriadoEm,
+		AtualizadoEm: &os.AtualizadoEm,
+	}
+}
+
+func osCompletaParaResponse(osC *entity.OrdemServicoCompleta) OrdemServicoResponse {
+	resp := osParaResponse(&osC.OrdemServico)
+
+	itens := make([]ItemOsResponse, 0, len(osC.Itens))
+	for _, item := range osC.Itens {
+		itens = append(itens, itemOsParaResponse(item))
+	}
+	resp.Itens = &itens
+
+	clienteID := openapi_types.UUID(osC.Cliente.ID)
+	resp.Cliente = &ClienteResumoResponse{
+		Id:      &clienteID,
+		Nome:    &osC.Cliente.Nome,
+		CpfCnpj: &osC.Cliente.CpfCnpj,
+	}
+
+	veiculoID := openapi_types.UUID(osC.Veiculo.ID)
+	resp.Veiculo = &VeiculoResumoResponse{
+		Id:     &veiculoID,
+		Placa:  &osC.Veiculo.Placa,
+		Marca:  &osC.Veiculo.Marca,
+		Modelo: &osC.Veiculo.Modelo,
+		Ano:    &osC.Veiculo.Ano,
+	}
+	return resp
+}
+
+func itemOsParaResponse(item entity.ItemOS) ItemOsResponse {
+	id := openapi_types.UUID(item.ID)
+	refID := openapi_types.UUID(item.ReferenciaID)
+	return ItemOsResponse{
+		Id:            &id,
+		Tipo:          &item.Tipo,
+		ReferenciaId:  &refID,
+		Nome:          &item.Nome,
+		Quantidade:    &item.Quantidade,
+		PrecoUnitario: &item.PrecoUnitario,
+		Subtotal:      &item.Subtotal,
 	}
 }
