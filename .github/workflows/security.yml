@@ -1,0 +1,217 @@
+name: Security Vulnerability Report
+
+on:
+  push:
+    branches: ["main", "feature/**", "fix/**"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    # Roda toda segunda-feira às 08:00 UTC para capturar CVEs novas
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write  # necessário para upload do SARIF ao GitHub Security
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. govulncheck — verificador oficial do Go team
+  #    Consulta o banco de dados vuln.go.dev
+  # ─────────────────────────────────────────────
+  govulncheck:
+    name: govulncheck (Go Vuln DB)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck -json ./... > govulncheck-report.json || true
+
+      - name: Print human-readable summary
+        run: govulncheck ./... || true
+
+      - name: Upload govulncheck report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: govulncheck-report
+          path: govulncheck-report.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 2. gosec — SAST para código Go
+  #    Detecta: SQL injection, hardcoded secrets,
+  #    uso inseguro de crypto, path traversal, etc.
+  # ─────────────────────────────────────────────
+  gosec:
+    name: gosec (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run gosec (SARIF)
+        uses: securego/gosec@master
+        with:
+          # -no-fail: não quebra o job; alertas aparecem na aba Security
+          # fmt sarif: formato padrão para integração com GitHub Advanced Security
+          args: "-no-fail -fmt sarif -out gosec-results.sarif ./..."
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec
+
+      - name: Upload gosec SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosec-sarif
+          path: gosec-results.sarif
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 3. Trivy — scanner de container e dependências
+  #    Verifica: CVEs na imagem Docker, OS packages,
+  #    secrets vazados no código, config insegura
+  # ─────────────────────────────────────────────
+  trivy:
+    name: Trivy (Container + Deps)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t tech-challenge-1:${{ github.sha }} .
+
+      - name: Run Trivy — image scan (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: tech-challenge-1:${{ github.sha }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "0"
+
+      - name: Upload Trivy image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      - name: Run Trivy — filesystem scan (secrets + misconfig)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          scanners: secret,misconfig
+          exit-code: "0"
+
+      - name: Upload Trivy fs SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Upload Trivy artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: |
+            trivy-image.sarif
+            trivy-fs.sarif
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 4. Relatório consolidado — resumo final no log
+  # ─────────────────────────────────────────────
+  summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [govulncheck, gosec, trivy]
+    if: always()
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports/
+
+      - name: Print govulncheck summary
+        run: |
+          echo "===== govulncheck ====="
+          if [ -f reports/govulncheck-report/govulncheck-report.json ]; then
+            # Extrai apenas as vulnerabilidades encontradas
+            cat reports/govulncheck-report/govulncheck-report.json \
+              | grep -E '"message"' | head -50 || echo "Nenhuma vulnerabilidade encontrada."
+          else
+            echo "Relatório não encontrado."
+          fi
+
+      - name: Print gosec findings count
+        run: |
+          echo "===== gosec ====="
+          if [ -f reports/gosec-sarif/gosec-results.sarif ]; then
+            ISSUES=$(cat reports/gosec-sarif/gosec-results.sarif | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          total = sum(len(r.get('results', [])) for r in data.get('runs', []))
+          print(f'Issues encontrados: {total}')
+          ")
+            echo "$ISSUES"
+          else
+            echo "Relatório não encontrado."
+          fi
+
+      - name: Print Trivy findings count
+        run: |
+          echo "===== Trivy ====="
+          for f in reports/trivy-reports/*.sarif; do
+            echo "--- $f ---"
+            python3 -c "
+          import json, sys
+          with open('$f') as fp:
+              data = json.load(fp)
+          total = sum(len(r.get('results', [])) for r in data.get('runs', []))
+          print(f'Issues: {total}')
+          " 2>/dev/null || echo "Não foi possível processar $f"
+          done
+
+      - name: Job status summary
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════╗"
+          echo "║        SECURITY REPORT STATUS        ║"
+          echo "╠══════════════════════════════════════╣"
+          echo "║  govulncheck : ${{ needs.govulncheck.result }}"
+          echo "║  gosec       : ${{ needs.gosec.result }}"
+          echo "║  trivy       : ${{ needs.trivy.result }}"
+          echo "╚══════════════════════════════════════╝"
+          echo ""
+          echo "Alertas detalhados disponíveis em:"
+          echo "  → GitHub Security tab (SARIF)"
+          echo "  → Actions > Artifacts (JSON/SARIF brutos)"

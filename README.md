@@ -1,9 +1,17 @@
 # Tech Challenge — API de Oficina Mecânica
 
-API REST para gestão de uma oficina mecânica, cobrindo autenticação JWT, clientes, veículos, serviços, peças e ordens de serviço com máquina de estados. Construída em Go com arquitetura API-first: o contrato OpenAPI é a fonte da verdade, e o código de roteamento/serialização é gerado automaticamente.
+> API REST para gestão completa de uma oficina mecânica: autenticação JWT, clientes, veículos, catálogo de serviços, controle de estoque de peças e ordens de serviço com máquina de estados. Construída em Go com arquitetura API-first — o contrato OpenAPI é a fonte da verdade e o código de roteamento/serialização é gerado automaticamente.
+
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15.7-336791?logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Security](https://img.shields.io/badge/Security-govulncheck%20%7C%20gosec%20%7C%20Trivy-green)
+
+---
 
 ## Índice
 
+- [Quickstart](#quickstart)
 - [Tecnologias](#tecnologias)
 - [Arquitetura](#arquitetura)
 - [Pré-requisitos](#pré-requisitos)
@@ -14,9 +22,39 @@ API REST para gestão de uma oficina mecânica, cobrindo autenticação JWT, cli
 - [Variáveis de ambiente](#variáveis-de-ambiente)
 - [Endpoints](#endpoints)
 - [Máquina de estados — Ordem de Serviço](#máquina-de-estados--ordem-de-serviço)
+- [Schema do banco de dados](#schema-do-banco-de-dados)
 - [Testes](#testes)
+- [CI/CD e Segurança](#cicd-e-segurança)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Gerando código a partir do OpenAPI](#gerando-código-a-partir-do-openapi)
+
+---
+
+## Quickstart
+
+```bash
+git clone https://github.com/problematheu/tech-challenge-1.git
+cd tech-challenge-1
+docker compose up -d --build
+```
+
+Aguarde o healthcheck e teste:
+
+```bash
+# Verificar se a API está pronta
+curl http://localhost:8080/health/ready
+
+# Obter token JWT (usuário admin padrão)
+curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@oficina.com","password":"Admin@123"}' | jq .token
+
+# Listar clientes (substituir <token> pelo token retornado)
+curl http://localhost:8080/v1/clients \
+  -H "Authorization: Bearer <token>"
+```
+
+A documentação completa do contrato está em [`docs/openapi.yaml`](docs/openapi.yaml) e a coleção Postman em [`docs/postman_collection.json`](docs/postman_collection.json).
 
 ---
 
@@ -43,7 +81,7 @@ O projeto segue **Clean Architecture** com geração de código API-first:
 ```
 docs/openapi.yaml               ← fonte da verdade do contrato
         │
-        ▼
+        ▼  go generate
 internal/infra/http/api/
   api.gen.go                    ← gerado pelo oapi-codegen (NÃO editar)
   server.go                     ← implementação dos handlers
@@ -60,7 +98,7 @@ internal/infra/repository/      ← acesso ao banco de dados
 internal/infra/database/        ← conexão, migrations e arquivos SQL
 ```
 
-Fluxo de uma requisição autenticada:
+### Fluxo de uma requisição autenticada
 
 ```
 HTTP Request
@@ -72,6 +110,17 @@ HTTP Request
   → Repository
   → PostgreSQL
 ```
+
+### Camadas e responsabilidades
+
+| Camada | Localização | Responsabilidade |
+|---|---|---|
+| HTTP | `infra/http/api/server.go` | Receber, validar e responder requisições |
+| Middleware | `infra/http/middleware/jwt.go` | Autenticação e injeção de claims |
+| UseCase | `application/usecase/` | Regras de negócio e orquestração |
+| Domain | `domain/entity/` + `domain/valueobject/` | Entidades e value objects |
+| Repository | `infra/repository/` | Persistência e consultas SQL |
+| Database | `infra/database/` | Conexão, pool e migrations |
 
 ---
 
@@ -104,7 +153,7 @@ docker compose up -d --build
 ```
 
 Isso irá:
-- Construir a imagem da aplicação Go
+- Construir a imagem da aplicação Go (multi-stage, Alpine)
 - Subir o PostgreSQL 15.7 com healthcheck (exposto na porta **5433** do host)
 - Aguardar o banco estar pronto antes de iniciar a API
 - Executar todas as migrations automaticamente (schema + seed do catálogo)
@@ -125,6 +174,13 @@ Resposta esperada:
 }
 ```
 
+### Portas expostas
+
+| Serviço | Porta (host) | Porta (container) |
+|---|---|---|
+| API | 8080 | 8080 |
+| PostgreSQL | 5433 | 5432 |
+
 ### Comandos úteis
 
 ```bash
@@ -136,6 +192,9 @@ docker compose down -v
 
 # Rebuild apenas da aplicação após mudanças no código
 docker compose up -d --build app
+
+# Ver logs da aplicação em tempo real
+docker compose logs -f app
 ```
 
 ---
@@ -152,8 +211,6 @@ CREATE DATABASE tech_challenge_db;
 
 ### 2. Configure as variáveis de ambiente
 
-Exporte as variáveis no shell ou crie um arquivo `.env`:
-
 ```bash
 export DB_HOST=localhost
 export DB_PORT=5432
@@ -163,21 +220,23 @@ export DB_NAME=tech_challenge_db
 export JWT_SECRET=sua-chave-secreta-aqui
 ```
 
-### 3. Instale as dependências
-
-```bash
-go mod download
-```
-
-### 4. Execute a aplicação
+### 3. Instale as dependências e execute
 
 As migrations são executadas automaticamente na inicialização:
 
 ```bash
+go mod download
 go run ./cmd/api
 ```
 
 A API estará disponível em `http://localhost:8080`.
+
+### 4. Build manual
+
+```bash
+go build -o api ./cmd/api
+./api
+```
 
 ### 5. (Opcional) Rodar migrations manualmente
 
@@ -193,7 +252,10 @@ migrate -path internal/infra/database/migrations \
 
 ### Catálogo (migration 000004 — automático)
 
-Aplicado automaticamente na inicialização. Inclui 3 usuários de sistema, 15 serviços e 20 peças.
+Aplicado automaticamente na inicialização. Inclui:
+- **3 usuários** de sistema (admin, mecânico, atendente)
+- **15 serviços** no catálogo (troca de óleo, alinhamento, freios, etc.)
+- **20 peças** no inventário com quantidades mínimas
 
 ### Dados mockados (opcional — para testes de endpoints)
 
@@ -219,11 +281,27 @@ Para gerar hashes bcrypt de novas senhas:
 go run scripts/genhash/main.go
 ```
 
+### Importando a coleção Postman
+
+1. Abra o Postman
+2. Clique em **Import**
+3. Selecione `docs/postman_collection.json`
+4. Configure a variável de ambiente `base_url` como `http://localhost:8080`
+5. Execute o request de login para obter o token e configurar a variável `token`
+
 ---
 
 ## Autenticação
 
-A API usa **JWT Bearer tokens** com algoritmo HS256.
+A API usa **JWT Bearer tokens** com algoritmo HS256, validade de **8 horas**.
+
+### Credenciais padrão (seed do catálogo)
+
+| E-mail | Senha | Papel |
+|---|---|---|
+| `admin@oficina.com` | `Admin@123` | Administrador |
+| `joao@oficina.com` | `Mecanico@123` | Mecânico |
+| `ana@oficina.com` | `Atende@123` | Atendente |
 
 ### Obtendo um token
 
@@ -248,14 +326,6 @@ curl http://localhost:8080/v1/clients \
   -H "Authorization: Bearer <token>"
 ```
 
-### Credenciais padrão (seed do catálogo)
-
-| E-mail | Senha | Papel |
-|---|---|---|
-| `admin@oficina.com` | `Admin@123` | Administrador |
-| `joao@oficina.com` | `Mecanico@123` | Mecânico |
-| `ana@oficina.com` | `Atende@123` | Atendente |
-
 ### Rotas públicas (sem autenticação)
 
 | Rota | Motivo |
@@ -265,8 +335,6 @@ curl http://localhost:8080/v1/clients \
 | `GET /v1/work-orders/{id}/status` | Consulta de status por clientes externos |
 
 Todas as demais rotas exigem `Authorization: Bearer <token>`.
-
-> **Expiração:** tokens têm validade de **8 horas**.
 
 ---
 
@@ -281,7 +349,7 @@ Todas as demais rotas exigem `Authorization: Bearer <token>`.
 | `DB_NAME` | `tech_challenge_db` | Nome do banco de dados |
 | `JWT_SECRET` | *(inseguro — altere em produção)* | Chave de assinatura dos tokens JWT |
 
-> **Atenção:** em produção, defina `JWT_SECRET` com um valor longo e aleatório. O valor padrão é deliberadamente inseguro.
+> **Atenção:** em produção, defina `JWT_SECRET` com um valor longo e aleatório (mínimo 32 caracteres). O valor padrão é deliberadamente inseguro.
 
 ---
 
@@ -344,7 +412,15 @@ A API está disponível sob o prefixo `/v1`. Rotas marcadas com 🔓 são públi
 | GET | `/v1/parts/{id}` | — | Buscar peça por ID |
 | PUT | `/v1/parts/{id}` | — | Atualizar peça |
 | DELETE | `/v1/parts/{id}` | — | Remover peça |
-| PATCH | `/v1/parts/{id}/stock` | — | Ajustar estoque (`entrada` / `saida` / `ajuste`) |
+| PATCH | `/v1/parts/{id}/stock` | — | Ajustar estoque |
+
+**Operações de ajuste de estoque** (`PATCH /v1/parts/{id}/stock`):
+
+| Operação | Efeito |
+|---|---|
+| `entrada` | Incrementa o estoque atual |
+| `saida` | Decrementa o estoque atual |
+| `ajuste` | Define o estoque para um valor absoluto |
 
 ### Ordens de Serviço
 
@@ -352,8 +428,8 @@ A API está disponível sob o prefixo `/v1`. Rotas marcadas com 🔓 são públi
 |---|---|---|---|
 | GET | `/v1/work-orders` | `page`, `limit`, `status`, `cliente_id`, `veiculo_id` | Listar OSs (paginado) |
 | POST | `/v1/work-orders` | — | Abrir nova OS |
-| GET | `/v1/work-orders/{id}` | — | Detalhes completos da OS (itens + histórico) |
-| GET 🔓 | `/v1/work-orders/{id}/status` | — | Consultar status (rota pública para clientes) |
+| GET | `/v1/work-orders/{id}` | — | Detalhes completos (itens + histórico) |
+| GET | `/v1/work-orders/{id}/status` | — | Consultar status (rota pública) |
 | PATCH | `/v1/work-orders/{id}/status` | — | Avançar status da OS |
 | POST | `/v1/work-orders/{id}/approve` | — | Aprovar orçamento |
 | POST | `/v1/work-orders/{id}/reject` | — | Rejeitar orçamento |
@@ -370,40 +446,79 @@ O contrato completo com exemplos de request/response está em [`docs/openapi.yam
 
 ## Máquina de estados — Ordem de Serviço
 
-Toda OS percorre um fluxo de status com transições controladas:
+Toda OS percorre um fluxo de status com transições controladas. Tentativas de transições inválidas são rejeitadas com erro HTTP 422.
 
 ```
-                    ┌─────────────┐
-        abertura    │   recebida  │
-        ──────────► │             │
-                    └──────┬──────┘
-                           │ avançar status
-                    ┌──────▼──────┐
-                    │em_diagnos-  │
-                    │   tico      │
-                    └──────┬──────┘
-                           │ avançar status
-                    ┌──────▼──────┐
-                    │ aguardando  │
-                    │ aprovação   │
-                    └──────┬──────┘
-                    ┌──────┴──────┐
-              aprovar│             │rejeitar
-                    ▼             ▼
-             ┌──────────┐  ┌──────────┐
-             │em_execu- │  │finalizada│
-             │   cão    │  │(rejeitada)│
-             └────┬─────┘  └──────────┘
-                  │ avançar status
-             ┌────▼─────┐
-             │finalizada│
-             │(concluída)│
-             └────┬─────┘
-                  │ avançar status
-             ┌────▼─────┐
-             │ entregue │
-             └──────────┘
+        abertura
+           │
+           ▼
+      ┌─────────┐
+      │recebida │
+      └────┬────┘
+           │ PATCH /status
+           ▼
+    ┌──────────────┐
+    │em_diagnostico│
+    └──────┬───────┘
+           │ PATCH /status
+           ▼
+   ┌───────────────────┐
+   │aguardando_aprovacao│
+   └────────┬──────────┘
+      ┌─────┴──────┐
+      │            │
+   /approve     /reject
+      │            │
+      ▼            ▼
+ ┌──────────┐  ┌──────────┐
+ │em_execucao│  │finalizada│
+ └─────┬────┘  │(rejeitada)│
+       │        └──────────┘
+       │ PATCH /status
+       ▼
+  ┌──────────┐
+  │finalizada│
+  │(concluída)│
+  └─────┬────┘
+        │ PATCH /status
+        ▼
+   ┌─────────┐
+   │entregue │
+   └─────────┘
 ```
+
+Os números de OS são gerados automaticamente no formato `OS-YYYY-NNNNN` (ex: `OS-2025-00001`).
+
+---
+
+## Schema do banco de dados
+
+O banco é criado e versionado via migrations em `internal/infra/database/migrations/`. As migrations são executadas automaticamente na inicialização.
+
+### Tabelas principais
+
+| Tabela | Descrição |
+|---|---|
+| `papeis_usuario` | Papéis de acesso (administrador, mecanico, atendente) |
+| `status_ordens` | Status possíveis de uma OS (6 registros) |
+| `usuarios` | Usuários do sistema com senhas em bcrypt |
+| `clientes` | Clientes (pessoa física ou jurídica, CPF/CNPJ único) |
+| `veiculos` | Veículos vinculados a clientes (placa única) |
+| `servicos` | Catálogo de serviços da oficina |
+| `pecas` | Inventário de peças com controle de estoque mínimo |
+| `ordens_servico` | Ordens de serviço com número, status e timestamps |
+| `itens_os_servicos` | Serviços incluídos em uma OS (N:N) |
+| `itens_os_pecas` | Peças utilizadas em uma OS (N:N) |
+| `historicos_status` | Auditoria de todas as transições de status |
+
+### Versões de migration
+
+| Versão | Descrição |
+|---|---|
+| `000001` | Schema inicial — todas as tabelas |
+| `000002` | Seed de papéis e status padrão |
+| `000003` | Alterações na tabela `ordens_servico` |
+| `000004` | Seed do catálogo (serviços, peças e usuários) |
 
 ---
 
@@ -419,6 +534,31 @@ go test -v ./...
 # Rodar testes de um pacote específico
 go test ./internal/application/usecase/...
 ```
+
+Os testes cobrem a máquina de estados das ordens de serviço (`ordem_servico_usecase_test.go`), validando transições válidas e inválidas com repositórios mockados (sem necessidade de banco de dados).
+
+---
+
+## CI/CD e Segurança
+
+O repositório inclui um pipeline de segurança em `.github/workflows/security.yml` com três scanners complementares.
+
+### Quando é executado
+
+- Push nas branches `main`, `feature/*` e `fix/*`
+- Pull requests para `main`
+- Semanalmente (segundas-feiras às 08:00 UTC)
+- Manualmente via `workflow_dispatch`
+
+### Scanners
+
+| Ferramenta | Tipo | O que verifica |
+|---|---|---|
+| **govulncheck** | SCA | Vulnerabilidades conhecidas nas dependências Go (vuln.go.dev) |
+| **gosec** | SAST | SQL injection, segredos hardcoded, traversal de path, uso inadequado de crypto |
+| **Trivy** | Container + SCA | CVEs em pacotes do sistema, segredos expostos, misconfigurações |
+
+Os resultados são enviados como SARIF para a aba **Security** do GitHub e disponibilizados como artifacts do workflow.
 
 ---
 
@@ -443,9 +583,9 @@ go test ./internal/application/usecase/...
 │   │       ├── ordem_servico_usecase.go # OS com máquina de estados
 │   │       └── ordem_servico_usecase_test.go
 │   ├── domain/
-│   │   ├── entity/                      # Entidades de domínio
+│   │   ├── entity/                      # Entidades de domínio (11 arquivos)
 │   │   ├── erros/                       # Tipos de erro de domínio
-│   │   └── valueobject/                 # Value objects (CPF/CNPJ, placa)
+│   │   └── valueobject/                 # CPF/CNPJ e validação de placa
 │   └── infra/
 │       ├── database/
 │       │   ├── database.go              # Conexão com PostgreSQL
@@ -462,19 +602,16 @@ go test ./internal/application/usecase/...
 │       │   │   └── server.go            # Implementação dos handlers
 │       │   └── middleware/
 │       │       └── jwt.go               # Middleware JWT Bearer (HS256)
-│       └── repository/                  # Acesso ao banco de dados
-│           ├── client_repository.go
-│           ├── vehicle_repository.go
-│           ├── servico_repository.go
-│           ├── peca_repository.go
-│           ├── usuario_repository.go
-│           └── ordem_servico_repository.go
+│       └── repository/                  # Acesso ao banco de dados (6 repositórios)
 ├── scripts/
 │   ├── seed_dados_completos.sql         # Dados mockados (clientes, veículos, OSs)
 │   └── genhash/
-│       └── main.go                     # Utilitário para gerar hashes bcrypt
+│       └── main.go                      # Utilitário para gerar hashes bcrypt
+├── .github/
+│   └── workflows/
+│       └── security.yml                 # Pipeline de segurança (govulncheck, gosec, Trivy)
 ├── docker-compose.yml
-├── Dockerfile
+├── Dockerfile                           # Multi-stage build (Go builder + Alpine runtime)
 ├── go.mod
 ├── go.sum
 └── oapi-codegen.yaml                    # Configuração do gerador de código
@@ -490,6 +627,13 @@ Após modificar `docs/openapi.yaml`, regenere o código:
 go generate ./internal/infra/http/api/...
 ```
 
-> **Atenção:** nunca edite `api.gen.go` manualmente. Todas as alterações de contrato devem ser feitas no `openapi.yaml`.
+O arquivo `oapi-codegen.yaml` controla o que é gerado:
 
-O arquivo `oapi-codegen.yaml` na raiz do projeto contém a configuração do gerador (pacote de saída, tipos habilitados etc.).
+| Opção | Valor | Efeito |
+|---|---|---|
+| `chi-server` | `true` | Interfaces do router chi |
+| `strict-server` | `true` | Request/response tipados (sem parsing manual de JSON) |
+| `models` | `true` | Todos os tipos dos schemas OpenAPI |
+| `embedded-spec` | `true` | Especificação OpenAPI embutida no binário |
+
+> **Atenção:** nunca edite `api.gen.go` manualmente. Todas as alterações de contrato devem ser feitas no `openapi.yaml` e o código regerado.
