@@ -102,7 +102,7 @@ jobs:
         run: docker build -t tech-challenge-1:${{ github.sha }} .
 
       - name: Run Trivy — image scan (SARIF)
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@0.35.0
         continue-on-error: true
         with:
           image-ref: tech-challenge-1:${{ github.sha }}
@@ -112,7 +112,7 @@ jobs:
           exit-code: "0"
 
       - name: Run Trivy — filesystem scan (secrets + misconfig)
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@0.35.0
         continue-on-error: true
         with:
           scan-type: fs
