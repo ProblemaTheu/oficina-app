@@ -138,7 +138,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"mecanico@oficina.com\",\n  \"senha\": \"s3nh@segura\"\n}",
+              "raw": "{\n  \"email\": \"admin@oficina.com\",\n  \"senha\": \"Admin@123\"\n}",
               "options": {
                 "raw": { "language": "json" }
               }

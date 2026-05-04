@@ -48,7 +48,7 @@ curl http://localhost:8080/health/ready
 # Obter token JWT (usuário admin padrão)
 curl -s -X POST http://localhost:8080/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@oficina.com","password":"Admin@123"}' | jq .token
+  -d '{"email":"admin@oficina.com","senha":"Admin@123"}' | jq .access_token
 
 # Listar clientes (substituir <token> pelo token retornado)
 curl http://localhost:8080/v1/clients \
@@ -309,13 +309,14 @@ A API usa **JWT Bearer tokens** com algoritmo HS256, validade de **8 horas**.
 ```bash
 curl -X POST http://localhost:8080/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "admin@oficina.com", "password": "Admin@123"}'
+  -d '{"email": "admin@oficina.com", "senha": "Admin@123"}'
 ```
 
 Resposta:
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
   "expires_in": 28800
 }
 ```
@@ -561,9 +562,8 @@ O repositório inclui um pipeline de segurança em `.github/workflows/security.y
 
 ### Quando é executado
 
-- Push nas branches `main`, `feature/*` e `fix/*`
+- Push na branch `main`
 - Pull requests para `main`
-- Semanalmente (segundas-feiras às 08:00 UTC)
 - Manualmente via `workflow_dispatch`
 
 ### Scanners
@@ -573,6 +573,7 @@ O repositório inclui um pipeline de segurança em `.github/workflows/security.y
 | **govulncheck** | SCA | Vulnerabilidades conhecidas nas dependências Go (vuln.go.dev) |
 | **gosec** | SAST | SQL injection, segredos hardcoded, traversal de path, uso inadequado de crypto |
 | **Trivy** | Container + SCA | CVEs em pacotes do sistema, segredos expostos, misconfigurações |
+| **SonarCloud** | SAST + Quality Gate | Bugs, code smells, cobertura, duplicações, security hotspots |
 
 Os resultados são enviados como SARIF para a aba **Security** do GitHub e disponibilizados como artifacts do workflow.
 
