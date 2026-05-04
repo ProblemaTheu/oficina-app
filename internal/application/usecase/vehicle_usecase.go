@@ -8,17 +8,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 // VehicleUseCase centraliza todos os casos de uso relacionados a veiculo.
 type VehicleUseCase struct {
-	repo        *repository.VeiculoRepository
-	clienteRepo *repository.ClienteRepository
+	repo        veiculoRepo
+	clienteRepo clienteRepo
 }
 
 // NewVehicleUseCase cria uma nova instância do use case de veiculos.
-func NewVehicleUseCase(repo *repository.VeiculoRepository, clienteRepo *repository.ClienteRepository) *VehicleUseCase {
+func NewVehicleUseCase(repo veiculoRepo, clienteRepo clienteRepo) *VehicleUseCase {
 	return &VehicleUseCase{
 		repo:        repo,
 		clienteRepo: clienteRepo,

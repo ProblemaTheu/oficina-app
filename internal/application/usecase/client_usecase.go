@@ -7,16 +7,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 // ClientUseCase centraliza todos os casos de uso relacionados a cliente.
 type ClientUseCase struct {
-	repo *repository.ClienteRepository
+	repo clienteRepo
 }
 
 // NewClientUseCase cria uma nova instância do use case de cliente.
-func NewClientUseCase(repo *repository.ClienteRepository) *ClientUseCase {
+func NewClientUseCase(repo clienteRepo) *ClientUseCase {
 	return &ClientUseCase{repo: repo}
 }
 

@@ -7,14 +7,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 type ServiceUseCase struct {
-	repo *repository.ServicoRepository
+	repo servicoRepo
 }
 
-func NewServiceUseCase(repo *repository.ServicoRepository) *ServiceUseCase {
+func NewServiceUseCase(repo servicoRepo) *ServiceUseCase {
 	return &ServiceUseCase{repo: repo}
 }
 

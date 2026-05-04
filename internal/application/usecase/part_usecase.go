@@ -7,16 +7,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 var ErrEstoqueInsuficiente = errors.New("estoque insuficiente")
 
 type PartUseCase struct {
-	repo *repository.PecaRepository
+	repo pecaRepo
 }
 
-func NewPartUseCase(repo *repository.PecaRepository) *PartUseCase {
+func NewPartUseCase(repo pecaRepo) *PartUseCase {
 	return &PartUseCase{repo: repo}
 }
 

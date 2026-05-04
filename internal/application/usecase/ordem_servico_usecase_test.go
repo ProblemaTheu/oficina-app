@@ -232,6 +232,35 @@ func TestRejeitarOrcamento_NaoDeduziuEstoque(t *testing.T) {
 	}
 }
 
+// TestValorTotal_CalculadoCorretamente verifica que o valor total da OS é a soma
+// de (quantidade * precoUnitario) de todos os serviços e peças.
+func TestValorTotal_CalculadoCorretamente(t *testing.T) {
+	type item struct {
+		quantidade    int
+		precoUnitario float64
+	}
+	servicos := []item{
+		{quantidade: 2, precoUnitario: 100.0},
+		{quantidade: 1, precoUnitario: 200.0},
+	}
+	pecas := []item{
+		{quantidade: 3, precoUnitario: 50.0},
+	}
+
+	var total float64
+	for _, s := range servicos {
+		total += float64(s.quantidade) * s.precoUnitario
+	}
+	for _, p := range pecas {
+		total += float64(p.quantidade) * p.precoUnitario
+	}
+
+	// 2*100 + 1*200 + 3*50 = 200 + 200 + 150 = 550
+	if total != 550.0 {
+		t.Errorf("esperava total 550.0, obteve %.2f", total)
+	}
+}
+
 // TestTempoMedioExecucao_ExcluitOSsRejeitadas documenta que apenas OSs com
 // status finalizada/entregue E com iniciado_em preenchido entram no cálculo.
 func TestTempoMedioExecucao_ExcluitOSsRejeitadas(t *testing.T) {

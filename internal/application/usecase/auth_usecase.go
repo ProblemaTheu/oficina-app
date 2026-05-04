@@ -14,20 +14,11 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// jwtExpiresIn define o tempo de validade de um JWT emitido pelo sistema.
-// Altere este valor via constante — não via env var — para garantir que
-// access tokens e middleware usem sempre o mesmo TTL.
 const jwtExpiresIn = 8 * time.Hour
 
-// jwtSecret retorna o segredo HMAC-SHA256 usado para assinar e verificar JWTs.
-// Lê a variável de ambiente JWT_SECRET; se ausente, usa um valor padrão inseguro
-// adequado apenas para desenvolvimento local.
-//
-// Em produção, defina JWT_SECRET com pelo menos 32 bytes aleatórios.
 func jwtSecret() []byte {
 	if s := os.Getenv("JWT_SECRET"); s != "" {
 		return []byte(s)
@@ -35,22 +26,11 @@ func jwtSecret() []byte {
 	return []byte("changeme-insecure-default-secret")
 }
 
-// AuthUseCase centraliza os casos de uso de autenticação e gerenciamento de
-// contas de usuário.
-//
-// Responsabilidades:
-//   - Cadastrar novos usuários com senha armazenada como bcrypt hash.
-//   - Autenticar usuários por e-mail e senha, emitindo um JWT Bearer token.
-//
-// Não é responsabilidade deste use case:
-//   - Validar o token em requisições (responsabilidade do middleware JWT).
-//   - Autorizar acesso a recursos por papel/permissão (futuro RBAC).
 type AuthUseCase struct {
-	usuarioRepo *repository.UsuarioRepository
+	usuarioRepo usuarioRepo
 }
 
-// NewAuthUseCase cria uma nova instância de AuthUseCase com suas dependências injetadas.
-func NewAuthUseCase(usuarioRepo *repository.UsuarioRepository) *AuthUseCase {
+func NewAuthUseCase(usuarioRepo usuarioRepo) *AuthUseCase {
 	return &AuthUseCase{usuarioRepo: usuarioRepo}
 }
 

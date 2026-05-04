@@ -16,27 +16,27 @@ import (
 
 // OrdemServicoUseCase centraliza todos os casos de uso de Ordens de Serviço.
 type OrdemServicoUseCase struct {
-	osRepo      *repository.OrdemServicoRepository
-	clienteRepo *repository.ClienteRepository
-	veiculoRepo *repository.VeiculoRepository
-	servicoRepo *repository.ServicoRepository
-	pecaRepo    *repository.PecaRepository
+	osRepo      osRepo
+	clienteRepo clienteRepo
+	veiculoRepo veiculoRepo
+	servicoRepo servicoRepo
+	pecaRepo    pecaRepo
 }
 
 // NewOrdemServicoUseCase cria uma nova instância do use case.
 func NewOrdemServicoUseCase(
-	osRepo *repository.OrdemServicoRepository,
-	clienteRepo *repository.ClienteRepository,
-	veiculoRepo *repository.VeiculoRepository,
-	servicoRepo *repository.ServicoRepository,
-	pecaRepo *repository.PecaRepository,
+	osR osRepo,
+	cliR clienteRepo,
+	veicR veiculoRepo,
+	svcR servicoRepo,
+	pecR pecaRepo,
 ) *OrdemServicoUseCase {
 	return &OrdemServicoUseCase{
-		osRepo:      osRepo,
-		clienteRepo: clienteRepo,
-		veiculoRepo: veiculoRepo,
-		servicoRepo: servicoRepo,
-		pecaRepo:    pecaRepo,
+		osRepo:      osR,
+		clienteRepo: cliR,
+		veiculoRepo: veicR,
+		servicoRepo: svcR,
+		pecaRepo:    pecR,
 	}
 }
 

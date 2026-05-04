@@ -9,8 +9,8 @@ on:
 
 permissions:
   contents: read
-  actions: read 
-  security-events: write  
+  actions: read
+  security-events: write
 
 jobs:
   # ─────────────────────────────────────────────
@@ -36,8 +36,46 @@ jobs:
       - name: Run govulncheck
         run: govulncheck -json ./... > govulncheck-report.json || true
 
-      - name: Print human-readable summary
-        run: govulncheck ./... || true
+      - name: Job Summary — govulncheck
+        if: always()
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+
+          findings = []
+          report = "govulncheck-report.json"
+          lines = ["# govulncheck — Go Vulnerability Check\n"]
+
+          if os.path.exists(report):
+              with open(report) as f:
+                  for raw in f:
+                      raw = raw.strip()
+                      if raw:
+                          try:
+                              obj = json.loads(raw)
+                              if "finding" in obj:
+                                  findings.append(obj["finding"])
+                          except Exception:
+                              pass
+              if findings:
+                  lines.append(f"**🔴 {len(findings)} vulnerabilidade(s) encontrada(s)**\n")
+                  lines.append("| OSV ID | Módulo | Versão | Fix |")
+                  lines.append("|--------|--------|--------|-----|")
+                  for f in findings:
+                      osv_id = f.get("osv", "—")
+                      fixed  = f.get("fixedVersion") or "sem fix"
+                      trace  = f.get("trace", [{}])
+                      module  = trace[0].get("module",  "—") if trace else "—"
+                      version = trace[0].get("version", "—") if trace else "—"
+                      lines.append(f"| [{osv_id}](https://pkg.go.dev/vuln/{osv_id}) | `{module}` | {version} | {fixed} |")
+              else:
+                  lines.append("**✅ Nenhuma vulnerabilidade conhecida encontrada**\n")
+          else:
+              lines.append("**⚠️ Relatório não encontrado**\n")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n\n")
+          PYEOF
 
       - name: Upload govulncheck report
         if: always()
@@ -65,25 +103,82 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run gosec (SARIF)
-        uses: securego/gosec@master
-        with:
-          args: "-no-fail -fmt sarif -out gosec-results.sarif ./..."
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec (SARIF + JSON)
+        run: |
+          gosec -no-fail -fmt sarif -out gosec-results.sarif ./... || true
+          gosec -no-fail -fmt json  -out gosec-results.json  ./... || true
+
+      - name: Job Summary — gosec
+        if: always()
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+
+          SEV_ICONS = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
+          report = "gosec-results.json"
+          lines  = ["# gosec — Static Application Security Testing\n"]
+
+          if os.path.exists(report):
+              try:
+                  with open(report) as f:
+                      data = json.load(f)
+                  issues = data.get("Issues") or []
+                  stats  = data.get("Stats", {})
+                  lines.append(
+                      f"**Arquivos:** {stats.get('files','?')} | "
+                      f"**Linhas:** {stats.get('lines','?')} | "
+                      f"**Issues:** {len(issues)}**\n"
+                  )
+                  if issues:
+                      sev_counts = {}
+                      for i in issues:
+                          s = i.get("severity","UNKNOWN")
+                          sev_counts[s] = sev_counts.get(s, 0) + 1
+                      parts = [f"{SEV_ICONS.get(s,'⚪')} {s}: {c}" for s, c in sorted(sev_counts.items())]
+                      lines.append("**Severidade:** " + " | ".join(parts) + "\n")
+                      lines.append("<details><summary>Ver issues</summary>\n")
+                      lines.append("| Sev | Regra | Arquivo | Linha | Descrição |")
+                      lines.append("|-----|-------|---------|-------|-----------|")
+                      for i in issues[:50]:
+                          sev  = i.get("severity","—")
+                          rule = i.get("rule_id","—")
+                          file_ = i.get("file","—")
+                          line_ = i.get("line","—")
+                          desc  = i.get("details","—")[:80]
+                          lines.append(f"| {SEV_ICONS.get(sev,'⚪')} {sev} | {rule} | `{file_}` | {line_} | {desc} |")
+                      if len(issues) > 50:
+                          lines.append(f"\n*... e mais {len(issues)-50} issues no artefato.*")
+                      lines.append("\n</details>\n")
+                  else:
+                      lines.append("**✅ Nenhum issue de segurança encontrado**\n")
+              except Exception as e:
+                  lines.append(f"**⚠️ Erro ao processar: {e}**\n")
+          else:
+              lines.append("**⚠️ Relatório não encontrado**\n")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n\n")
+          PYEOF
 
       - name: Upload SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
         if: always()
-        continue-on-error: true 
+        continue-on-error: true
         with:
           sarif_file: gosec-results.sarif
           category: gosec
 
-      - name: Upload gosec SARIF artifact
+      - name: Upload gosec artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gosec-sarif
-          path: gosec-results.sarif
+          name: gosec-reports
+          path: |
+            gosec-results.sarif
+            gosec-results.json
           retention-days: 30
 
   # ─────────────────────────────────────────────
@@ -111,7 +206,17 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: "0"
 
-      - name: Run Trivy — filesystem scan (secrets + misconfig)
+      - name: Run Trivy — image scan (JSON)
+        uses: aquasecurity/trivy-action@0.35.0
+        continue-on-error: true
+        with:
+          image-ref: tech-challenge-1:${{ github.sha }}
+          format: json
+          output: trivy-image.json
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "0"
+
+      - name: Run Trivy — filesystem scan (SARIF)
         uses: aquasecurity/trivy-action@0.35.0
         continue-on-error: true
         with:
@@ -122,12 +227,88 @@ jobs:
           scanners: secret,misconfig
           exit-code: "0"
 
-      - name: Garantir arquivos SARIF existem
+      - name: Run Trivy — filesystem scan (JSON)
+        uses: aquasecurity/trivy-action@0.35.0
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: trivy-fs.json
+          scanners: secret,misconfig
+          exit-code: "0"
+
+      - name: Garantir arquivos existem
         if: always()
         run: |
           EMPTY_SARIF='{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[]}'
-          [ -f trivy-image.sarif ] || echo "$EMPTY_SARIF" > trivy-image.sarif
-          [ -f trivy-fs.sarif ]    || echo "$EMPTY_SARIF" > trivy-fs.sarif
+          [ -f trivy-image.sarif ] || echo "$EMPTY_SARIF"  > trivy-image.sarif
+          [ -f trivy-fs.sarif ]    || echo "$EMPTY_SARIF"  > trivy-fs.sarif
+          [ -f trivy-image.json ]  || echo '{"Results":[]}' > trivy-image.json
+          [ -f trivy-fs.json ]     || echo '{"Results":[]}' > trivy-fs.json
+
+      - name: Job Summary — Trivy
+        if: always()
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+
+          SEV_ORDER = ["CRITICAL","HIGH","MEDIUM","LOW","UNKNOWN"]
+          SEV_ICONS = {"CRITICAL":"🔴","HIGH":"🟠","MEDIUM":"🟡","LOW":"🟢","UNKNOWN":"⚪"}
+          lines = ["# Trivy — Container & Filesystem Scan\n"]
+
+          def trivy_section(filepath, title):
+              out = [f"## {title}\n"]
+              if not os.path.exists(filepath):
+                  out.append("*Relatório não encontrado*\n")
+                  return out
+              try:
+                  with open(filepath) as f:
+                      data = json.load(f)
+                  all_items = []
+                  for r in data.get("Results", []):
+                      for v in r.get("Vulnerabilities") or []:
+                          all_items.append(v)
+                      for m in r.get("Misconfigurations") or []:
+                          all_items.append(m)
+                      for s in r.get("Secrets") or []:
+                          all_items.append(s)
+                  if not all_items:
+                      out.append("**✅ Nenhuma vulnerabilidade encontrada**\n")
+                      return out
+                  sev_counts = {}
+                  for v in all_items:
+                      s = v.get("Severity","UNKNOWN")
+                      sev_counts[s] = sev_counts.get(s, 0) + 1
+                  parts = [f"{SEV_ICONS.get(s,'⚪')} {s}: {c}"
+                           for s, c in sorted(sev_counts.items(),
+                               key=lambda x: SEV_ORDER.index(x[0]) if x[0] in SEV_ORDER else 99)]
+                  out.append(f"**{len(all_items)} issue(s):** " + " | ".join(parts) + "\n")
+                  out.append("<details><summary>Ver detalhes</summary>\n")
+                  out.append("| Sev | CVE / ID | Pacote | Instalado | Fix |")
+                  out.append("|-----|----------|--------|-----------|-----|")
+                  for v in sorted(all_items,
+                          key=lambda x: SEV_ORDER.index(x.get("Severity","UNKNOWN"))
+                          if x.get("Severity","UNKNOWN") in SEV_ORDER else 99)[:50]:
+                      sev  = v.get("Severity","—")
+                      vid  = v.get("VulnerabilityID") or v.get("ID","—")
+                      pkg  = v.get("PkgName","—")
+                      inst = v.get("InstalledVersion","—")
+                      fix  = v.get("FixedVersion","") or "sem fix"
+                      out.append(f"| {SEV_ICONS.get(sev,'⚪')} {sev} | {vid} | {pkg} | {inst} | {fix} |")
+                  if len(all_items) > 50:
+                      out.append(f"\n*... e mais {len(all_items)-50} issues no artefato.*")
+                  out.append("\n</details>\n")
+              except Exception as e:
+                  out.append(f"*Erro ao processar: {e}*\n")
+              return out
+
+          lines += trivy_section("trivy-image.json", "Imagem Docker")
+          lines += trivy_section("trivy-fs.json",    "Filesystem (secrets + misconfig)")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n\n")
+          PYEOF
 
       - name: Upload Trivy image SARIF
         uses: github/codeql-action/upload-sarif@v4
@@ -153,15 +334,70 @@ jobs:
           path: |
             trivy-image.sarif
             trivy-fs.sarif
+            trivy-image.json
+            trivy-fs.json
           retention-days: 30
 
   # ─────────────────────────────────────────────
-  # 4. Relatório consolidado — resumo final no log
+  # 4. SonarCloud — qualidade de código e SAST
+  #    Detecta: bugs, vulnerabilidades, code smells,
+  #    cobertura de testes, duplicações, hotspots
+  # ─────────────────────────────────────────────
+  sonarcloud:
+    name: SonarCloud (Quality Gate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # histórico completo necessário para análise de blame/new-code
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests with coverage
+        run: go test -coverprofile=coverage.out ./... || true
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.sources=.
+            -Dsonar.exclusions=**/*_test.go,**/vendor/**
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/*_test.go
+            -Dsonar.go.coverage.reportPaths=coverage.out
+
+      - name: Job Summary — SonarCloud
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
+          # SonarCloud — Quality Gate & SAST
+
+          | Item | Detalhes |
+          |------|----------|
+          | 🔗 Dashboard | [Abrir no SonarCloud](https://sonarcloud.io/project/overview?id=${{ vars.SONAR_PROJECT_KEY }}) |
+          | 📋 Pré-requisitos | `SONAR_TOKEN` em **Secrets** · `SONAR_PROJECT_KEY` e `SONAR_ORGANIZATION` em **Variables** |
+
+          **Métricas analisadas:** Bugs · Vulnerabilidades · Code Smells · Cobertura · Duplicações · Security Hotspots
+          EOF
+
+  # ─────────────────────────────────────────────
+  # 5. Relatório consolidado — Job Summary final
   # ─────────────────────────────────────────────
   summary:
     name: Security Summary
     runs-on: ubuntu-latest
-    needs: [govulncheck, gosec, trivy]
+    needs: [govulncheck, gosec, trivy, sonarcloud]
     if: always()
     steps:
       - name: Download all reports
@@ -169,57 +405,178 @@ jobs:
         with:
           path: reports/
 
-      - name: Print govulncheck summary
+      - name: Gerar Job Summary consolidado
         run: |
-          echo "===== govulncheck ====="
-          if [ -f reports/govulncheck-report/govulncheck-report.json ]; then
-            # Extrai apenas as vulnerabilidades encontradas
-            cat reports/govulncheck-report/govulncheck-report.json \
-              | grep -E '"message"' | head -50 || echo "Nenhuma vulnerabilidade encontrada."
-          else
-            echo "Relatório não encontrado."
-          fi
+          python3 << 'PYEOF'
+          import json, os
 
-      - name: Print gosec findings count
-        run: |
-          echo "===== gosec ====="
-          if [ -f reports/gosec-sarif/gosec-results.sarif ]; then
-            ISSUES=$(cat reports/gosec-sarif/gosec-results.sarif | python3 -c "
-          import json, sys
-          data = json.load(sys.stdin)
-          total = sum(len(r.get('results', [])) for r in data.get('runs', []))
-          print(f'Issues encontrados: {total}')
-          ")
-            echo "$ISSUES"
-          else
-            echo "Relatório não encontrado."
-          fi
+          def status_icon(s):
+              return {"success":"✅","failure":"❌","cancelled":"⏹️","skipped":"⏭️"}.get(s,"⚠️")
 
-      - name: Print Trivy findings count
-        run: |
-          echo "===== Trivy ====="
-          for f in reports/trivy-reports/*.sarif; do
-            echo "--- $f ---"
-            python3 -c "
-          import json, sys
-          with open('$f') as fp:
-              data = json.load(fp)
-          total = sum(len(r.get('results', [])) for r in data.get('runs', []))
-          print(f'Issues: {total}')
-          " 2>/dev/null || echo "Não foi possível processar $f"
-          done
+          govulncheck_r = "${{ needs.govulncheck.result }}"
+          gosec_r       = "${{ needs.gosec.result }}"
+          trivy_r       = "${{ needs.trivy.result }}"
+          sonarcloud_r  = "${{ needs.sonarcloud.result }}"
+          run_url       = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          sonar_url     = "https://sonarcloud.io/project/overview?id=${{ vars.SONAR_PROJECT_KEY }}"
 
-      - name: Job status summary
-        run: |
-          echo ""
-          echo "╔══════════════════════════════════════╗"
-          echo "║        SECURITY REPORT STATUS        ║"
-          echo "╠══════════════════════════════════════╣"
-          echo "║  govulncheck : ${{ needs.govulncheck.result }}"
-          echo "║  gosec       : ${{ needs.gosec.result }}"
-          echo "║  trivy       : ${{ needs.trivy.result }}"
-          echo "╚══════════════════════════════════════╝"
-          echo ""
-          echo "Alertas detalhados disponíveis em:"
-          echo "  → GitHub Security tab (SARIF)"
-          echo "  → Actions > Artifacts (JSON/SARIF brutos)"
+          lines = []
+          lines.append("# 🔐 Security Vulnerability Report — Resumo Consolidado\n")
+          lines.append(
+              f"> **Commit:** `${{ github.sha }}`  |  "
+              f"**Branch:** `${{ github.ref_name }}`  |  "
+              f"[Ver execução]({run_url})\n"
+          )
+
+          # ── Status dos jobs ──────────────────────────────────────
+          lines.append("## Status dos Scanners\n")
+          lines.append("| Scanner | Status | Descrição |")
+          lines.append("|---------|--------|-----------|")
+          lines.append(f"| govulncheck | {status_icon(govulncheck_r)} `{govulncheck_r}` | Vulnerabilidades conhecidas no Go Vuln DB |")
+          lines.append(f"| gosec       | {status_icon(gosec_r)} `{gosec_r}` | SAST — análise estática do código Go |")
+          lines.append(f"| Trivy       | {status_icon(trivy_r)} `{trivy_r}` | CVEs no container + secrets/misconfig |")
+          lines.append(f"| SonarCloud  | {status_icon(sonarcloud_r)} `{sonarcloud_r}` | Quality Gate + SAST |")
+          lines.append("")
+
+          # ── govulncheck ──────────────────────────────────────────
+          lines.append("## govulncheck\n")
+          rpath = "reports/govulncheck-report/govulncheck-report.json"
+          if os.path.exists(rpath):
+              findings = []
+              with open(rpath) as f:
+                  for raw in f:
+                      raw = raw.strip()
+                      if raw:
+                          try:
+                              obj = json.loads(raw)
+                              if "finding" in obj:
+                                  findings.append(obj["finding"])
+                          except Exception:
+                              pass
+              if findings:
+                  lines.append(f"**🔴 {len(findings)} vulnerabilidade(s)**\n")
+                  lines.append("| OSV ID | Módulo | Versão | Fix |")
+                  lines.append("|--------|--------|--------|-----|")
+                  for f in findings:
+                      osv_id  = f.get("osv","—")
+                      fixed   = f.get("fixedVersion") or "sem fix"
+                      trace   = f.get("trace",[{}])
+                      module  = trace[0].get("module","—")  if trace else "—"
+                      version = trace[0].get("version","—") if trace else "—"
+                      lines.append(f"| [{osv_id}](https://pkg.go.dev/vuln/{osv_id}) | `{module}` | {version} | {fixed} |")
+              else:
+                  lines.append("✅ Nenhuma vulnerabilidade encontrada.\n")
+          else:
+              lines.append("*Relatório não disponível.*\n")
+          lines.append("")
+
+          # ── gosec ────────────────────────────────────────────────
+          SEV_ICONS = {"HIGH":"🔴","MEDIUM":"🟡","LOW":"🟢"}
+          lines.append("## gosec\n")
+          gpath = "reports/gosec-reports/gosec-results.json"
+          if os.path.exists(gpath):
+              try:
+                  with open(gpath) as f:
+                      data = json.load(f)
+                  issues = data.get("Issues") or []
+                  stats  = data.get("Stats",{})
+                  lines.append(
+                      f"**Arquivos:** {stats.get('files','?')} | "
+                      f"**Linhas:** {stats.get('lines','?')} | "
+                      f"**Issues:** {len(issues)}**\n"
+                  )
+                  if issues:
+                      sev_counts = {}
+                      for i in issues:
+                          s = i.get("severity","UNKNOWN")
+                          sev_counts[s] = sev_counts.get(s,0) + 1
+                      parts = [f"{SEV_ICONS.get(s,'⚪')} {s}: {c}" for s,c in sorted(sev_counts.items())]
+                      lines.append("**Severidade:** " + " | ".join(parts) + "\n")
+                      lines.append("<details><summary>Ver detalhes (até 30)</summary>\n")
+                      lines.append("| Sev | Regra | Arquivo | Linha | Descrição |")
+                      lines.append("|-----|-------|---------|-------|-----------|")
+                      for i in issues[:30]:
+                          sev  = i.get("severity","—")
+                          rule = i.get("rule_id","—")
+                          file_ = i.get("file","—")
+                          line_ = i.get("line","—")
+                          desc  = i.get("details","—")[:70]
+                          lines.append(f"| {SEV_ICONS.get(sev,'⚪')} {sev} | {rule} | `{file_}` | {line_} | {desc} |")
+                      if len(issues) > 30:
+                          lines.append(f"\n*+ {len(issues)-30} issues adicionais no artefato.*")
+                      lines.append("\n</details>\n")
+                  else:
+                      lines.append("✅ Nenhum issue encontrado.\n")
+              except Exception as e:
+                  lines.append(f"*Erro ao processar: {e}*\n")
+          else:
+              lines.append("*Relatório não disponível.*\n")
+          lines.append("")
+
+          # ── Trivy ─────────────────────────────────────────────────
+          SEV_ORDER = ["CRITICAL","HIGH","MEDIUM","LOW","UNKNOWN"]
+          TV_ICONS  = {"CRITICAL":"🔴","HIGH":"🟠","MEDIUM":"🟡","LOW":"🟢","UNKNOWN":"⚪"}
+          lines.append("## Trivy\n")
+          for label, fpath in [
+              ("Imagem Docker",            "reports/trivy-reports/trivy-image.json"),
+              ("Filesystem (secrets/misconfig)", "reports/trivy-reports/trivy-fs.json"),
+          ]:
+              lines.append(f"### {label}\n")
+              if os.path.exists(fpath):
+                  try:
+                      with open(fpath) as f:
+                          data = json.load(f)
+                      all_items = []
+                      for r in data.get("Results",[]):
+                          for v in r.get("Vulnerabilities") or []:
+                              all_items.append(v)
+                          for m in r.get("Misconfigurations") or []:
+                              all_items.append(m)
+                          for s in r.get("Secrets") or []:
+                              all_items.append(s)
+                      if all_items:
+                          sev_counts = {}
+                          for v in all_items:
+                              s = v.get("Severity","UNKNOWN")
+                              sev_counts[s] = sev_counts.get(s,0) + 1
+                          parts = [f"{TV_ICONS.get(s,'⚪')} {s}: {c}"
+                                   for s,c in sorted(sev_counts.items(),
+                                       key=lambda x: SEV_ORDER.index(x[0]) if x[0] in SEV_ORDER else 99)]
+                          lines.append(f"**{len(all_items)} issue(s):** " + " | ".join(parts) + "\n")
+                          lines.append("<details><summary>Top 30 issues</summary>\n")
+                          lines.append("| Sev | CVE / ID | Pacote | Instalado | Fix |")
+                          lines.append("|-----|----------|--------|-----------|-----|")
+                          for v in sorted(all_items,
+                                  key=lambda x: SEV_ORDER.index(x.get("Severity","UNKNOWN"))
+                                  if x.get("Severity","UNKNOWN") in SEV_ORDER else 99)[:30]:
+                              sev  = v.get("Severity","—")
+                              vid  = v.get("VulnerabilityID") or v.get("ID","—")
+                              pkg  = v.get("PkgName","—")
+                              inst = v.get("InstalledVersion","—")
+                              fix  = v.get("FixedVersion","") or "sem fix"
+                              lines.append(f"| {TV_ICONS.get(sev,'⚪')} {sev} | {vid} | {pkg} | {inst} | {fix} |")
+                          if len(all_items) > 30:
+                              lines.append(f"\n*+ {len(all_items)-30} issues adicionais no artefato.*")
+                          lines.append("\n</details>\n")
+                      else:
+                          lines.append("✅ Nenhuma vulnerabilidade encontrada.\n")
+                  except Exception as e:
+                      lines.append(f"*Erro ao processar: {e}*\n")
+              else:
+                  lines.append("*Relatório não disponível.*\n")
+          lines.append("")
+
+          # ── SonarCloud ────────────────────────────────────────────
+          lines.append("## SonarCloud\n")
+          lines.append(f"[🔗 Abrir painel SonarCloud]({sonar_url})\n")
+          lines.append("")
+
+          # ── Rodapé ────────────────────────────────────────────────
+          lines.append("---")
+          lines.append(
+              f"*Relatórios completos disponíveis nos [Artifacts]({run_url}) desta execução.*"
+          )
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n")
+          PYEOF

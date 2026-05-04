@@ -5,7 +5,7 @@
 
 ---
 
-## 1. ✅ Estado `cancelada` na máquina de estados da OS
+## 1. Estado `cancelada` na máquina de estados da OS
 
 - [ ] Criar migration `000005` adicionando `cancelada` na tabela `status_ordens` + coluna `cancelado_em`
 - [ ] Adicionar constante `StatusCancelada` em `internal/domain/entity/ordem_servico.go`
