@@ -1,0 +1,33 @@
+# Claude Code
+.claude/
+
+# Go binaries and build output
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go module cache and vendor
+vendor/
+
+# Generated code (oapi-codegen)
+internal/api/generated*.go
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
