@@ -15,13 +15,14 @@ const (
 	StatusEmExecucao          Status = "em_execucao"
 	StatusFinalizada          Status = "finalizada"
 	StatusEntregue            Status = "entregue"
+	StatusCancelada           Status = "cancelada"
 )
 
 var validTransitions = map[Status][]Status{
-	StatusRecebida:            {StatusEmDiagnostico},
-	StatusEmDiagnostico:       {StatusAguardandoAprovacao},
-	StatusAguardandoAprovacao: {StatusEmExecucao, StatusFinalizada},
-	StatusEmExecucao:          {StatusFinalizada},
+	StatusRecebida:            {StatusEmDiagnostico, StatusCancelada},
+	StatusEmDiagnostico:       {StatusAguardandoAprovacao, StatusCancelada},
+	StatusAguardandoAprovacao: {StatusEmExecucao, StatusFinalizada, StatusCancelada},
+	StatusEmExecucao:          {StatusFinalizada, StatusCancelada},
 	StatusFinalizada:          {StatusEntregue},
 }
 
@@ -51,6 +52,7 @@ type OrdemServico struct {
 	IniciadoEm           *time.Time
 	FinalizadoEm         *time.Time
 	EntregueEm           *time.Time
+	CanceladoEm          *time.Time
 	CriadoEm             time.Time
 	AtualizadoEm         time.Time
 }

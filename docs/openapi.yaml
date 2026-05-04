@@ -674,6 +674,9 @@ components:
         entregue_em:
           type: string
           format: date-time
+        cancelado_em:
+          type: string
+          format: date-time
         criado_em:
           type: string
           format: date-time
@@ -710,6 +713,13 @@ components:
           type: string
         observacao:
           type: string
+
+    CancelarOSRequest:
+      type: object
+      properties:
+        motivo:
+          type: string
+          description: Justificativa do cancelamento (opcional)
 
     RejeitarOrcamentoRequest:
       type: object
@@ -1559,6 +1569,40 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           description: Entidade não processável
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /work-orders/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    post:
+      tags: [Ordens de Serviço]
+      summary: Cancelar OS
+      description: |
+        Cancela uma OS. Permitido nos status: recebida, em_diagnostico, aguardando_aprovacao e em_execucao.
+        Quando cancelada a partir de em_execucao, o estoque das peças é restaurado automaticamente.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelarOSRequest'
+      responses:
+        '200':
+          description: OS cancelada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: OS não pode ser cancelada no status atual
           content:
             application/json:
               schema:

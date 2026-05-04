@@ -1243,6 +1243,31 @@ func (s *Server) PostWorkOrdersIdReject(ctx context.Context, request PostWorkOrd
 	return PostWorkOrdersIdReject200JSONResponse(osCompletaParaResponse(osCompleta)), nil
 }
 
+// PostWorkOrdersIdCancel cancela uma OS, devolvendo estoque se estava em execução.
+//
+// Rota: POST /v1/work-orders/{id}/cancel
+func (s *Server) PostWorkOrdersIdCancel(ctx context.Context, request PostWorkOrdersIdCancelRequestObject) (PostWorkOrdersIdCancelResponseObject, error) {
+	var motivo *string
+	if request.Body != nil {
+		motivo = request.Body.Motivo
+	}
+
+	osCompleta, err := s.osUseCase.CancelarOS(ctx, request.Id.String(), motivo)
+	if err != nil {
+		var errNaoEncontrado *domainerros.ErrNaoEncontrado
+		var errNaoProcessavel *domainerros.ErrNaoProcessavel
+		switch {
+		case errors.As(err, &errNaoEncontrado):
+			return PostWorkOrdersIdCancel404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
+		case errors.As(err, &errNaoProcessavel):
+			return PostWorkOrdersIdCancel422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
+		default:
+			return nil, err
+		}
+	}
+	return PostWorkOrdersIdCancel200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
 // ── Relatórios ────────────────────────────────────────────────────────────────
 
 // GetReportsAvgExecutionTime retorna o tempo médio de execução por serviço.
@@ -1378,6 +1403,7 @@ func osParaResponse(os *entity.OrdemServico) OrdemServicoResponse {
 		IniciadoEm:   os.IniciadoEm,
 		FinalizadoEm: os.FinalizadoEm,
 		EntregueEm:   os.EntregueEm,
+		CanceladoEm:  os.CanceladoEm,
 		CriadoEm:     &os.CriadoEm,
 		AtualizadoEm: &os.AtualizadoEm,
 	}

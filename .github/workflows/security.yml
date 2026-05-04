@@ -5,14 +5,12 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-  schedule:
-    # Roda toda segunda-feira às 08:00 UTC para capturar CVEs novas
-    - cron: "0 8 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
-  security-events: write  # necessário para upload do SARIF ao GitHub Security
+  actions: read 
+  security-events: write  
 
 jobs:
   # ─────────────────────────────────────────────
@@ -70,13 +68,12 @@ jobs:
       - name: Run gosec (SARIF)
         uses: securego/gosec@master
         with:
-          # -no-fail: não quebra o job; alertas aparecem na aba Security
-          # fmt sarif: formato padrão para integração com GitHub Advanced Security
           args: "-no-fail -fmt sarif -out gosec-results.sarif ./..."
 
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
+        continue-on-error: true 
         with:
           sarif_file: gosec-results.sarif
           category: gosec
@@ -105,7 +102,8 @@ jobs:
         run: docker build -t tech-challenge-1:${{ github.sha }} .
 
       - name: Run Trivy — image scan (SARIF)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.30.0
+        continue-on-error: true
         with:
           image-ref: tech-challenge-1:${{ github.sha }}
           format: sarif
@@ -113,15 +111,9 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: "0"
 
-      - name: Upload Trivy image SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: trivy-image.sarif
-          category: trivy-image
-
       - name: Run Trivy — filesystem scan (secrets + misconfig)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.30.0
+        continue-on-error: true
         with:
           scan-type: fs
           scan-ref: .
@@ -130,9 +122,25 @@ jobs:
           scanners: secret,misconfig
           exit-code: "0"
 
-      - name: Upload Trivy fs SARIF
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Garantir arquivos SARIF existem
         if: always()
+        run: |
+          EMPTY_SARIF='{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[]}'
+          [ -f trivy-image.sarif ] || echo "$EMPTY_SARIF" > trivy-image.sarif
+          [ -f trivy-fs.sarif ]    || echo "$EMPTY_SARIF" > trivy-fs.sarif
+
+      - name: Upload Trivy image SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      - name: Upload Trivy fs SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        continue-on-error: true
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs

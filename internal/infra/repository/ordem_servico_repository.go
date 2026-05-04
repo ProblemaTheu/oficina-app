@@ -166,7 +166,7 @@ func (r *OrdemServicoRepository) BuscarPorID(ctx context.Context, id string) (*e
 		SELECT
 			o.id, o.numero, o.cliente_id, o.veiculo_id, o.status_id, s.nome_status,
 			o.descricao, o.diagnostico, o.valor_total,
-			o.aprovado_em, o.reprovado_em, o.iniciado_em, o.finalizado_em, o.entregue_em,
+			o.aprovado_em, o.reprovado_em, o.iniciado_em, o.finalizado_em, o.entregue_em, o.cancelado_em,
 			o.criado_em, o.atualizado_em
 		FROM ordens_servico o
 		JOIN status_ordens s ON s.id = o.status_id
@@ -174,7 +174,7 @@ func (r *OrdemServicoRepository) BuscarPorID(ctx context.Context, id string) (*e
 	`, id).Scan(
 		&os.ID, &os.Numero, &os.ClienteID, &os.VeiculoID, &os.StatusID, &os.StatusNome,
 		&os.Descricao, &os.Diagnostico, &os.ValorTotal,
-		&os.AprovadoEm, &os.ReprovadoEm, &os.IniciadoEm, &os.FinalizadoEm, &os.EntregueEm,
+		&os.AprovadoEm, &os.ReprovadoEm, &os.IniciadoEm, &os.FinalizadoEm, &os.EntregueEm, &os.CanceladoEm,
 		&os.CriadoEm, &os.AtualizadoEm,
 	)
 	if err == sql.ErrNoRows {
@@ -275,7 +275,7 @@ func (r *OrdemServicoRepository) Listar(ctx context.Context, params ListarOSPara
 		SELECT
 			o.id, o.numero, o.cliente_id, o.veiculo_id, o.status_id, s.nome_status,
 			o.descricao, o.diagnostico, o.valor_total,
-			o.aprovado_em, o.reprovado_em, o.iniciado_em, o.finalizado_em, o.entregue_em,
+			o.aprovado_em, o.reprovado_em, o.iniciado_em, o.finalizado_em, o.entregue_em, o.cancelado_em,
 			o.criado_em, o.atualizado_em
 		FROM ordens_servico o
 		JOIN status_ordens s ON s.id = o.status_id
@@ -329,7 +329,7 @@ func (r *OrdemServicoRepository) Listar(ctx context.Context, params ListarOSPara
 		if err := rows.Scan(
 			&os.ID, &os.Numero, &os.ClienteID, &os.VeiculoID, &os.StatusID, &os.StatusNome,
 			&os.Descricao, &os.Diagnostico, &os.ValorTotal,
-			&os.AprovadoEm, &os.ReprovadoEm, &os.IniciadoEm, &os.FinalizadoEm, &os.EntregueEm,
+			&os.AprovadoEm, &os.ReprovadoEm, &os.IniciadoEm, &os.FinalizadoEm, &os.EntregueEm, &os.CanceladoEm,
 			&os.CriadoEm, &os.AtualizadoEm,
 		); err != nil {
 			return nil, 0, fmt.Errorf("OrdemServicoRepository.Listar scan: %w", err)
@@ -354,18 +354,20 @@ func (r *OrdemServicoRepository) AtualizarStatus(
 	iniciadoEm *time.Time,
 	finalizadoEm *time.Time,
 	entregueEm *time.Time,
+	canceladoEm *time.Time,
 ) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE ordens_servico SET
-			status_id    = $1,
-			diagnostico  = COALESCE($2, diagnostico),
-			aprovado_em  = COALESCE($3, aprovado_em),
-			reprovado_em = COALESCE($4, reprovado_em),
-			iniciado_em  = COALESCE($5, iniciado_em),
+			status_id     = $1,
+			diagnostico   = COALESCE($2, diagnostico),
+			aprovado_em   = COALESCE($3, aprovado_em),
+			reprovado_em  = COALESCE($4, reprovado_em),
+			iniciado_em   = COALESCE($5, iniciado_em),
 			finalizado_em = COALESCE($6, finalizado_em),
-			entregue_em  = COALESCE($7, entregue_em),
+			entregue_em   = COALESCE($7, entregue_em),
+			cancelado_em  = COALESCE($8, cancelado_em),
 			atualizado_em = now()
-		WHERE id = $8
+		WHERE id = $9
 	`,
 		novoStatusID,
 		diagnostico,
@@ -374,10 +376,26 @@ func (r *OrdemServicoRepository) AtualizarStatus(
 		iniciadoEm,
 		finalizadoEm,
 		entregueEm,
+		canceladoEm,
 		osID,
 	)
 	if err != nil {
 		return fmt.Errorf("OrdemServicoRepository.AtualizarStatus: %w", err)
+	}
+	return nil
+}
+
+// RestaurarEstoquePecas devolve ao estoque as peças de uma OS (usado no cancelamento após em_execucao).
+func (r *OrdemServicoRepository) RestaurarEstoquePecas(ctx context.Context, osID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE pecas p
+		SET estoque_atual = estoque_atual + iop.quantidade,
+		    atualizado_em = now()
+		FROM itens_os_pecas iop
+		WHERE iop.os_id = $1 AND iop.peca_id = p.id
+	`, osID)
+	if err != nil {
+		return fmt.Errorf("RestaurarEstoquePecas: %w", err)
 	}
 	return nil
 }

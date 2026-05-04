@@ -266,7 +266,7 @@ func (uc *OrdemServicoUseCase) AvancarStatus(ctx context.Context, input AvancarS
 		entregueEm = &now
 	}
 
-	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, input.Diagnostico, nil, nil, iniciadoEm, finalizadoEm, entregueEm); err != nil {
+	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, input.Diagnostico, nil, nil, iniciadoEm, finalizadoEm, entregueEm, nil); err != nil {
 		return nil, err
 	}
 
@@ -302,7 +302,7 @@ func (uc *OrdemServicoUseCase) AprovarOrcamento(ctx context.Context, osID string
 	}
 
 	now := time.Now()
-	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, nil, &now, nil, &now, nil, nil); err != nil {
+	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, nil, &now, nil, &now, nil, nil, nil); err != nil {
 		return nil, err
 	}
 
@@ -334,7 +334,46 @@ func (uc *OrdemServicoUseCase) RejeitarOrcamento(ctx context.Context, osID strin
 	}
 
 	now := time.Now()
-	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, nil, nil, &now, nil, &now, nil); err != nil {
+	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, nil, nil, &now, nil, &now, nil, nil); err != nil {
+		return nil, err
+	}
+
+	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, motivo)
+
+	return uc.osRepo.BuscarPorID(ctx, osID)
+}
+
+// CancelarOS cancela uma OS, devolvendo estoque se já estava em execução.
+func (uc *OrdemServicoUseCase) CancelarOS(ctx context.Context, osID string, motivo *string) (*entity.OrdemServicoCompleta, error) {
+	slog.Info("executando caso de uso: cancelar OS", "id", osID)
+
+	osCompleta, err := uc.osRepo.BuscarPorID(ctx, osID)
+	if err != nil {
+		return nil, err
+	}
+	os := &osCompleta.OrdemServico
+
+	if !os.StatusNome.CanTransitionTo(entity.StatusCancelada) {
+		return nil, &domainerros.ErrNaoProcessavel{
+			Codigo:   "INVALID_STATUS_TRANSITION",
+			Mensagem: fmt.Sprintf("OS no status '%s' não pode ser cancelada", os.StatusNome),
+		}
+	}
+
+	// Devolve estoque das peças se a execução já havia começado
+	if os.StatusNome == entity.StatusEmExecucao {
+		if err := uc.osRepo.RestaurarEstoquePecas(ctx, os.ID); err != nil {
+			return nil, err
+		}
+	}
+
+	novoStatusID, err := uc.osRepo.BuscarStatusID(ctx, entity.StatusCancelada)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, nil, nil, nil, nil, nil, nil, &now); err != nil {
 		return nil, err
 	}
 

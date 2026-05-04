@@ -1,0 +1,34 @@
+# Claude Code
+.claude/
+
+# Binários compilados
+api
+*.exe
+*.out
+
+# Dependências
+vendor/
+
+# Variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# Cobertura de testes
+coverage.out
+coverage.html
+
+# Logs
+*.log
+
+# Docker
+*.tar
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store

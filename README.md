@@ -433,6 +433,7 @@ A API está disponível sob o prefixo `/v1`. Rotas marcadas com 🔓 são públi
 | PATCH | `/v1/work-orders/{id}/status` | — | Avançar status da OS |
 | POST | `/v1/work-orders/{id}/approve` | — | Aprovar orçamento |
 | POST | `/v1/work-orders/{id}/reject` | — | Rejeitar orçamento |
+| POST | `/v1/work-orders/{id}/cancel` | — | Cancelar OS (restaura estoque se em execução) |
 
 ### Relatórios
 
@@ -452,31 +453,31 @@ Toda OS percorre um fluxo de status com transições controladas. Tentativas de 
         abertura
            │
            ▼
-      ┌─────────┐
-      │recebida │
-      └────┬────┘
-           │ PATCH /status
-           ▼
-    ┌──────────────┐
-    │em_diagnostico│
-    └──────┬───────┘
-           │ PATCH /status
-           ▼
-   ┌───────────────────┐
-   │aguardando_aprovacao│
-   └────────┬──────────┘
-      ┌─────┴──────┐
-      │            │
-   /approve     /reject
-      │            │
-      ▼            ▼
- ┌──────────┐  ┌──────────┐
- │em_execucao│  │finalizada│
- └─────┬────┘  │(rejeitada)│
-       │        └──────────┘
-       │ PATCH /status
-       ▼
-  ┌──────────┐
+      ┌─────────┐ ──/cancel──────────────────────┐
+      │recebida │                                 │
+      └────┬────┘                                 │
+           │ PATCH /status                        │
+           ▼                                      │
+    ┌──────────────┐ ──/cancel──────────────────► │
+    │em_diagnostico│                              │
+    └──────┬───────┘                              │
+           │ PATCH /status                        │
+           ▼                                      │
+   ┌───────────────────┐ ──/cancel──────────────► │
+   │aguardando_aprovacao│                         │
+   └────────┬──────────┘                          │
+      ┌─────┴──────┐                              │
+      │            │                              │
+   /approve     /reject                           │
+      │            │                              │
+      ▼            ▼                              │
+ ┌──────────┐  ┌──────────┐                       │
+ │em_execucao│  │finalizada│  ◄──/cancel──────────┘ (restaura estoque)
+ └─────┬────┘  │(rejeitada)│      │
+       │        └──────────┘      ▼
+       │ PATCH /status       ┌──────────┐
+       ▼                     │cancelada │
+  ┌──────────┐               └──────────┘
   │finalizada│
   │(concluída)│
   └─────┬────┘
