@@ -359,7 +359,20 @@ jobs:
           cache: true
 
       - name: Run tests with coverage
-        run: go test -coverprofile=coverage.out ./... || true
+        run: |
+          go test \
+            -covermode=atomic \
+            -coverprofile=coverage.out \
+            -coverpkg=./... \
+            ./... 2>&1 || true
+
+      - name: Verificar arquivo de cobertura
+        run: |
+          if [ ! -s coverage.out ]; then
+            echo "⚠️  coverage.out vazio ou ausente — criando arquivo mínimo"
+            echo "mode: atomic" > coverage.out
+          fi
+          echo "Linhas no coverage.out: $(wc -l < coverage.out)"
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
@@ -372,7 +385,7 @@ jobs:
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/*_test.go,**/vendor/**
+            -Dsonar.exclusions=**/*_test.go,**/vendor/**,**/docs/**
             -Dsonar.tests=.
             -Dsonar.test.inclusions=**/*_test.go
             -Dsonar.go.coverage.reportPaths=coverage.out
