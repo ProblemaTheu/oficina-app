@@ -27,6 +27,7 @@
 - [CI/CD e Segurança](#cicd-e-segurança)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Gerando código a partir do OpenAPI](#gerando-código-a-partir-do-openapi)
+- [Documentação adicional](#documentação-adicional)
 
 ---
 
@@ -487,6 +488,20 @@ Toda OS percorre um fluxo de status com transições controladas. Tentativas de 
    │entregue │
    └─────────┘
 ```
+
+---
+
+## Documentação adicional
+
+| Documento | Conteúdo |
+|-----------|----------|
+| [docs/objectives.md](docs/objectives.md) | Objetivos do sistema, escopo, requisitos funcionais e não-funcionais |
+| [docs/architecture-decisions.md](docs/architecture-decisions.md) | ADRs: escolha do PostgreSQL, chi e oapi-codegen |
+| [docs/ubiquitous-language.md](docs/ubiquitous-language.md) | Glossário dos termos do domínio (linguagem ubíqua) |
+| [docs/ddd-aggregates.md](docs/ddd-aggregates.md) | Agregados DDD, entidades internas e invariantes |
+| [docs/bounded-contexts.md](docs/bounded-contexts.md) | Contextos delimitados e mapa de contextos |
+| [docs/openapi.yaml](docs/openapi.yaml) | Contrato OpenAPI completo da API |
+| [docs/postman_collection.json](docs/postman_collection.json) | Coleção Postman com todos os endpoints |
 
 Os números de OS são gerados automaticamente no formato `OS-YYYY-NNNNN` (ex: `OS-2025-00001`).
 

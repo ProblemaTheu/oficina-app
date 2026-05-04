@@ -350,7 +350,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # histórico completo necessário para análise de blame/new-code
+          fetch-depth: 0 
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -386,7 +386,6 @@ jobs:
           | Item | Detalhes |
           |------|----------|
           | 🔗 Dashboard | [Abrir no SonarCloud](https://sonarcloud.io/project/overview?id=${{ vars.SONAR_PROJECT_KEY }}) |
-          | 📋 Pré-requisitos | `SONAR_TOKEN` em **Secrets** · `SONAR_PROJECT_KEY` e `SONAR_ORGANIZATION` em **Variables** |
 
           **Métricas analisadas:** Bugs · Vulnerabilidades · Code Smells · Cobertura · Duplicações · Security Hotspots
           EOF

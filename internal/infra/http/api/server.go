@@ -111,6 +111,28 @@ func (s *Server) PostAuthLogin(ctx context.Context, request PostAuthLoginRequest
 //   - 200: ClienteListResponse com data[] e meta de paginação.
 //   - 401: token ausente ou inválido.
 func (s *Server) GetClients(_ context.Context, request GetClientsRequestObject) (GetClientsResponseObject, error) {
+	// Filtro por documento: retorna lista com um único elemento ou vazia.
+	if request.Params.Documento != nil && *request.Params.Documento != "" {
+		cliente, err := s.clientUseCase.FindByDocumento(*request.Params.Documento)
+		page, limit := paginacaoDefaults(request.Params.Page, request.Params.Limit)
+		if err != nil {
+			var errNaoEncontrado *domainerros.ErrNaoEncontrado
+			if errors.As(err, &errNaoEncontrado) {
+				empty := make([]ClienteResponse, 0)
+				return GetClients200JSONResponse(ClienteListResponse{
+					Data: &empty,
+					Meta: metaPaginacao(page, limit, 0),
+				}), nil
+			}
+			return nil, err
+		}
+		data := []ClienteResponse{clienteParaResponse(cliente)}
+		return GetClients200JSONResponse(ClienteListResponse{
+			Data: &data,
+			Meta: metaPaginacao(page, limit, 1),
+		}), nil
+	}
+
 	clientes, err := s.clientUseCase.List()
 	if err != nil {
 		return nil, err

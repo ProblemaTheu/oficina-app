@@ -26,6 +26,9 @@ func (m *mockClienteRepoUC) Salvar(c *entity.Cliente) (*entity.Cliente, error) {
 	return c, nil
 }
 func (m *mockClienteRepoUC) BuscarTodos() ([]*entity.Cliente, error)  { return nil, nil }
+func (m *mockClienteRepoUC) BuscarPorDocumento(_ string) (*entity.Cliente, error) {
+	return &entity.Cliente{}, nil
+}
 func (m *mockClienteRepoUC) BuscarPorID(id string) (*entity.Cliente, error) {
 	if m.buscarIDFn != nil {
 		return m.buscarIDFn(id)

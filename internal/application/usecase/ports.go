@@ -13,6 +13,7 @@ type clienteRepo interface {
 	Salvar(cliente *entity.Cliente) (*entity.Cliente, error)
 	BuscarTodos() ([]*entity.Cliente, error)
 	BuscarPorID(id string) (*entity.Cliente, error)
+	BuscarPorDocumento(documento string) (*entity.Cliente, error)
 	Atualizar(cliente *entity.Cliente) (*entity.Cliente, error)
 	Remover(id string) error
 }

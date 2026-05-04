@@ -58,6 +58,16 @@ func (uc *ClientUseCase) List() ([]*entity.Cliente, error) {
 	return uc.repo.BuscarTodos()
 }
 
+// FindByDocumento retorna o cliente com o CPF/CNPJ informado.
+// O documento deve ser passado apenas com dígitos.
+func (uc *ClientUseCase) FindByDocumento(documento string) (*entity.Cliente, error) {
+	slog.Info("executando caso de uso: buscar cliente por documento")
+	if documento == "" {
+		return nil, errors.New("documento é obrigatório")
+	}
+	return uc.repo.BuscarPorDocumento(documento)
+}
+
 // FindByID retorna o cliente cadastrado pelo UUID
 func (uc *ClientUseCase) FindByID(id string) (*entity.Cliente, error) {
 	slog.Info("executando caso de uso: buscar cliente por ID", "id", id)
@@ -108,6 +118,10 @@ func (uc *ClientUseCase) Delete(id string) error {
 
 	if id == "" {
 		return errors.New("id é obrigatório")
+	}
+
+	if _, err := uuid.Parse(id); err != nil {
+		return errors.New("id inválido")
 	}
 
 	return uc.repo.Remover(id)

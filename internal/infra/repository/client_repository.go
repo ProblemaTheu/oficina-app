@@ -156,6 +156,27 @@ func (r *ClienteRepository) Remover(id string) error {
 	return nil
 }
 
+// BuscarPorDocumento retorna o cliente com o CPF/CNPJ informado (apenas dígitos).
+func (r *ClienteRepository) BuscarPorDocumento(documento string) (*entity.Cliente, error) {
+	var cliente entity.Cliente
+	err := r.db.QueryRowContext(context.Background(), `
+		SELECT id, nome, cpf_cnpj, email, telefone, criado_em, atualizado_em
+		FROM clientes
+		WHERE cpf_cnpj = $1
+	`, documento).Scan(
+		&cliente.ID, &cliente.Nome, &cliente.CpfCnpj,
+		&cliente.Email, &cliente.Telefone,
+		&cliente.CriadoEm, &cliente.AtualizadoEm,
+	)
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "cliente"}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ClienteRepository.BuscarPorDocumento: %w", err)
+	}
+	return &cliente, nil
+}
+
 // campoDoConstraint mapeia o nome do constraint PostgreSQL para o nome legível
 // do campo, usado para compor a mensagem de ErrConflito.
 func campoDoConstraint(constraint string) string {

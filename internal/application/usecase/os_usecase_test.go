@@ -82,10 +82,11 @@ func (m *mockOsRepo) PrecarregarStatusCache(_ context.Context) error {
 
 type osCliRepo struct{ cliente *entity.Cliente }
 
-func (r *osCliRepo) Salvar(c *entity.Cliente) (*entity.Cliente, error)  { return c, nil }
-func (r *osCliRepo) BuscarTodos() ([]*entity.Cliente, error)            { return nil, nil }
-func (r *osCliRepo) Atualizar(c *entity.Cliente) (*entity.Cliente, error) { return c, nil }
-func (r *osCliRepo) Remover(_ string) error                             { return nil }
+func (r *osCliRepo) Salvar(c *entity.Cliente) (*entity.Cliente, error)    { return c, nil }
+func (r *osCliRepo) BuscarTodos() ([]*entity.Cliente, error)               { return nil, nil }
+func (r *osCliRepo) BuscarPorDocumento(_ string) (*entity.Cliente, error)  { return &entity.Cliente{}, nil }
+func (r *osCliRepo) Atualizar(c *entity.Cliente) (*entity.Cliente, error)  { return c, nil }
+func (r *osCliRepo) Remover(_ string) error                                { return nil }
 func (r *osCliRepo) BuscarPorID(_ string) (*entity.Cliente, error) {
 	if r.cliente != nil {
 		return r.cliente, nil
