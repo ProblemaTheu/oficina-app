@@ -36,13 +36,6 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** M
 - **Depende de:** —
 
-### F2-0.3 — Corrigir o board do Miro para refletir a especificação
-- **Descrição:** O board do Miro (preenchido manualmente) lista os status `Aprovada` e `Cancelada`, que **não existem nos PDFs nem no código**. Os PDFs (fonte da verdade) definem apenas 6 status. Como a Fase 2 exige o desenho de arquitetura consistente, o board precisa refletir a realidade.
-- **Critérios de aceite:** Ciclo de vida da OS no Miro contém apenas os 6 status oficiais: Recebida, Em diagnóstico, Aguardando aprovação, Em execução, Finalizada, Entregue. Transições coerentes com `validTransitions`. **O código NÃO é alterado** (já está correto).
-- **Sugestão técnica:** Editar o board (documento "Contexto de Negócio" e diagramas de eventos). Alternativamente, se cancelamento vier a ser implementado como extra (ver F2-0.1), aí sim atualizar Miro e código juntos.
-- **Estimativa:** P
-- **Depende de:** —
-
 ---
 
 ## E1 — Refatoração e testes
@@ -120,7 +113,7 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
   - Em ambiente local, um "mailer" fake/console permite demonstrar sem provedor real.
 - **Sugestão técnica:** Definir uma porta `Notifier` na aplicação (interface) com implementações: `SMTPNotifier`/`SendGridNotifier` (produção) e `LogNotifier` (local/testes). Disparar via goroutine com contexto ou, melhor, uma fila simples (channel) para desacoplar. Para K8s, credenciais em `Secret`. Alternativa robusta: publicar evento `StatusDaOsAlterado` e um worker consumir — porém pode ser over-engineering para o escopo; documentar a evolução.
 - **Estimativa:** G
-- **Depende de:** F2-0.3
+- **Depende de:** —
 
 ### F2-2.4 — Atualizar contrato OpenAPI e regenerar código
 - **Descrição:** Refletir no `docs/openapi.yaml` as mudanças (novo parâmetro de listagem, webhook, eventual `/cancel`) e regenerar.
@@ -328,7 +321,7 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 | Épico | Tarefas | Estimativa somada |
 |-------|---------|-------------------|
-| E0 | 3 | M + M + P |
+| E0 | 2 | M + M |
 | E1 | 4 | M + M + G + G |
 | E2 | 4 | M + G + G + M |
 | E3 | 2 | P + P |

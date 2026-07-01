@@ -20,7 +20,6 @@ Objetivo: base limpa e regras de negócio novas prontas.
 
 - F2-0.2 — Corrigir dependência de camadas *(desbloqueia o resto do código)*
 - F2-0.1 — Tratar `/cancel`
-- F2-0.3 — Alinhar máquina de estados
 - F2-1.1 — Clean Code + golangci-lint
 - F2-1.2 — Padronizar erros nos handlers
 - F2-2.1 — Nova listagem de OS
@@ -79,7 +78,8 @@ Objetivo: fechar entregáveis.
 F2-0.2 ──► F2-2.1 ──► F2-2.4 ──► F2-7.3
    │                    ▲
    └──► F2-2.2 ─────────┘
-F2-0.1 ──► F2-0.3 ──► F2-2.3 ──► F2-3.2
+F2-0.1
+F2-2.3 ──► F2-3.2
 F2-1.1 ──► F2-6.1 ──► F2-6.2 ──► F2-6.3 ──► (vídeo)
 F2-3.1 ──► F2-6.2
 E4 (k8s) ─────────────► F2-6.3
