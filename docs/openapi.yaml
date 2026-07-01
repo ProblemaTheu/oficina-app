@@ -556,42 +556,6 @@ components:
 
     # ── Ordens de Serviço ─────────────────────────────────────────────────────
 
-    ItemOsRequest:
-      type: object
-      required: [tipo, referencia_id, quantidade]
-      properties:
-        tipo:
-          type: string
-          enum: [servico, peca]
-        referencia_id:
-          type: string
-          format: uuid
-        quantidade:
-          type: integer
-          minimum: 1
-
-    ItemOsResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        tipo:
-          type: string
-        referencia_id:
-          type: string
-          format: uuid
-        nome:
-          type: string
-        quantidade:
-          type: integer
-        preco_unitario:
-          type: number
-          format: double
-        subtotal:
-          type: number
-          format: double
-
     ClienteResumoResponse:
       type: object
       properties:
