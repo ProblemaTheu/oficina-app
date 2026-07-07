@@ -13,8 +13,11 @@ type ListarOSParams struct {
 	Status    *entity.Status
 	ClienteID *uuid.UUID
 	VeiculoID *uuid.UUID
-	Page      int
-	Limit     int
+	// IncluirEncerradas inclui OSs finalizadas/entregues na listagem padrão
+	// (quando Status é informado, o filtro explícito prevalece).
+	IncluirEncerradas bool
+	Page              int
+	Limit             int
 }
 
 // RelatorioTempoMedioParams são os filtros do relatório.

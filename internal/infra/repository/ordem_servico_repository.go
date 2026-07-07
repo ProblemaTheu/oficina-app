@@ -284,6 +284,11 @@ func (r *OrdemServicoRepository) Listar(ctx context.Context, params usecase.List
 		countQuery += cond
 		args = append(args, string(*params.Status))
 		argIdx++
+	} else if !params.IncluirEncerradas {
+		// Exclusão lógica: OSs encerradas não aparecem na listagem padrão.
+		cond := " AND s.nome_status NOT IN ('finalizada', 'entregue')"
+		query += cond
+		countQuery += cond
 	}
 	if params.ClienteID != nil {
 		cond := fmt.Sprintf(" AND o.cliente_id = $%d", argIdx)
@@ -305,7 +310,16 @@ func (r *OrdemServicoRepository) Listar(ctx context.Context, params usecase.List
 		return nil, 0, fmt.Errorf("OrdemServicoRepository.Listar count: %w", err)
 	}
 
-	query += fmt.Sprintf(" ORDER BY o.criado_em DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	// Prioridade de atendimento do enunciado; mais antigas primeiro em cada grupo.
+	query += fmt.Sprintf(`
+		ORDER BY CASE s.nome_status
+			WHEN 'em_execucao'          THEN 1
+			WHEN 'aguardando_aprovacao' THEN 2
+			WHEN 'em_diagnostico'       THEN 3
+			WHEN 'recebida'             THEN 4
+			ELSE 5
+		END, o.criado_em ASC
+		LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
 	offset := (params.Page - 1) * params.Limit
 	args = append(args, params.Limit, offset)
 

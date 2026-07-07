@@ -84,7 +84,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 ## E2 — Evolução das APIs de Ordem de Serviço
 
-### F2-2.1 — Nova regra de listagem de OS
+### F2-2.1 — Nova regra de listagem de OS ✅
+- **Status:** Concluída. `ORDER BY` por prioridade de status + `criado_em ASC`; `finalizada`/`entregue` excluídas por padrão; parâmetro `incluir_encerradas` no contrato (OpenAPI regenerado). Testes unitários + verificação ponta a ponta via docker-compose.
 - **Descrição:** Alterar `GET /v1/work-orders` para: (a) ordenar por prioridade de status **Em Execução > Aguardando Aprovação > Em Diagnóstico > Recebida**; (b) dentro de cada status, **mais antigas primeiro**; (c) **excluir logicamente** OS `finalizada` e `entregue` da listagem padrão.
 - **Critérios de aceite:**
   - Listagem padrão não retorna `finalizada`/`entregue`.

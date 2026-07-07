@@ -931,6 +931,9 @@ func (s *Server) GetWorkOrders(ctx context.Context, request GetWorkOrdersRequest
 	page, limit := paginacaoDefaults(request.Params.Page, request.Params.Limit)
 
 	input := usecase.ListarOSInput{Page: page, Limit: limit}
+	if request.Params.IncluirEncerradas != nil {
+		input.IncluirEncerradas = *request.Params.IncluirEncerradas
+	}
 	if request.Params.Status != nil {
 		input.Status = request.Params.Status
 	}

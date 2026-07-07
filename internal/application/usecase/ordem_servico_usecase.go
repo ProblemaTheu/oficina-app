@@ -181,11 +181,12 @@ func (uc *OrdemServicoUseCase) CriarOS(ctx context.Context, input CriarOSInput) 
 
 // ListarOSInput são os filtros da listagem.
 type ListarOSInput struct {
-	Status    *string
-	ClienteID *string
-	VeiculoID *string
-	Page      int
-	Limit     int
+	Status            *string
+	ClienteID         *string
+	VeiculoID         *string
+	IncluirEncerradas bool
+	Page              int
+	Limit             int
 }
 
 // ListarOS retorna OSs paginadas.
@@ -193,8 +194,9 @@ func (uc *OrdemServicoUseCase) ListarOS(ctx context.Context, input ListarOSInput
 	slog.Info("executando caso de uso: listar OSs")
 
 	params := ListarOSParams{
-		Page:  input.Page,
-		Limit: input.Limit,
+		IncluirEncerradas: input.IncluirEncerradas,
+		Page:              input.Page,
+		Limit:             input.Limit,
 	}
 	if input.Status != nil {
 		s := entity.Status(*input.Status)

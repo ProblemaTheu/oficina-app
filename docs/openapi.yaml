@@ -1423,6 +1423,12 @@ paths:
     get:
       tags: [Ordens de Serviço]
       summary: Listar ordens de serviço
+      description: >
+        Retorna as OSs ordenadas por prioridade de status (em_execucao >
+        aguardando_aprovacao > em_diagnostico > recebida) e, dentro de cada
+        status, da mais antiga para a mais recente. OSs `finalizada` e
+        `entregue` são excluídas da listagem padrão; use
+        `incluir_encerradas=true` (ou o filtro `status`) para consultá-las.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
@@ -1430,6 +1436,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: incluir_encerradas
+          in: query
+          description: Inclui OSs finalizadas e entregues na listagem
+          schema:
+            type: boolean
+            default: false
         - name: cliente_id
           in: query
           schema:

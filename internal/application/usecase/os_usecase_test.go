@@ -307,7 +307,14 @@ func TestOSListarOS_ComFiltros(t *testing.T) {
 	status := "recebida"
 	clienteID := uuid.New().String()
 	veiculoID := uuid.New().String()
-	_, _, err := osUseCase(&mockOsRepo{}).ListarOS(context.Background(), usecase.ListarOSInput{
+
+	var recebido usecase.ListarOSParams
+	repo := &mockOsRepo{listarFn: func(_ context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
+		recebido = p
+		return nil, 0, nil
+	}}
+
+	_, _, err := osUseCase(repo).ListarOS(context.Background(), usecase.ListarOSInput{
 		Status:    &status,
 		ClienteID: &clienteID,
 		VeiculoID: &veiculoID,
@@ -315,6 +322,31 @@ func TestOSListarOS_ComFiltros(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+	if recebido.Status == nil || *recebido.Status != entity.Status(status) {
+		t.Errorf("esperava status '%s' repassado ao repositório, obteve %v", status, recebido.Status)
+	}
+	if recebido.IncluirEncerradas {
+		t.Error("IncluirEncerradas deveria ser false por padrão")
+	}
+}
+
+func TestOSListarOS_IncluirEncerradas(t *testing.T) {
+	var recebido usecase.ListarOSParams
+	repo := &mockOsRepo{listarFn: func(_ context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
+		recebido = p
+		return nil, 0, nil
+	}}
+
+	_, _, err := osUseCase(repo).ListarOS(context.Background(), usecase.ListarOSInput{
+		IncluirEncerradas: true,
+		Page:              1, Limit: 10,
+	})
+	if err != nil {
+		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+	if !recebido.IncluirEncerradas {
+		t.Error("esperava IncluirEncerradas=true repassado ao repositório")
 	}
 }
 
