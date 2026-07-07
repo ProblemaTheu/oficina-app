@@ -15,7 +15,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 ## E0 — Correções e dívida técnica
 
-### F2-0.1 — Remover `/cancel` e `cancelada` da documentação
+### F2-0.1 — Remover `/cancel` e `cancelada` da documentação ✅
+- **Status:** Concluída. README sem `/cancel`/`cancelada`; diagrama de estados redesenhado fiel a `validTransitions`; OpenAPI já não tinha a rota.
 - **Descrição:** O cancelamento de OS está documentado (README + diagrama de estados) mas **não existe no código nem nos PDFs** da Fase 1/2. A fonte da verdade são os PDFs, que definem apenas 6 status sem cancelamento. Alinhar a documentação à especificação e ao código.
 - **Critérios de aceite:**
   - README, diagrama de estados e OpenAPI **não citam mais** `/cancel` nem `cancelada`.
@@ -26,7 +27,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** P
 - **Depende de:** —
 
-### F2-0.2 — Corrigir violação de dependência de camadas (Clean Architecture)
+### F2-0.2 — Corrigir violação de dependência de camadas (Clean Architecture) ✅
+- **Status:** Concluída (commit `eef16bf`). DTOs movidos para `internal/application/usecase/ports.go`; infra passou a importar a aplicação.
 - **Descrição:** A camada `application/usecase` importa `infra/repository`. Inverter a dependência.
 - **Critérios de aceite:**
   - `internal/application/**` não importa mais `internal/infra/**` (validável por `go list`/grep).
