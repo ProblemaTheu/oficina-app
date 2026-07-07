@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 // OrdemServicoUseCase centraliza todos os casos de uso de Ordens de Serviço.
@@ -195,7 +194,7 @@ type ListarOSInput struct {
 func (uc *OrdemServicoUseCase) ListarOS(ctx context.Context, input ListarOSInput) ([]*entity.OrdemServico, int, error) {
 	slog.Info("executando caso de uso: listar OSs")
 
-	params := repository.ListarOSParams{
+	params := ListarOSParams{
 		Page:  input.Page,
 		Limit: input.Limit,
 	}
@@ -371,10 +370,10 @@ type RelatorioTempoMedioInput struct {
 }
 
 // RelatorioTempoMedio calcula o tempo médio de execução por serviço.
-func (uc *OrdemServicoUseCase) RelatorioTempoMedio(ctx context.Context, input RelatorioTempoMedioInput) ([]repository.ItemTempoMedio, error) {
+func (uc *OrdemServicoUseCase) RelatorioTempoMedio(ctx context.Context, input RelatorioTempoMedioInput) ([]ItemTempoMedio, error) {
 	slog.Info("executando caso de uso: relatório tempo médio")
 
-	params := repository.RelatorioTempoMedioParams{}
+	params := RelatorioTempoMedioParams{}
 
 	if input.ServicoID != nil {
 		id, err := uuid.Parse(*input.ServicoID)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
@@ -260,17 +261,8 @@ func (r *OrdemServicoRepository) BuscarPorID(ctx context.Context, id string) (*e
 	return completa, nil
 }
 
-// ListarParams contém os filtros para listagem de OSs.
-type ListarOSParams struct {
-	Status    *entity.Status
-	ClienteID *uuid.UUID
-	VeiculoID *uuid.UUID
-	Page      int
-	Limit     int
-}
-
 // Listar retorna OSs paginadas com filtros opcionais.
-func (r *OrdemServicoRepository) Listar(ctx context.Context, params ListarOSParams) ([]*entity.OrdemServico, int, error) {
+func (r *OrdemServicoRepository) Listar(ctx context.Context, params usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
 	query := `
 		SELECT
 			o.id, o.numero, o.cliente_id, o.veiculo_id, o.status_id, s.nome_status,
@@ -462,23 +454,8 @@ func (r *OrdemServicoRepository) DeduzirEstoquePecas(ctx context.Context, osID u
 	return tx.Commit()
 }
 
-// RelatorioTempoMedioParams são os filtros do relatório.
-type RelatorioTempoMedioParams struct {
-	ServicoID  *uuid.UUID
-	DataInicio *time.Time
-	DataFim    *time.Time
-}
-
-// ItemTempoMedio é o resultado do relatório por serviço.
-type ItemTempoMedio struct {
-	ServicoID         uuid.UUID
-	ServicoNome       string
-	TotalExecucoes    int
-	TempoMedioMinutos float64
-}
-
 // RelatorioTempoMedio calcula o tempo médio de execução agrupado por serviço.
-func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params RelatorioTempoMedioParams) ([]ItemTempoMedio, error) {
+func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params usecase.RelatorioTempoMedioParams) ([]usecase.ItemTempoMedio, error) {
 	query := `
 		SELECT
 			s.id,
@@ -521,9 +498,9 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	}
 	defer rows.Close()
 
-	var resultado []ItemTempoMedio
+	var resultado []usecase.ItemTempoMedio
 	for rows.Next() {
-		var item ItemTempoMedio
+		var item usecase.ItemTempoMedio
 		if err := rows.Scan(&item.ServicoID, &item.ServicoNome, &item.TotalExecucoes, &item.TempoMedioMinutos); err != nil {
 			return nil, fmt.Errorf("RelatorioTempoMedio scan: %w", err)
 		}
@@ -534,7 +511,7 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	}
 
 	if resultado == nil {
-		resultado = []ItemTempoMedio{}
+		resultado = []usecase.ItemTempoMedio{}
 	}
 
 	return resultado, nil
