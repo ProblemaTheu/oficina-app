@@ -23,6 +23,7 @@ type mockOsRepo struct {
 	atualizarStatusErr  error
 	registrarHistErr    error
 	deduzirEstoqueErr   error
+	deduzirChamadas     int
 	relatorioFn         func(ctx context.Context, p usecase.RelatorioTempoMedioParams) ([]usecase.ItemTempoMedio, error)
 	precarregarCacheErr error
 }
@@ -65,6 +66,7 @@ func (m *mockOsRepo) RegistrarHistorico(_ context.Context, _ uuid.UUID, _ *uuid.
 	return m.registrarHistErr
 }
 func (m *mockOsRepo) DeduzirEstoquePecas(_ context.Context, _ uuid.UUID) error {
+	m.deduzirChamadas++
 	return m.deduzirEstoqueErr
 }
 func (m *mockOsRepo) RelatorioTempoMedio(ctx context.Context, p usecase.RelatorioTempoMedioParams) ([]usecase.ItemTempoMedio, error) {
@@ -212,6 +214,108 @@ func TestOSRejeitarOrcamento_Sucesso(t *testing.T) {
 	_, err := osUseCase(osR).RejeitarOrcamento(context.Background(), uuid.New().String(), &motivo)
 	if err != nil {
 		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+}
+
+// ── ProcessarRespostaOrcamento (webhook) ──────────────────────────────────────
+
+func TestOSProcessarResposta_DecisaoInvalida(t *testing.T) {
+	_, err := osUseCase(&mockOsRepo{}).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), "talvez", nil)
+	var ev *domainerros.ErrValidacao
+	if !errors.As(err, &ev) {
+		t.Errorf("esperava ErrValidacao para decisão desconhecida, obteve: %v", err)
+	}
+}
+
+func TestOSProcessarResposta_AprovadoSucesso(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoAprovado, nil)
+	if err != nil {
+		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+	if osR.deduzirChamadas != 1 {
+		t.Errorf("esperava 1 dedução de estoque, obteve %d", osR.deduzirChamadas)
+	}
+}
+
+func TestOSProcessarResposta_RecusadoSucesso(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	motivo := "muito caro"
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoRecusado, &motivo)
+	if err != nil {
+		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+	if osR.deduzirChamadas != 0 {
+		t.Errorf("recusa não deve deduzir estoque; obteve %d deduções", osR.deduzirChamadas)
+	}
+}
+
+func TestOSProcessarResposta_IdempotenteAprovado(t *testing.T) {
+	// OS já aprovada anteriormente: em_execucao com AprovadoEm preenchido.
+	// Reprocessar a mesma notificação não deve deduzir estoque de novo.
+	aprovadoEm := time.Now()
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			oc := osCompleta(entity.StatusEmExecucao)
+			oc.AprovadoEm = &aprovadoEm
+			return oc, nil
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoAprovado, nil)
+	if err != nil {
+		t.Errorf("esperava idempotência (sem erro), obteve: %v", err)
+	}
+	if osR.deduzirChamadas != 0 {
+		t.Errorf("notificação repetida não deve deduzir estoque; obteve %d deduções", osR.deduzirChamadas)
+	}
+}
+
+func TestOSProcessarResposta_IdempotenteRecusado(t *testing.T) {
+	reprovadoEm := time.Now()
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			oc := osCompleta(entity.StatusFinalizada)
+			oc.ReprovadoEm = &reprovadoEm
+			return oc, nil
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoRecusado, nil)
+	if err != nil {
+		t.Errorf("esperava idempotência (sem erro), obteve: %v", err)
+	}
+}
+
+func TestOSProcessarResposta_EstadoInvalido(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusRecebida), nil
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoAprovado, nil)
+	var np *domainerros.ErrNaoProcessavel
+	if !errors.As(err, &np) {
+		t.Errorf("esperava ErrNaoProcessavel para OS fora de aguardando_aprovacao, obteve: %v", err)
+	}
+}
+
+func TestOSProcessarResposta_OSNaoEncontrada(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return nil, &domainerros.ErrNaoEncontrado{Recurso: "ordem de serviço"}
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoRecusado, nil)
+	var ne *domainerros.ErrNaoEncontrado
+	if !errors.As(err, &ne) {
+		t.Errorf("esperava ErrNaoEncontrado, obteve: %v", err)
 	}
 }
 

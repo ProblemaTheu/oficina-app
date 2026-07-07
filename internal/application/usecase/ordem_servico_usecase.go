@@ -319,6 +319,43 @@ func (uc *OrdemServicoUseCase) AprovarOrcamento(ctx context.Context, osID string
 	return uc.osRepo.BuscarPorID(ctx, osID)
 }
 
+// Decisões aceitas pelo webhook de resposta de orçamento.
+const (
+	DecisaoAprovado = "aprovado"
+	DecisaoRecusado = "recusado"
+)
+
+// ProcessarRespostaOrcamento aplica a decisão do cliente recebida via webhook,
+// reutilizando AprovarOrcamento/RejeitarOrcamento. É idempotente: se a mesma
+// decisão já foi aplicada (notificação reenviada pelo provedor), retorna a OS
+// atual sem produzir efeito duplicado (ex.: não deduz estoque novamente).
+func (uc *OrdemServicoUseCase) ProcessarRespostaOrcamento(ctx context.Context, osID, decisao string, motivo *string) (*entity.OrdemServicoCompleta, error) {
+	slog.Info("executando caso de uso: processar resposta de orçamento", "id", osID, "decisao", decisao)
+
+	if decisao != DecisaoAprovado && decisao != DecisaoRecusado {
+		return nil, &domainerros.ErrValidacao{Mensagem: fmt.Sprintf("decisão '%s' inválida: use '%s' ou '%s'", decisao, DecisaoAprovado, DecisaoRecusado)}
+	}
+
+	osCompleta, err := uc.osRepo.BuscarPorID(ctx, osID)
+	if err != nil {
+		return nil, err
+	}
+	os := &osCompleta.OrdemServico
+
+	// Idempotência: a decisão já foi aplicada anteriormente.
+	switch {
+	case decisao == DecisaoAprovado && os.StatusNome == entity.StatusEmExecucao && os.AprovadoEm != nil:
+		return osCompleta, nil
+	case decisao == DecisaoRecusado && os.StatusNome == entity.StatusFinalizada && os.ReprovadoEm != nil:
+		return osCompleta, nil
+	}
+
+	if decisao == DecisaoAprovado {
+		return uc.AprovarOrcamento(ctx, osID)
+	}
+	return uc.RejeitarOrcamento(ctx, osID, motivo)
+}
+
 // RejeitarOrcamento rejeita o orçamento e avança para finalizada.
 func (uc *OrdemServicoUseCase) RejeitarOrcamento(ctx context.Context, osID string, motivo *string) (*entity.OrdemServicoCompleta, error) {
 	slog.Info("executando caso de uso: rejeitar orçamento", "id", osID)

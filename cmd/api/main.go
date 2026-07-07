@@ -58,8 +58,10 @@ func main() {
 	//   - /v1/auth/login       → permitAll
 	//   - /v1/auth/register    → permitAll
 	//   - /v1/work-orders/{id}/status → permitAll
+	//   - /v1/webhooks/*       → assinatura HMAC (X-Signature), sem JWT
 	//   - demais rotas         → authenticated (Bearer JWT HS256)
 	r.Group(func(r chi.Router) {
+		r.Use(apimiddleware.AssinaturaWebhook())
 		r.Use(apimiddleware.JWT())
 		api.HandlerFromMuxWithBaseURL(strictHandler, r, "/v1")
 	})

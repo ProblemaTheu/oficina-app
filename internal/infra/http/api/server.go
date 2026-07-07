@@ -1168,6 +1168,33 @@ func (s *Server) PostWorkOrdersIdReject(ctx context.Context, request PostWorkOrd
 	return PostWorkOrdersIdReject200JSONResponse(osCompletaParaResponse(osCompleta)), nil
 }
 
+// ── Webhooks ──────────────────────────────────────────────────────────────────
+
+// PostWebhooksBudgetResponse processa a decisão do cliente sobre o orçamento
+// recebida de um provedor externo (ex.: serviço de e-mail).
+//
+// Rota: POST /v1/webhooks/budget-response
+//
+// Autenticação: assinatura HMAC-SHA256 do corpo no header X-Signature,
+// validada pelo middleware AssinaturaWebhook (rota isenta de JWT).
+//
+// Respostas:
+//   - 200: decisão aplicada, ou já aplicada anteriormente (idempotente).
+//   - 400: payload inválido (decisão desconhecida, os_id malformado).
+//   - 401: assinatura ausente ou inválida.
+//   - 404: OS não encontrada.
+//   - 422: OS não está em "aguardando_aprovacao".
+func (s *Server) PostWebhooksBudgetResponse(ctx context.Context, request PostWebhooksBudgetResponseRequestObject) (PostWebhooksBudgetResponseResponseObject, error) {
+	body := request.Body
+
+	osCompleta, err := s.osUseCase.ProcessarRespostaOrcamento(ctx, body.OsId.String(), string(body.Decisao), body.Motivo)
+	if err != nil {
+		return nil, err
+	}
+
+	return PostWebhooksBudgetResponse200JSONResponse(osCompletaParaResponse(osCompleta)), nil
+}
+
 // ── Relatórios ────────────────────────────────────────────────────────────────
 
 // GetReportsAvgExecutionTime retorna o tempo médio de execução por serviço.

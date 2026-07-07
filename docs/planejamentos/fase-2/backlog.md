@@ -96,7 +96,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** M
 - **Depende de:** F2-0.2
 
-### F2-2.2 — Webhook de aprovação/recusa de orçamento
+### F2-2.2 — Webhook de aprovação/recusa de orçamento ✅
+- **Status:** Concluída. `POST /v1/webhooks/budget-response` com assinatura HMAC-SHA256 (`X-Signature`, segredo em `WEBHOOK_SECRET`), idempotência via estado da OS (`AprovadoEm`/`ReprovadoEm`), reutilizando `AprovarOrcamento`/`RejeitarOrcamento`. Testes de use case + middleware; verificado ponta a ponta (200/200 idempotente/401/404/422/400).
 - **Descrição:** Endpoint inbound para receber notificações externas de aprovação ou recusa do orçamento (substitui/complementa os atuais `approve`/`reject` acionados manualmente).
 - **Critérios de aceite:**
   - `POST /v1/webhooks/budget-response` (ou nome equivalente) recebe `{ os_id | numero, decisao: "aprovado"|"recusado", motivo? }`.

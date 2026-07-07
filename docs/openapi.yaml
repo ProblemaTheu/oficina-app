@@ -714,6 +714,22 @@ components:
         motivo:
           type: string
 
+    WebhookRespostaOrcamentoRequest:
+      type: object
+      required: [os_id, decisao]
+      properties:
+        os_id:
+          type: string
+          format: uuid
+          description: Identificador da OS cujo orçamento foi respondido
+        decisao:
+          type: string
+          enum: [aprovado, recusado]
+          description: Decisão do cliente sobre o orçamento
+        motivo:
+          type: string
+          description: Motivo informado pelo cliente (opcional, usado na recusa)
+
     OrdemServicoStatusPublicoResponse:
       type: object
       properties:
@@ -1577,6 +1593,52 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           description: Entidade não processável
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /webhooks/budget-response:
+    post:
+      tags: [Webhooks]
+      summary: Webhook de resposta do orçamento (aprovação/recusa)
+      description: >
+        Endpoint inbound para provedores externos (ex.: serviço de e-mail)
+        notificarem a decisão do cliente sobre o orçamento. Não usa JWT:
+        a autenticidade é validada pela assinatura HMAC-SHA256 do corpo,
+        enviada no header `X-Signature` (hex), calculada com o segredo
+        compartilhado configurado em `WEBHOOK_SECRET`. Reprocessar a mesma
+        notificação é idempotente: se a decisão já foi aplicada, responde
+        200 sem efeito duplicado.
+      security: []
+      parameters:
+        - name: X-Signature
+          in: header
+          required: true
+          description: HMAC-SHA256 (hex) do corpo da requisição
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRespostaOrcamentoRequest'
+      responses:
+        '200':
+          description: Decisão processada (ou já aplicada anteriormente)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: OS não está aguardando aprovação
           content:
             application/json:
               schema:
