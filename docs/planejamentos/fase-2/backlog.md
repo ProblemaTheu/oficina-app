@@ -62,7 +62,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** M
 - **Depende de:** —
 
-### F2-1.3 — Cobrir fluxos críticos com testes automatizados
+### F2-1.3 — Cobrir fluxos críticos com testes automatizados ✅
+- **Status:** Concluída. Use cases em 85,9% (Fase 1: ~82%); middleware em 89,8% (JWT: token válido/ausente/expirado/malformado/segredo errado, rotas públicas); handler central de erros 100% (mapeamento completo, erro embrulhado, 500 sem vazar detalhes); CriarOS 62%→86% (caminhos de erro + valor total); notificação 69%. Listagem e webhook cobertos nas F2-2.1/2.2. Suíte roda com `-race`.
 - **Descrição:** Garantir testes dos fluxos que o enunciado destaca: abertura de OS, transições de status, aprovação/recusa via webhook, exclusão lógica na listagem.
 - **Critérios de aceite:**
   - Testes unitários para a nova ordenação/filtro de listagem (E2).

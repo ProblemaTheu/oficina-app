@@ -644,3 +644,146 @@ func TestOSCriarOS_Sucesso(t *testing.T) {
 		t.Errorf("esperava sucesso, obteve: %v", err)
 	}
 }
+
+func TestOSCriarOS_ClienteIDInvalido(t *testing.T) {
+	_, err := osUseCase(&mockOsRepo{}).CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: "não-é-uuid",
+		VeiculoID: uuid.New().String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	var ne *domainerros.ErrNaoEncontrado
+	if !errors.As(err, &ne) {
+		t.Errorf("esperava ErrNaoEncontrado para cliente_id inválido, obteve: %v", err)
+	}
+}
+
+func TestOSCriarOS_VeiculoIDInvalido(t *testing.T) {
+	clienteID := uuid.New()
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	uc := usecase.NewOrdemServicoUseCase(&mockOsRepo{}, cliR, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, nil)
+
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: "não-é-uuid",
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	var ne *domainerros.ErrNaoEncontrado
+	if !errors.As(err, &ne) {
+		t.Errorf("esperava ErrNaoEncontrado para veiculo_id inválido, obteve: %v", err)
+	}
+}
+
+func TestOSCriarOS_ComServicosEPecas_CalculaValorTotal(t *testing.T) {
+	clienteID := uuid.New()
+	veiculoID := uuid.New()
+	servicoID := uuid.New()
+	pecaID := uuid.New()
+
+	var valorTotal float64
+	osR := &mockOsRepo{
+		criarFn: func(_ context.Context, os *entity.OrdemServico, _ []entity.ItemOsServico, _ []entity.ItemOsPeca) (*entity.OrdemServico, error) {
+			valorTotal = os.ValorTotal
+			os.ID = uuid.New()
+			return os, nil
+		},
+	}
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	veicR := &osVeicRepo{veiculo: &entity.Veiculo{ID: veiculoID, ClienteID: clienteID}}
+	svcR := &osSvcRepo{servico: &entity.Servico{ID: servicoID, PrecoBase: 150.0}}
+	pecR := &osPecaRepo{peca: &entity.Peca{ID: pecaID, Preco: 40.0, EstoqueAtual: 10}}
+
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, svcR, pecR, nil)
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: veiculoID.String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: servicoID.String(), Quantidade: 2}},
+		// Quantidade 0 deve ser normalizada para 1
+		Pecas: []usecase.ItemPecaOSInput{{PecaID: pecaID.String(), Quantidade: 0}},
+	})
+	if err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	// 2 × 150.0 (serviço) + 1 × 40.0 (peça, quantidade normalizada) = 340.0
+	if valorTotal != 340.0 {
+		t.Errorf("esperava valor total 340.0, obteve %.2f", valorTotal)
+	}
+}
+
+func TestOSCriarOS_FalhaAoGerarNumero(t *testing.T) {
+	clienteID := uuid.New()
+	veiculoID := uuid.New()
+	osR := &mockOsRepo{
+		gerarNumeroFn: func(_ context.Context) (string, error) {
+			return "", errors.New("sequence indisponível")
+		},
+	}
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	veicR := &osVeicRepo{veiculo: &entity.Veiculo{ID: veiculoID, ClienteID: clienteID}}
+
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, &osSvcRepo{}, &osPecaRepo{}, nil)
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: veiculoID.String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	if err == nil {
+		t.Error("esperava erro propagado da geração de número")
+	}
+}
+
+func TestOSCriarOS_FalhaAoBuscarStatusInicial(t *testing.T) {
+	clienteID := uuid.New()
+	veiculoID := uuid.New()
+	osR := &mockOsRepo{
+		buscarStatusIDFn: func(_ context.Context, _ entity.Status) (uuid.UUID, error) {
+			return uuid.Nil, errors.New("status não cadastrado")
+		},
+	}
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	veicR := &osVeicRepo{veiculo: &entity.Veiculo{ID: veiculoID, ClienteID: clienteID}}
+
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, &osSvcRepo{}, &osPecaRepo{}, nil)
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: veiculoID.String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	if err == nil {
+		t.Error("esperava erro propagado da busca do status inicial")
+	}
+}
+
+func TestOSCriarOS_FalhaAoPersistir(t *testing.T) {
+	clienteID := uuid.New()
+	veiculoID := uuid.New()
+	osR := &mockOsRepo{
+		criarFn: func(_ context.Context, _ *entity.OrdemServico, _ []entity.ItemOsServico, _ []entity.ItemOsPeca) (*entity.OrdemServico, error) {
+			return nil, errors.New("banco indisponível")
+		},
+	}
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	veicR := &osVeicRepo{veiculo: &entity.Veiculo{ID: veiculoID, ClienteID: clienteID}}
+
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, &osSvcRepo{}, &osPecaRepo{}, nil)
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: veiculoID.String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	if err == nil {
+		t.Error("esperava erro propagado da persistência")
+	}
+}
+
+func TestOSConsultarStatusPublico_NaoEncontrada(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return nil, &domainerros.ErrNaoEncontrado{Recurso: "ordem de serviço"}
+		},
+	}
+	_, err := osUseCase(osR).ConsultarStatusPublico(context.Background(), uuid.New().String())
+	var ne *domainerros.ErrNaoEncontrado
+	if !errors.As(err, &ne) {
+		t.Errorf("esperava ErrNaoEncontrado, obteve: %v", err)
+	}
+}
