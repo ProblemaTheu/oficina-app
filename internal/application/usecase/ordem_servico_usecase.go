@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -250,7 +249,7 @@ func (uc *OrdemServicoUseCase) AvancarStatus(ctx context.Context, input AvancarS
 
 	if input.NovoStatus == entity.StatusAguardandoAprovacao {
 		if input.Diagnostico == nil || *input.Diagnostico == "" {
-			return nil, errors.New("campo 'diagnostico' é obrigatório na transição para aguardando_aprovacao")
+			return nil, &domainerros.ErrValidacao{Mensagem: "campo 'diagnostico' é obrigatório na transição para aguardando_aprovacao"}
 		}
 	}
 

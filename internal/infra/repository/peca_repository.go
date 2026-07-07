@@ -105,8 +105,11 @@ func (r *PecaRepository) BuscarPorID(id string) (*entity.Peca, error) {
 		&peca.AtualizadoEm,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "peça"}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("PecaRepository.BuscarPorID: %w", err)
 	}
 
 	return &peca, nil
@@ -137,8 +140,11 @@ func (r *PecaRepository) Atualizar(peca *entity.Peca) (*entity.Peca, error) {
 		&peca.AtualizadoEm,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "peça"}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("PecaRepository.Atualizar: %w", err)
 	}
 
 	return peca, nil
@@ -165,8 +171,11 @@ func (r *PecaRepository) AtualizarEstoque(peca *entity.Peca) (*entity.Peca, erro
 		&peca.AtualizadoEm,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "peça"}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("PecaRepository.AtualizarEstoque: %w", err)
 	}
 
 	return peca, nil
@@ -188,7 +197,7 @@ func (r *PecaRepository) Remover(id string) error {
 	}
 
 	if rows == 0 {
-		return sql.ErrNoRows
+		return &domainerros.ErrNaoEncontrado{Recurso: "peça"}
 	}
 
 	return nil

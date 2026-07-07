@@ -16,7 +16,6 @@ import (
 	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
 	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
@@ -175,25 +174,7 @@ func (s *Server) PostClients(_ context.Context, request PostClientsRequestObject
 	)
 
 	if err != nil {
-		var errConflito *domainerros.ErrConflito
-
-		switch {
-
-		case errors.As(err, &errConflito):
-			return PostClients409JSONResponse{
-				ConflictJSONResponse{Code: "CONFLICT", Message: err.Error()},
-			}, nil
-
-		case errors.Is(err, valueobject.ErrDocumentoInvalido):
-			return PostClients400JSONResponse{
-				BadRequestJSONResponse{Code: "INVALID_DOCUMENT", Message: err.Error()},
-			}, nil
-
-		default:
-			return PostClients400JSONResponse{
-				BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()},
-			}, nil
-		}
+		return nil, err
 	}
 
 	resp := clienteParaResponse(cliente)
@@ -798,13 +779,6 @@ func (s *Server) PatchPartsIdStock(_ context.Context, request PatchPartsIdStockR
 		body.Quantidade,
 	)
 	if err != nil {
-		if errors.Is(err, usecase.ErrEstoqueInsuficiente) {
-			return PatchPartsIdStock422JSONResponse{
-				Code:    "INSUFFICIENT_STOCK",
-				Message: err.Error(),
-			}, nil
-		}
-
 		return nil, err
 	}
 
@@ -1042,17 +1016,7 @@ func (s *Server) PostWorkOrders(ctx context.Context, request PostWorkOrdersReque
 
 	osCompleta, err := s.osUseCase.CriarOS(ctx, input)
 	if err != nil {
-		var errNaoEncontrado *domainerros.ErrNaoEncontrado
-		var errNaoProcessavel *domainerros.ErrNaoProcessavel
-
-		switch {
-		case errors.As(err, &errNaoEncontrado):
-			return PostWorkOrders404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
-		case errors.As(err, &errNaoProcessavel):
-			return PostWorkOrders422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
-		default:
-			return PostWorkOrders400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
-		}
+		return nil, err
 	}
 
 	resp := osCompletaParaResponse(osCompleta)
@@ -1074,10 +1038,6 @@ func (s *Server) PostWorkOrders(ctx context.Context, request PostWorkOrdersReque
 func (s *Server) GetWorkOrdersId(ctx context.Context, request GetWorkOrdersIdRequestObject) (GetWorkOrdersIdResponseObject, error) {
 	osCompleta, err := s.osUseCase.GetOS(ctx, request.Id.String())
 	if err != nil {
-		var errNaoEncontrado *domainerros.ErrNaoEncontrado
-		if errors.As(err, &errNaoEncontrado) {
-			return GetWorkOrdersId404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
-		}
 		return nil, err
 	}
 	return GetWorkOrdersId200JSONResponse(osCompletaParaResponse(osCompleta)), nil
@@ -1099,10 +1059,6 @@ func (s *Server) GetWorkOrdersId(ctx context.Context, request GetWorkOrdersIdReq
 func (s *Server) GetWorkOrdersIdStatus(ctx context.Context, request GetWorkOrdersIdStatusRequestObject) (GetWorkOrdersIdStatusResponseObject, error) {
 	os, err := s.osUseCase.ConsultarStatusPublico(ctx, request.Id.String())
 	if err != nil {
-		var errNaoEncontrado *domainerros.ErrNaoEncontrado
-		if errors.As(err, &errNaoEncontrado) {
-			return GetWorkOrdersIdStatus404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
-		}
 		return nil, err
 	}
 
@@ -1151,16 +1107,7 @@ func (s *Server) PatchWorkOrdersIdStatus(ctx context.Context, request PatchWorkO
 
 	osCompleta, err := s.osUseCase.AvancarStatus(ctx, input)
 	if err != nil {
-		var errNaoEncontrado *domainerros.ErrNaoEncontrado
-		var errNaoProcessavel *domainerros.ErrNaoProcessavel
-		switch {
-		case errors.As(err, &errNaoEncontrado):
-			return PatchWorkOrdersIdStatus404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
-		case errors.As(err, &errNaoProcessavel):
-			return PatchWorkOrdersIdStatus422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
-		default:
-			return PatchWorkOrdersIdStatus400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
-		}
+		return nil, err
 	}
 	return PatchWorkOrdersIdStatus200JSONResponse(osCompletaParaResponse(osCompleta)), nil
 }
@@ -1183,16 +1130,7 @@ func (s *Server) PatchWorkOrdersIdStatus(ctx context.Context, request PatchWorkO
 func (s *Server) PostWorkOrdersIdApprove(ctx context.Context, request PostWorkOrdersIdApproveRequestObject) (PostWorkOrdersIdApproveResponseObject, error) {
 	osCompleta, err := s.osUseCase.AprovarOrcamento(ctx, request.Id.String())
 	if err != nil {
-		var errNaoEncontrado *domainerros.ErrNaoEncontrado
-		var errNaoProcessavel *domainerros.ErrNaoProcessavel
-		switch {
-		case errors.As(err, &errNaoEncontrado):
-			return PostWorkOrdersIdApprove404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
-		case errors.As(err, &errNaoProcessavel):
-			return PostWorkOrdersIdApprove422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
-		default:
-			return nil, err
-		}
+		return nil, err
 	}
 	return PostWorkOrdersIdApprove200JSONResponse(osCompletaParaResponse(osCompleta)), nil
 }
@@ -1222,16 +1160,7 @@ func (s *Server) PostWorkOrdersIdReject(ctx context.Context, request PostWorkOrd
 
 	osCompleta, err := s.osUseCase.RejeitarOrcamento(ctx, request.Id.String(), motivo)
 	if err != nil {
-		var errNaoEncontrado *domainerros.ErrNaoEncontrado
-		var errNaoProcessavel *domainerros.ErrNaoProcessavel
-		switch {
-		case errors.As(err, &errNaoEncontrado):
-			return PostWorkOrdersIdReject404JSONResponse{NotFoundJSONResponse{Code: "NOT_FOUND", Message: err.Error()}}, nil
-		case errors.As(err, &errNaoProcessavel):
-			return PostWorkOrdersIdReject422JSONResponse{Code: errNaoProcessavel.Codigo, Message: errNaoProcessavel.Mensagem}, nil
-		default:
-			return nil, err
-		}
+		return nil, err
 	}
 	return PostWorkOrdersIdReject200JSONResponse(osCompletaParaResponse(osCompleta)), nil
 }
@@ -1327,11 +1256,7 @@ func (s *Server) PostAuthRegister(ctx context.Context, request PostAuthRegisterR
 		Papel: papel,
 	})
 	if err != nil {
-		var errConflito *domainerros.ErrConflito
-		if errors.As(err, &errConflito) {
-			return PostAuthRegister409JSONResponse{ConflictJSONResponse{Code: "CONFLICT", Message: err.Error()}}, nil
-		}
-		return PostAuthRegister400JSONResponse{BadRequestJSONResponse{Code: "VALIDATION_ERROR", Message: err.Error()}}, nil
+		return nil, err
 	}
 
 	id := openapi_types.UUID(usuario.ID)

@@ -30,7 +30,10 @@ func main() {
 		log.Printf("aviso: falha ao pré-carregar caches: %v", err)
 	}
 
-	strictHandler := api.NewStrictHandler(server, nil)
+	strictHandler := api.NewStrictHandlerWithOptions(server, nil, api.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  api.TratarErroRequisicao,
+		ResponseErrorHandlerFunc: api.TratarErroResposta,
+	})
 
 	r := chi.NewRouter()
 

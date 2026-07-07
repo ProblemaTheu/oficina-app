@@ -109,8 +109,11 @@ func (r *ServicoRepository) BuscarPorID(id string) (*entity.Servico, error) {
 		&servico.AtualizadoEm,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "serviço"}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ServicoRepository.BuscarPorID: %w", err)
 	}
 
 	return &servico, nil
@@ -142,12 +145,15 @@ func (r *ServicoRepository) Atualizar(servico *entity.Servico) (*entity.Servico,
 		&servico.AtualizadoEm,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "serviço"}
+	}
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
 			return nil, &domainerros.ErrConflito{Campo: "nome"}
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("ServicoRepository.Atualizar: %w", err)
 	}
 
 	return servico, nil
@@ -169,7 +175,7 @@ func (r *ServicoRepository) Remover(id string) error {
 	}
 
 	if rows == 0 {
-		return sql.ErrNoRows
+		return &domainerros.ErrNaoEncontrado{Recurso: "serviço"}
 	}
 
 	return nil

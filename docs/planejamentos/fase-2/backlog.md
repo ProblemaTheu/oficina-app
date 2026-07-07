@@ -54,7 +54,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** M
 - **Depende de:** —
 
-### F2-1.2 — Padronizar tratamento de erros nos handlers
+### F2-1.2 — Padronizar tratamento de erros nos handlers ✅
+- **Status:** Concluída. Handler central de erros (`internal/infra/http/api/erros.go`) registrado via `StrictHTTPServerOptions`; novo tipo `ErrValidacao` (400) no domínio substitui `errors.New` soltos nos use cases; repositórios agora convertem `sql.ErrNoRows` em `ErrNaoEncontrado`; switches repetidos removidos dos handlers. Verificado ponta a ponta via docker-compose (404/409/422/400).
 - **Descrição:** Vários handlers retornam `nil, err` cru (ex.: `GetClientsId`, `PutClientsId`), gerando 500 genérico em casos que deveriam ser 404/400.
 - **Critérios de aceite:** Handlers mapeiam `ErrNaoEncontrado`→404, `ErrConflito`→409, `ErrNaoProcessavel`→422, validação→400 de forma consistente. Erros inesperados logam contexto e retornam 500.
 - **Sugestão técnica:** Extrair um helper de mapeamento erro→resposta reutilizável, evitando o switch repetido.

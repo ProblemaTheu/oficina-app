@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
+	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
 
 var ErrEstoqueInsuficiente = errors.New("estoque insuficiente")
@@ -23,25 +24,25 @@ func (uc *PartUseCase) Create(nome string, codigo string, preco float64, estoque
 	slog.Info("executando caso de uso: criar peça")
 
 	if strings.TrimSpace(nome) == "" {
-		return nil, errors.New("nome é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "nome é obrigatório"}
 	}
 
 	if strings.TrimSpace(codigo) == "" {
-		return nil, errors.New("código é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "código é obrigatório"}
 	}
 
 	if preco < 0 {
-		return nil, errors.New("preço não pode ser negativo")
+		return nil, &domainerros.ErrValidacao{Mensagem: "preço não pode ser negativo"}
 	}
 
 	if estoqueMinimo < 0 {
-		return nil, errors.New("estoque mínimo não pode ser negativo")
+		return nil, &domainerros.ErrValidacao{Mensagem: "estoque mínimo não pode ser negativo"}
 	}
 
 	estoque := 0
 	if estoqueAtual != nil {
 		if *estoqueAtual < 0 {
-			return nil, errors.New("estoque atual não pode ser negativo")
+			return nil, &domainerros.ErrValidacao{Mensagem: "estoque atual não pode ser negativo"}
 		}
 		estoque = *estoqueAtual
 	}
@@ -66,11 +67,11 @@ func (uc *PartUseCase) FindByID(id string) (*entity.Peca, error) {
 	slog.Info("executando caso de uso: buscar peça por ID", "id", id)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return nil, errors.New("id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	return uc.repo.BuscarPorID(id)
@@ -80,11 +81,11 @@ func (uc *PartUseCase) Update(id string, nome *string, preco *float64, estoqueMi
 	slog.Info("executando caso de uso: atualizar peça", "id", id)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return nil, errors.New("id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	pecaAtual, err := uc.repo.BuscarPorID(id)
@@ -94,21 +95,21 @@ func (uc *PartUseCase) Update(id string, nome *string, preco *float64, estoqueMi
 
 	if nome != nil {
 		if strings.TrimSpace(*nome) == "" {
-			return nil, errors.New("nome não pode ser vazio")
+			return nil, &domainerros.ErrValidacao{Mensagem: "nome não pode ser vazio"}
 		}
 		pecaAtual.Nome = strings.TrimSpace(*nome)
 	}
 
 	if preco != nil {
 		if *preco < 0 {
-			return nil, errors.New("preço não pode ser negativo")
+			return nil, &domainerros.ErrValidacao{Mensagem: "preço não pode ser negativo"}
 		}
 		pecaAtual.Preco = *preco
 	}
 
 	if estoqueMinimo != nil {
 		if *estoqueMinimo < 0 {
-			return nil, errors.New("estoque mínimo não pode ser negativo")
+			return nil, &domainerros.ErrValidacao{Mensagem: "estoque mínimo não pode ser negativo"}
 		}
 		pecaAtual.EstoqueMinimo = *estoqueMinimo
 	}
@@ -120,11 +121,11 @@ func (uc *PartUseCase) Delete(id string) error {
 	slog.Info("executando caso de uso: remover peça", "id", id)
 
 	if id == "" {
-		return errors.New("id é obrigatório")
+		return &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return errors.New("id inválido")
+		return &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	return uc.repo.Remover(id)
@@ -134,15 +135,15 @@ func (uc *PartUseCase) AdjustStock(id string, tipo string, quantidade int) (*ent
 	slog.Info("executando caso de uso: ajustar estoque", "id", id, "tipo", tipo)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return nil, errors.New("id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	if quantidade < 0 {
-		return nil, errors.New("quantidade não pode ser negativa")
+		return nil, &domainerros.ErrValidacao{Mensagem: "quantidade não pode ser negativa"}
 	}
 
 	pecaAtual, err := uc.repo.BuscarPorID(id)
@@ -164,7 +165,7 @@ func (uc *PartUseCase) AdjustStock(id string, tipo string, quantidade int) (*ent
 		pecaAtual.EstoqueAtual = quantidade
 
 	default:
-		return nil, errors.New("tipo de ajuste inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "tipo de ajuste inválido"}
 	}
 
 	return uc.repo.AtualizarEstoque(pecaAtual)

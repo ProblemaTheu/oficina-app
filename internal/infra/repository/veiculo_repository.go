@@ -116,8 +116,11 @@ func (r *VeiculoRepository) BuscarPorID(id string) (*entity.Veiculo, error) {
 		&veiculo.AtualizadoEm,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "veículo"}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("VeiculoRepository.BuscarPorID: %w", err)
 	}
 
 	return &veiculo, nil
@@ -152,8 +155,11 @@ func (r *VeiculoRepository) Atualizar(veiculo *entity.Veiculo) (*entity.Veiculo,
 		&veiculo.AtualizadoEm,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "veículo"}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("VeiculoRepository.Atualizar: %w", err)
 	}
 
 	return veiculo, nil
@@ -176,7 +182,7 @@ func (r *VeiculoRepository) Remover(id string) error {
 	}
 
 	if rows == 0 {
-		return sql.ErrNoRows
+		return &domainerros.ErrNaoEncontrado{Recurso: "veículo"}
 	}
 
 	return nil

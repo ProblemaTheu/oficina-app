@@ -1,12 +1,12 @@
 package usecase
 
 import (
-	"errors"
 	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
+	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
 )
 
@@ -29,12 +29,12 @@ func (uc *VehicleUseCase) Create(clienteID string, placa string, marca string, m
 	slog.Info("executando caso de uso: criar veículo")
 
 	if clienteID == "" {
-		return nil, errors.New("cliente_id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "cliente_id é obrigatório"}
 	}
 
 	parsedClienteID, err := uuid.Parse(clienteID)
 	if err != nil {
-		return nil, errors.New("cliente_id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "cliente_id inválido"}
 	}
 
 	plate, err := valueobject.NewPlate(placa)
@@ -43,15 +43,15 @@ func (uc *VehicleUseCase) Create(clienteID string, placa string, marca string, m
 	}
 
 	if strings.TrimSpace(marca) == "" {
-		return nil, errors.New("marca é obrigatória")
+		return nil, &domainerros.ErrValidacao{Mensagem: "marca é obrigatória"}
 	}
 
 	if strings.TrimSpace(modelo) == "" {
-		return nil, errors.New("modelo é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "modelo é obrigatório"}
 	}
 
 	if ano <= 0 {
-		return nil, errors.New("ano inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "ano inválido"}
 	}
 
 	veiculo := &entity.Veiculo{
@@ -77,11 +77,11 @@ func (uc *VehicleUseCase) FindByID(id string) (*entity.Veiculo, error) {
 	slog.Info("executando caso de uso: buscar veículo por ID", "id", id)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return nil, errors.New("id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	return uc.repo.BuscarPorID(id)
@@ -92,11 +92,11 @@ func (uc *VehicleUseCase) Update(id string, marca *string, modelo *string, ano *
 	slog.Info("executando caso de uso: atualizar veículo", "id", id)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return nil, errors.New("id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	veiculoAtual, err := uc.repo.BuscarPorID(id)
@@ -106,21 +106,21 @@ func (uc *VehicleUseCase) Update(id string, marca *string, modelo *string, ano *
 
 	if marca != nil {
 		if strings.TrimSpace(*marca) == "" {
-			return nil, errors.New("marca não pode ser vazia")
+			return nil, &domainerros.ErrValidacao{Mensagem: "marca não pode ser vazia"}
 		}
 		veiculoAtual.Marca = *marca
 	}
 
 	if modelo != nil {
 		if strings.TrimSpace(*modelo) == "" {
-			return nil, errors.New("modelo não pode ser vazio")
+			return nil, &domainerros.ErrValidacao{Mensagem: "modelo não pode ser vazio"}
 		}
 		veiculoAtual.Modelo = *modelo
 	}
 
 	if ano != nil {
 		if *ano <= 0 {
-			return nil, errors.New("ano inválido")
+			return nil, &domainerros.ErrValidacao{Mensagem: "ano inválido"}
 		}
 		veiculoAtual.Ano = *ano
 	}
@@ -137,11 +137,11 @@ func (uc *VehicleUseCase) Delete(id string) error {
 	slog.Info("executando caso de uso: remover veículo", "id", id)
 
 	if id == "" {
-		return errors.New("id é obrigatório")
+		return &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return errors.New("id inválido")
+		return &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	return uc.repo.Remover(id)
@@ -150,13 +150,13 @@ func (uc *VehicleUseCase) Delete(id string) error {
 // ListByCliente traz veiculos de um determinado cliente por UUID
 func (uc *VehicleUseCase) ListByCliente(clienteID string) ([]*entity.Veiculo, error) {
 	if clienteID == "" {
-		return nil, errors.New("cliente_id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "cliente_id é obrigatório"}
 	}
 
 	// valida se cliente existe
 	_, err := uc.clienteRepo.BuscarPorID(clienteID)
 	if err != nil {
-		return nil, errors.New("cliente não encontrado")
+		return nil, &domainerros.ErrValidacao{Mensagem: "cliente não encontrado"}
 	}
 
 	return uc.repo.BuscarPorClienteID(clienteID)
