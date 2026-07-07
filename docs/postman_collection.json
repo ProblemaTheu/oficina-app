@@ -39,6 +39,16 @@
       "key": "osId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "webhookSecret",
+      "value": "tech-challenge-webhook-secret-change-in-production",
+      "type": "string"
+    },
+    {
+      "key": "webhookSignature",
+      "value": "",
+      "type": "string"
     }
   ],
   "auth": {
@@ -59,14 +69,21 @@
         {
           "name": "Liveness",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
             "url": {
               "raw": "http://localhost:8080/health/live",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "8080",
-              "path": ["health", "live"]
+              "path": [
+                "health",
+                "live"
+              ]
             },
             "description": "Verifica se o processo está de pé. Não consulta dependências."
           },
@@ -75,14 +92,21 @@
         {
           "name": "Readiness",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
             "url": {
               "raw": "http://localhost:8080/health/ready",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "8080",
-              "path": ["health", "ready"]
+              "path": [
+                "health",
+                "ready"
+              ]
             },
             "description": "Verifica se a aplicação está pronta para receber tráfego (inclui check do banco de dados)."
           },
@@ -91,14 +115,20 @@
         {
           "name": "Health (alias)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
             "url": {
               "raw": "http://localhost:8080/health",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "8080",
-              "path": ["health"]
+              "path": [
+                "health"
+              ]
             },
             "description": "Alias de /health/ready — retorna status geral da aplicação e dependências."
           },
@@ -128,7 +158,9 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
             "header": [
               {
@@ -140,13 +172,20 @@
               "mode": "raw",
               "raw": "{\n  \"email\": \"admin@oficina.com\",\n  \"senha\": \"Admin@123\"\n}",
               "options": {
-                "raw": { "language": "json" }
+                "raw": {
+                  "language": "json"
+                }
               }
             },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "login"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
             },
             "description": "Autentica o usuário e retorna um JWT Bearer token.\n\nO token é salvo automaticamente na variável de coleção `token` via script de teste."
           },
@@ -155,20 +194,34 @@
         {
           "name": "Register",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Carlos Mecânico\",\n  \"email\": \"carlos@oficina.com\",\n  \"senha\": \"s3nh@segura\",\n  \"papel\": \"mecanico\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/auth/register",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "register"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
             },
             "description": "Cria uma nova conta de usuário. A senha é armazenada como bcrypt hash e **nunca** retornada.\n\nValores válidos para `papel`: `administrador`, `mecanico`, `atendente`.\n\nEndpoint público — não requer token."
           },
@@ -186,13 +239,31 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/clients?page=1&limit=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["clients"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" },
-                { "key": "nome", "value": "João", "disabled": true },
-                { "key": "documento", "value": "12345678901", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "nome",
+                  "value": "João",
+                  "disabled": true
+                },
+                {
+                  "key": "documento",
+                  "value": "12345678901",
+                  "disabled": true
+                }
               ]
             },
             "description": "Retorna a lista paginada de clientes.\n\nParâmetros opcionais (desabilitados por padrão):\n- `nome` — busca parcial case-insensitive pelo nome\n- `documento` — busca exata pelo CPF ou CNPJ (apenas dígitos)"
@@ -219,17 +290,28 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"João Silva\",\n  \"documento\": \"123.456.789-09\",\n  \"email\": \"joao.silva@email.com\",\n  \"telefone\": \"(11) 99999-1234\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/clients",
-              "host": ["{{baseUrl}}"],
-              "path": ["clients"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients"
+              ]
             },
             "description": "Cadastra um novo cliente pessoa física (CPF).\n\nO `id` do cliente criado é salvo automaticamente na variável `clienteId`.\n\nO campo `documento` aceita CPF com ou sem formatação."
           },
@@ -240,17 +322,28 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Transportes ABC Ltda\",\n  \"documento\": \"11.222.333/0001-81\",\n  \"email\": \"contato@transportesabc.com.br\",\n  \"telefone\": \"(11) 3333-4444\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/clients",
-              "host": ["{{baseUrl}}"],
-              "path": ["clients"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients"
+              ]
             },
             "description": "Cadastra um novo cliente pessoa jurídica (CNPJ).\n\nO campo `documento` aceita CNPJ com ou sem formatação."
           },
@@ -262,8 +355,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/clients/{{clienteId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["clients", "{{clienteId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clienteId}}"
+              ]
             },
             "description": "Busca um cliente pelo UUID. Usa a variável `clienteId` salva após criar cliente."
           },
@@ -274,17 +372,29 @@
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"João Silva Santos\",\n  \"email\": \"joao.santos@email.com\",\n  \"telefone\": \"(11) 98888-5678\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/clients/{{clienteId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["clients", "{{clienteId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clienteId}}"
+              ]
             },
             "description": "Atualiza nome, e-mail e/ou telefone do cliente. CPF/CNPJ não pode ser alterado.\n\nTodos os campos são opcionais — envie apenas os que deseja atualizar."
           },
@@ -296,8 +406,13 @@
             "method": "DELETE",
             "url": {
               "raw": "{{baseUrl}}/clients/{{clienteId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["clients", "{{clienteId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clienteId}}"
+              ]
             },
             "description": "Remove o cliente. Retorna 409 se houver veículos ou ordens de serviço vinculados."
           },
@@ -309,11 +424,23 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/clients/{{clienteId}}/vehicles?page=1&limit=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["clients", "{{clienteId}}", "vehicles"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clienteId}}",
+                "vehicles"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
               ]
             },
             "description": "Retorna todos os veículos cadastrados para o cliente informado."
@@ -332,14 +459,36 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/vehicles?page=1&limit=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["vehicles"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" },
-                { "key": "placa", "value": "ABC1D23", "disabled": true },
-                { "key": "marca", "value": "Toyota", "disabled": true },
-                { "key": "cliente_id", "value": "{{clienteId}}", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "placa",
+                  "value": "ABC1D23",
+                  "disabled": true
+                },
+                {
+                  "key": "marca",
+                  "value": "Toyota",
+                  "disabled": true
+                },
+                {
+                  "key": "cliente_id",
+                  "value": "{{clienteId}}",
+                  "disabled": true
+                }
               ]
             },
             "description": "Retorna a lista paginada de veículos.\n\nFiltros opcionais (desabilitados por padrão):\n- `placa` — busca exata ou parcial pela placa\n- `marca` — busca parcial case-insensitive pela marca\n- `cliente_id` — filtra pelo ID do cliente proprietário"
@@ -366,17 +515,28 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"cliente_id\": \"{{clienteId}}\",\n  \"placa\": \"ABC1D23\",\n  \"marca\": \"Toyota\",\n  \"modelo\": \"Corolla\",\n  \"ano\": 2022,\n  \"cor\": \"Prata\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/vehicles",
-              "host": ["{{baseUrl}}"],
-              "path": ["vehicles"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles"
+              ]
             },
             "description": "Vincula um novo veículo a um cliente existente. Placa deve ser única.\n\nO `id` do veículo criado é salvo automaticamente na variável `veiculoId`.\n\nUsa a variável `clienteId` para o campo `cliente_id`."
           },
@@ -388,8 +548,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/vehicles/{{veiculoId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["vehicles", "{{veiculoId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{veiculoId}}"
+              ]
             },
             "description": "Busca um veículo pelo UUID. Usa a variável `veiculoId`."
           },
@@ -400,17 +565,29 @@
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"marca\": \"Toyota\",\n  \"modelo\": \"Corolla XEi\",\n  \"ano\": 2023,\n  \"cor\": \"Branco\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/vehicles/{{veiculoId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["vehicles", "{{veiculoId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{veiculoId}}"
+              ]
             },
             "description": "Atualiza marca, modelo, ano e/ou cor. Placa e cliente_id não são alteráveis após o cadastro."
           },
@@ -422,8 +599,13 @@
             "method": "DELETE",
             "url": {
               "raw": "{{baseUrl}}/vehicles/{{veiculoId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["vehicles", "{{veiculoId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{veiculoId}}"
+              ]
             },
             "description": "Remove o veículo. Retorna 409 se houver ordens de serviço vinculadas."
           },
@@ -441,12 +623,26 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/services?page=1&limit=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["services"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" },
-                { "key": "nome", "value": "óleo", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "nome",
+                  "value": "óleo",
+                  "disabled": true
+                }
               ]
             },
             "description": "Retorna o catálogo de serviços paginado.\n\nFiltro opcional: `nome` — busca parcial case-insensitive pelo nome do serviço."
@@ -473,17 +669,28 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Troca de óleo\",\n  \"descricao\": \"Troca de óleo do motor com substituição do filtro\",\n  \"preco_base\": 89.90,\n  \"tempo_minutos\": 30\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/services",
-              "host": ["{{baseUrl}}"],
-              "path": ["services"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ]
             },
             "description": "Adiciona um novo serviço ao catálogo. Nome deve ser único.\n\nO `id` do serviço criado é salvo automaticamente na variável `servicoId`."
           },
@@ -494,17 +701,28 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Revisão completa\",\n  \"descricao\": \"Revisão completa com 30.000 km — inclui troca de óleo, filtros, velas e correia\",\n  \"preco_base\": 450.00,\n  \"tempo_minutos\": 180\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/services",
-              "host": ["{{baseUrl}}"],
-              "path": ["services"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ]
             },
             "description": "Exemplo alternativo de criação de serviço."
           },
@@ -516,8 +734,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/services/{{servicoId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["services", "{{servicoId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services",
+                "{{servicoId}}"
+              ]
             },
             "description": "Busca um serviço pelo UUID. Usa a variável `servicoId`."
           },
@@ -528,17 +751,29 @@
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Troca de óleo e filtro\",\n  \"descricao\": \"Troca de óleo sintético 5W30 com filtro original\",\n  \"preco_base\": 99.90,\n  \"tempo_minutos\": 45\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/services/{{servicoId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["services", "{{servicoId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services",
+                "{{servicoId}}"
+              ]
             },
             "description": "Atualiza os dados de um serviço. Retorna 409 se o novo nome já estiver em uso."
           },
@@ -550,8 +785,13 @@
             "method": "DELETE",
             "url": {
               "raw": "{{baseUrl}}/services/{{servicoId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["services", "{{servicoId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services",
+                "{{servicoId}}"
+              ]
             },
             "description": "Remove o serviço. Retorna 409 se houver ordens de serviço que o referenciam."
           },
@@ -569,14 +809,36 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/parts?page=1&limit=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" },
-                { "key": "nome", "value": "filtro", "disabled": true },
-                { "key": "codigo", "value": "FO-001", "disabled": true },
-                { "key": "estoque_baixo", "value": "true", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "nome",
+                  "value": "filtro",
+                  "disabled": true
+                },
+                {
+                  "key": "codigo",
+                  "value": "FO-001",
+                  "disabled": true
+                },
+                {
+                  "key": "estoque_baixo",
+                  "value": "true",
+                  "disabled": true
+                }
               ]
             },
             "description": "Retorna o catálogo de peças e insumos paginado.\n\nFiltros opcionais (desabilitados por padrão):\n- `nome` — busca parcial pelo nome\n- `codigo` — busca pelo código interno\n- `estoque_baixo=true` — retorna apenas peças com estoque abaixo do mínimo"
@@ -603,17 +865,28 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Filtro de óleo\",\n  \"codigo\": \"FO-001\",\n  \"preco\": 35.50,\n  \"estoque_atual\": 20,\n  \"estoque_minimo\": 5\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/parts",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts"
+              ]
             },
             "description": "Adiciona uma nova peça ao catálogo. Código deve ser único.\n\nO `id` da peça criada é salvo automaticamente na variável `pecaId`."
           },
@@ -624,17 +897,28 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Vela de ignição NGK\",\n  \"codigo\": \"VI-NGK-001\",\n  \"preco\": 22.90,\n  \"estoque_atual\": 40,\n  \"estoque_minimo\": 8\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/parts",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts"
+              ]
             },
             "description": "Exemplo alternativo de criação de peça."
           },
@@ -646,8 +930,13 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/parts/{{pecaId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts", "{{pecaId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts",
+                "{{pecaId}}"
+              ]
             },
             "description": "Busca uma peça pelo UUID. Usa a variável `pecaId`."
           },
@@ -658,17 +947,29 @@
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Filtro de óleo original\",\n  \"preco\": 38.90,\n  \"estoque_minimo\": 8\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/parts/{{pecaId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts", "{{pecaId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts",
+                "{{pecaId}}"
+              ]
             },
             "description": "Atualiza nome, preço e/ou estoque mínimo da peça. Código não é alterável."
           },
@@ -680,8 +981,13 @@
             "method": "DELETE",
             "url": {
               "raw": "{{baseUrl}}/parts/{{pecaId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts", "{{pecaId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts",
+                "{{pecaId}}"
+              ]
             },
             "description": "Remove a peça do catálogo. Retorna 409 se houver ordens de serviço que a referenciam."
           },
@@ -692,17 +998,30 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"quantidade\": 10,\n  \"tipo\": \"entrada\",\n  \"motivo\": \"Compra NF 1234\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/parts/{{pecaId}}/stock",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts", "{{pecaId}}", "stock"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts",
+                "{{pecaId}}",
+                "stock"
+              ]
             },
             "description": "Adiciona unidades ao estoque atual da peça (`tipo: entrada`)."
           },
@@ -713,17 +1032,30 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"quantidade\": 3,\n  \"tipo\": \"saida\",\n  \"motivo\": \"Uso em OS 00042\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/parts/{{pecaId}}/stock",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts", "{{pecaId}}", "stock"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts",
+                "{{pecaId}}",
+                "stock"
+              ]
             },
             "description": "Subtrai unidades do estoque atual (`tipo: saida`). Retorna 422 se o estoque for insuficiente."
           },
@@ -734,17 +1066,30 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"quantidade\": 15,\n  \"tipo\": \"ajuste\",\n  \"motivo\": \"Contagem de inventário — divergência corrigida\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/parts/{{pecaId}}/stock",
-              "host": ["{{baseUrl}}"],
-              "path": ["parts", "{{pecaId}}", "stock"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "parts",
+                "{{pecaId}}",
+                "stock"
+              ]
             },
             "description": "Define o valor absoluto do estoque atual (`tipo: ajuste`), independente do valor anterior."
           },
@@ -763,17 +1108,50 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/work-orders?page=1&limit=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["work-orders"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders"
+              ],
               "query": [
-                { "key": "page",       "value": "1",  "description": "Página (começa em 1)" },
-                { "key": "limit",      "value": "20", "description": "Itens por página (max 100)" },
-                { "key": "status",     "value": "",   "description": "Filtrar por status (ex: em_execucao)", "disabled": true },
-                { "key": "cliente_id", "value": "",   "description": "Filtrar por cliente UUID", "disabled": true },
-                { "key": "veiculo_id", "value": "",   "description": "Filtrar por veículo UUID", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Página (começa em 1)"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Itens por página (max 100)"
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "Filtrar por status (ex: em_execucao)",
+                  "disabled": true
+                },
+                {
+                  "key": "cliente_id",
+                  "value": "",
+                  "description": "Filtrar por cliente UUID",
+                  "disabled": true
+                },
+                {
+                  "key": "veiculo_id",
+                  "value": "",
+                  "description": "Filtrar por veículo UUID",
+                  "disabled": true
+                },
+                {
+                  "key": "incluir_encerradas",
+                  "value": "true",
+                  "description": "Inclui OSs finalizadas e entregues (excluídas por padrão)",
+                  "disabled": true
+                }
               ]
             },
-            "description": "Retorna lista paginada de ordens de serviço. Suporta filtros por `status`, `cliente_id` e `veiculo_id`."
+            "description": "Retorna lista paginada de ordens de serviço ordenada por prioridade de status (em_execucao > aguardando_aprovacao > em_diagnostico > recebida) e, dentro de cada grupo, mais antigas primeiro. OSs `finalizada`/`entregue` são excluídas por padrão; use `incluir_encerradas=true` ou o filtro `status` para consultá-las. Suporta filtros por `status`, `cliente_id` e `veiculo_id`."
           },
           "response": []
         },
@@ -796,16 +1174,29 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"cliente_id\": \"{{clienteId}}\",\n  \"veiculo_id\": \"{{veiculoId}}\",\n  \"descricao\": \"Revisão completa + troca de óleo\",\n  \"servicos\": [\n    {\n      \"servico_id\": \"{{servicoId}}\",\n      \"quantidade\": 1\n    }\n  ],\n  \"pecas\": [\n    {\n      \"peca_id\": \"{{pecaId}}\",\n      \"quantidade\": 2\n    }\n  ]\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/work-orders",
-              "host": ["{{baseUrl}}"],
-              "path": ["work-orders"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders"
+              ]
             },
             "description": "Cria uma nova OS no status `recebida`. O `osId` é salvo automaticamente na variável de coleção."
           },
@@ -818,8 +1209,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/work-orders/{{osId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["work-orders", "{{osId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders",
+                "{{osId}}"
+              ]
             },
             "description": "Retorna todos os detalhes de uma OS, incluindo itens de serviço, peças e histórico de status."
           },
@@ -828,13 +1224,21 @@
         {
           "name": "Status público",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/work-orders/{{osId}}/status",
-              "host": ["{{baseUrl}}"],
-              "path": ["work-orders", "{{osId}}", "status"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders",
+                "{{osId}}",
+                "status"
+              ]
             },
             "description": "Consulta o status atual de uma OS pelo número ou ID. **Endpoint público** — não requer autenticação. Ideal para o cliente final verificar o andamento do serviço."
           },
@@ -844,16 +1248,31 @@
           "name": "Avançar status",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"em_diagnostico\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/work-orders/{{osId}}/status",
-              "host": ["{{baseUrl}}"],
-              "path": ["work-orders", "{{osId}}", "status"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders",
+                "{{osId}}",
+                "status"
+              ]
             },
             "description": "Avança o status da OS seguindo a máquina de estados:\n\n`recebida` → `em_diagnostico` → `aguardando_aprovacao` → `em_execucao` → `finalizada` → `entregue`\n\nTransições inválidas retornam **422 Unprocessable Entity**."
           },
@@ -866,8 +1285,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/work-orders/{{osId}}/approve",
-              "host": ["{{baseUrl}}"],
-              "path": ["work-orders", "{{osId}}", "approve"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders",
+                "{{osId}}",
+                "approve"
+              ]
             },
             "description": "Aprova o orçamento de uma OS em status `aguardando_aprovacao`, movendo-a para `em_execucao`."
           },
@@ -877,20 +1302,91 @@
           "name": "Rejeitar orçamento",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"motivo\": \"Valor acima do esperado pelo cliente\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/work-orders/{{osId}}/reject",
-              "host": ["{{baseUrl}}"],
-              "path": ["work-orders", "{{osId}}", "reject"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders",
+                "{{osId}}",
+                "reject"
+              ]
             },
             "description": "Rejeita o orçamento de uma OS em status `aguardando_aprovacao`. O estoque reservado das peças **não** é deduzido."
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "description": "Endpoints inbound para integrações externas. Não usam JWT: a autenticidade é validada pela assinatura HMAC-SHA256 do corpo no header `X-Signature`, calculada com o segredo compartilhado (`WEBHOOK_SECRET` da aplicação, variável `webhookSecret` da coleção).",
+      "item": [
+        {
+          "name": "Resposta de orçamento (webhook)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Assina o corpo com HMAC-SHA256 e preenche {{webhookSignature}}",
+                  "const secret = pm.collectionVariables.get('webhookSecret');",
+                  "const body = pm.request.body.raw.replace(/{{(\\w+)}}/g, (m, v) => pm.collectionVariables.get(v) ?? pm.variables.get(v) ?? m);",
+                  "const signature = CryptoJS.HmacSHA256(body, secret).toString(CryptoJS.enc.Hex);",
+                  "pm.collectionVariables.set('webhookSignature', signature);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Signature",
+                "value": "{{webhookSignature}}",
+                "description": "HMAC-SHA256 (hex) do corpo — preenchido pelo pre-request script"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"os_id\": \"{{osId}}\",\n  \"decisao\": \"aprovado\",\n  \"motivo\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/budget-response",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "budget-response"
+              ]
+            },
+            "description": "Recebe a decisão do cliente sobre o orçamento (`aprovado` ou `recusado`, com `motivo` opcional). Idempotente: reenviar a mesma notificação responde 200 sem efeito duplicado. Respostas: 200 decisão aplicada; 400 payload inválido; 401 assinatura inválida; 404 OS inexistente; 422 OS fora de aguardando_aprovacao."
+          }
         }
       ]
     },
@@ -905,12 +1401,32 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/reports/avg-execution-time",
-              "host": ["{{baseUrl}}"],
-              "path": ["reports", "avg-execution-time"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "avg-execution-time"
+              ],
               "query": [
-                { "key": "servico_id", "value": "",   "description": "Filtrar por serviço UUID", "disabled": true },
-                { "key": "data_inicio","value": "",   "description": "Data inicial ISO 8601 (ex: 2025-01-01)", "disabled": true },
-                { "key": "data_fim",   "value": "",   "description": "Data final ISO 8601 (ex: 2025-12-31)", "disabled": true }
+                {
+                  "key": "servico_id",
+                  "value": "",
+                  "description": "Filtrar por serviço UUID",
+                  "disabled": true
+                },
+                {
+                  "key": "data_inicio",
+                  "value": "",
+                  "description": "Data inicial ISO 8601 (ex: 2025-01-01)",
+                  "disabled": true
+                },
+                {
+                  "key": "data_fim",
+                  "value": "",
+                  "description": "Data final ISO 8601 (ex: 2025-12-31)",
+                  "disabled": true
+                }
               ]
             },
             "description": "Retorna o tempo médio de execução (em minutos) por serviço, calculado apenas sobre OSs no status `finalizada` ou `entregue`. OSs rejeitadas são excluídas do cálculo."

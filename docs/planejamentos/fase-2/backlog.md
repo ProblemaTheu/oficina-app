@@ -122,7 +122,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** G
 - **Depende de:** —
 
-### F2-2.4 — Atualizar contrato OpenAPI e regenerar código
+### F2-2.4 — Atualizar contrato OpenAPI e regenerar código ✅
+- **Status:** Concluída. `openapi.yaml` já cobria listagem (F2-2.1) e webhook (F2-2.2); regeneração confirmada sem drift (`oapi-codegen v1.16.3`). Coleção Postman sincronizada: parâmetro `incluir_encerradas`, pasta Webhooks com pre-request script que assina o corpo (HMAC) e variáveis `webhookSecret`/`webhookSignature`. Tabela de endpoints do README atualizada.
 - **Descrição:** Refletir no `docs/openapi.yaml` as mudanças (novo parâmetro de listagem, webhook, eventual `/cancel`) e regenerar.
 - **Critérios de aceite:** `go generate ./internal/infra/http/api/...` executado; `api.gen.go` atualizado; contrato válido; coleção Postman sincronizada (E7).
 - **Sugestão técnica:** Editar sempre o YAML primeiro (fonte da verdade). Validar com `oapi-codegen`/`kin-openapi` antes de commitar.

@@ -428,13 +428,19 @@ A API está disponível sob o prefixo `/v1`. Rotas marcadas com 🔓 são públi
 
 | Método | Rota | Filtros disponíveis | Descrição |
 |---|---|---|---|
-| GET | `/v1/work-orders` | `page`, `limit`, `status`, `cliente_id`, `veiculo_id` | Listar OSs (paginado) |
+| GET | `/v1/work-orders` | `page`, `limit`, `status`, `cliente_id`, `veiculo_id`, `incluir_encerradas` | Listar OSs por prioridade de status (mais antigas primeiro); `finalizada`/`entregue` ficam fora da listagem padrão |
 | POST | `/v1/work-orders` | — | Abrir nova OS |
 | GET | `/v1/work-orders/{id}` | — | Detalhes completos (itens + histórico) |
 | GET | `/v1/work-orders/{id}/status` | — | Consultar status (rota pública) |
 | PATCH | `/v1/work-orders/{id}/status` | — | Avançar status da OS |
 | POST | `/v1/work-orders/{id}/approve` | — | Aprovar orçamento |
 | POST | `/v1/work-orders/{id}/reject` | — | Rejeitar orçamento |
+
+### Webhooks
+
+| Método | Rota | Autenticação | Descrição |
+|---|---|---|---|
+| POST | `/v1/webhooks/budget-response` | Assinatura HMAC-SHA256 (`X-Signature`) | Recebe aprovação/recusa do orçamento vinda de integração externa (idempotente) |
 
 ### Relatórios
 
