@@ -110,7 +110,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** G
 - **Depende de:** F2-0.2
 
-### F2-2.3 — Notificação de mudança de status por e-mail
+### F2-2.3 — Notificação de mudança de status por e-mail ✅
+- **Status:** Concluída. Porta `notifier` na aplicação; implementações `LogNotifier` (padrão local) e `SMTPNotifier` (produção/MailHog) em `internal/infra/notification`, selecionadas via env `NOTIFIER`. Disparo assíncrono (goroutine) nas transições relevantes (aguardando_aprovacao, em_execucao, finalizada, entregue) sem bloquear/falhar a transição. Testes com `-race`; verificado ponta a ponta pelos logs do compose.
 - **Descrição:** Ao mudar o status de uma OS, notificar o cliente por e-mail (requisito "atualização de status via ferramenta como e-mail").
 - **Critérios de aceite:**
   - Em transições relevantes (ex.: `aguardando_aprovacao`, `em_execucao`, `finalizada`, `entregue`), um e-mail é enviado ao cliente.

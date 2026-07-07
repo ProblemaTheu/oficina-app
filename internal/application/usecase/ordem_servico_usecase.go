@@ -18,15 +18,19 @@ type OrdemServicoUseCase struct {
 	veiculoRepo veiculoRepo
 	servicoRepo servicoRepo
 	pecaRepo    pecaRepo
+	notifier    notifier
 }
 
-// NewOrdemServicoUseCase cria uma nova instância do use case.
+// NewOrdemServicoUseCase cria uma nova instância do use case. O notifier é
+// opcional (pode ser nil): quando presente, o cliente é notificado nas
+// mudanças de status relevantes.
 func NewOrdemServicoUseCase(
 	osR osRepo,
 	cliR clienteRepo,
 	veicR veiculoRepo,
 	svcR servicoRepo,
 	pecR pecaRepo,
+	notif notifier,
 ) *OrdemServicoUseCase {
 	return &OrdemServicoUseCase{
 		osRepo:      osR,
@@ -34,7 +38,54 @@ func NewOrdemServicoUseCase(
 		veiculoRepo: veicR,
 		servicoRepo: svcR,
 		pecaRepo:    pecR,
+		notifier:    notif,
 	}
+}
+
+// statusNotificaveis são as mudanças de status comunicadas ao cliente.
+var statusNotificaveis = map[entity.Status]bool{
+	entity.StatusAguardandoAprovacao: true,
+	entity.StatusEmExecucao:          true,
+	entity.StatusFinalizada:          true,
+	entity.StatusEntregue:            true,
+}
+
+// notificarMudancaStatus dispara a notificação ao cliente de forma assíncrona.
+// O envio nunca bloqueia nem falha a transição: erros (cliente sem e-mail,
+// provedor indisponível) são apenas logados.
+func (uc *OrdemServicoUseCase) notificarMudancaStatus(os *entity.OrdemServico, novoStatus entity.Status, motivo *string) {
+	if uc.notifier == nil || !statusNotificaveis[novoStatus] {
+		return
+	}
+
+	clienteID := os.ClienteID.String()
+	numero := os.Numero
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		cliente, err := uc.clienteRepo.BuscarPorID(clienteID)
+		if err != nil {
+			slog.Error("notificação: falha ao buscar cliente", "os", numero, "err", err)
+			return
+		}
+		if cliente.Email == nil || *cliente.Email == "" {
+			slog.Warn("notificação: cliente sem e-mail cadastrado", "os", numero, "cliente", cliente.Nome)
+			return
+		}
+
+		n := NotificacaoStatus{
+			DestinatarioEmail: *cliente.Email,
+			DestinatarioNome:  cliente.Nome,
+			NumeroOS:          numero,
+			NovoStatus:        novoStatus,
+			Motivo:            motivo,
+		}
+		if err := uc.notifier.NotificarMudancaStatus(ctx, n); err != nil {
+			slog.Error("notificação: falha ao enviar", "os", numero, "status", novoStatus, "err", err)
+		}
+	}()
 }
 
 // CriarOSInput é o payload de criação de OS.
@@ -280,6 +331,8 @@ func (uc *OrdemServicoUseCase) AvancarStatus(ctx context.Context, input AvancarS
 
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, input.Observacao)
 
+	uc.notificarMudancaStatus(os, input.NovoStatus, input.Observacao)
+
 	return uc.osRepo.BuscarPorID(ctx, input.OsID)
 }
 
@@ -315,6 +368,8 @@ func (uc *OrdemServicoUseCase) AprovarOrcamento(ctx context.Context, osID string
 	}
 
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, nil)
+
+	uc.notificarMudancaStatus(os, entity.StatusEmExecucao, nil)
 
 	return uc.osRepo.BuscarPorID(ctx, osID)
 }
@@ -384,6 +439,8 @@ func (uc *OrdemServicoUseCase) RejeitarOrcamento(ctx context.Context, osID strin
 	}
 
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, motivo)
+
+	uc.notificarMudancaStatus(os, entity.StatusFinalizada, motivo)
 
 	return uc.osRepo.BuscarPorID(ctx, osID)
 }

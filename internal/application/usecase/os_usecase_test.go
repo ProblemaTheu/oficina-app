@@ -147,7 +147,7 @@ func (r *osPecaRepo) BuscarPorID(_ string) (*entity.Peca, error) {
 // ── helper ────────────────────────────────────────────────────────────────────
 
 func osUseCase(osR *mockOsRepo) *usecase.OrdemServicoUseCase {
-	return usecase.NewOrdemServicoUseCase(osR, &osCliRepo{}, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{})
+	return usecase.NewOrdemServicoUseCase(osR, &osCliRepo{}, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, nil)
 }
 
 func osCompleta(status entity.Status) *entity.OrdemServicoCompleta {
@@ -215,6 +215,150 @@ func TestOSRejeitarOrcamento_Sucesso(t *testing.T) {
 	if err != nil {
 		t.Errorf("esperava sucesso, obteve: %v", err)
 	}
+}
+
+// ── Notificação de mudança de status ──────────────────────────────────────────
+
+type mockNotifier struct {
+	ch  chan usecase.NotificacaoStatus
+	err error
+}
+
+func (m *mockNotifier) NotificarMudancaStatus(_ context.Context, n usecase.NotificacaoStatus) error {
+	if m.ch != nil {
+		m.ch <- n
+	}
+	return m.err
+}
+
+// osUseCaseNotificando monta o use case com notifier e um cliente com e-mail.
+func osUseCaseNotificando(osR *mockOsRepo, n *mockNotifier) *usecase.OrdemServicoUseCase {
+	email := "cliente@teste.com"
+	cli := &osCliRepo{cliente: &entity.Cliente{ID: uuid.New(), Nome: "Cliente Teste", Email: &email}}
+	return usecase.NewOrdemServicoUseCase(osR, cli, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, n)
+}
+
+func esperarNotificacao(t *testing.T, ch chan usecase.NotificacaoStatus) usecase.NotificacaoStatus {
+	t.Helper()
+	select {
+	case n := <-ch:
+		return n
+	case <-time.After(2 * time.Second):
+		t.Fatal("esperava notificação, mas nenhuma foi enviada")
+		return usecase.NotificacaoStatus{}
+	}
+}
+
+func garantirSemNotificacao(t *testing.T, ch chan usecase.NotificacaoStatus) {
+	t.Helper()
+	select {
+	case n := <-ch:
+		t.Errorf("não esperava notificação, mas recebeu para status '%s'", n.NovoStatus)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestOSNotificacao_AprovarOrcamento(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	if _, err := osUseCaseNotificando(osR, notif).AprovarOrcamento(context.Background(), uuid.New().String()); err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	n := esperarNotificacao(t, notif.ch)
+	if n.NovoStatus != entity.StatusEmExecucao {
+		t.Errorf("esperava notificação de 'em_execucao', obteve '%s'", n.NovoStatus)
+	}
+	if n.DestinatarioEmail != "cliente@teste.com" {
+		t.Errorf("destinatário incorreto: %s", n.DestinatarioEmail)
+	}
+}
+
+func TestOSNotificacao_RejeitarOrcamentoComMotivo(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	motivo := "orçamento acima do esperado"
+	if _, err := osUseCaseNotificando(osR, notif).RejeitarOrcamento(context.Background(), uuid.New().String(), &motivo); err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	n := esperarNotificacao(t, notif.ch)
+	if n.NovoStatus != entity.StatusFinalizada {
+		t.Errorf("esperava notificação de 'finalizada', obteve '%s'", n.NovoStatus)
+	}
+	if n.Motivo == nil || *n.Motivo != motivo {
+		t.Errorf("esperava motivo repassado na notificação, obteve %v", n.Motivo)
+	}
+}
+
+func TestOSNotificacao_AvancarStatusEntregue(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusFinalizada), nil
+		},
+	}
+	_, err := osUseCaseNotificando(osR, notif).AvancarStatus(context.Background(), usecase.AvancarStatusInput{
+		OsID:       uuid.New().String(),
+		NovoStatus: entity.StatusEntregue,
+	})
+	if err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	if n := esperarNotificacao(t, notif.ch); n.NovoStatus != entity.StatusEntregue {
+		t.Errorf("esperava notificação de 'entregue', obteve '%s'", n.NovoStatus)
+	}
+}
+
+func TestOSNotificacao_EmDiagnosticoNaoNotifica(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusRecebida), nil
+		},
+	}
+	_, err := osUseCaseNotificando(osR, notif).AvancarStatus(context.Background(), usecase.AvancarStatusInput{
+		OsID:       uuid.New().String(),
+		NovoStatus: entity.StatusEmDiagnostico,
+	})
+	if err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	garantirSemNotificacao(t, notif.ch)
+}
+
+func TestOSNotificacao_ErroNaoFalhaTransicao(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1), err: errors.New("provedor fora do ar")}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	if _, err := osUseCaseNotificando(osR, notif).AprovarOrcamento(context.Background(), uuid.New().String()); err != nil {
+		t.Errorf("falha do notifier não deve falhar a transição; obteve: %v", err)
+	}
+	esperarNotificacao(t, notif.ch) // o envio foi tentado
+}
+
+func TestOSNotificacao_ClienteSemEmailNaoEnvia(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	// osCliRepo padrão devolve cliente sem e-mail
+	uc := usecase.NewOrdemServicoUseCase(osR, &osCliRepo{}, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, notif)
+	if _, err := uc.AprovarOrcamento(context.Background(), uuid.New().String()); err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	garantirSemNotificacao(t, notif.ch)
 }
 
 // ── ProcessarRespostaOrcamento (webhook) ──────────────────────────────────────
@@ -490,7 +634,7 @@ func TestOSCriarOS_Sucesso(t *testing.T) {
 	svcR := &osSvcRepo{servico: &entity.Servico{ID: servicoID, PrecoBase: 100.0}}
 	pecR := &osPecaRepo{}
 
-	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, svcR, pecR)
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, svcR, pecR, nil)
 	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
 		ClienteID: clienteID.String(),
 		VeiculoID: veiculoID.String(),

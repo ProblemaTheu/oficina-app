@@ -14,6 +14,9 @@ services:
       DB_NAME: tech_challenge_db
       JWT_SECRET: "tech-challenge-super-secret-key-change-in-production"
       WEBHOOK_SECRET: "tech-challenge-webhook-secret-change-in-production"
+      # Notificação de mudança de status: "log" (padrão) ou "smtp"
+      # (para smtp, configurar SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD/EMAIL_FROM)
+      NOTIFIER: "log"
     restart: on-failure
     depends_on:
       db:

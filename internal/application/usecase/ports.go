@@ -77,6 +77,22 @@ type usuarioRepo interface {
 	BuscarNomePapel(ctx context.Context, papelID uuid.UUID) (string, error)
 }
 
+// NotificacaoStatus contém os dados para notificar o cliente sobre a mudança
+// de status de sua Ordem de Serviço.
+type NotificacaoStatus struct {
+	DestinatarioEmail string
+	DestinatarioNome  string
+	NumeroOS          string
+	NovoStatus        entity.Status
+	Motivo            *string
+}
+
+// notifier é a porta de saída para notificar o cliente (e-mail, SMS, etc.).
+// Implementações vivem na infra (ex.: SMTP, log para ambiente local).
+type notifier interface {
+	NotificarMudancaStatus(ctx context.Context, n NotificacaoStatus) error
+}
+
 type osRepo interface {
 	BuscarStatusID(ctx context.Context, nome entity.Status) (uuid.UUID, error)
 	GerarNumeroOS(ctx context.Context) (string, error)

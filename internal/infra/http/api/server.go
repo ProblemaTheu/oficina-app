@@ -16,6 +16,7 @@ import (
 	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
+	"github.com/problematheu/tech-challenge-1/internal/infra/notification"
 	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
@@ -47,13 +48,14 @@ func NovoServer(db *sql.DB) *Server {
 	pecaRepo := repository.NovoPecaRepository(db)
 	osRepo := repository.NovoOrdemServicoRepository(db)
 	usuarioRepo := repository.NovoUsuarioRepository(db)
+	notifier := notification.NovoNotifierDoAmbiente()
 
 	return &Server{
 		clientUseCase:  usecase.NewClientUseCase(clienteRepo),
 		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo, clienteRepo),
 		serviceUseCase: usecase.NewServiceUseCase(servicoRepo),
 		partUseCase:    usecase.NewPartUseCase(pecaRepo),
-		osUseCase:      usecase.NewOrdemServicoUseCase(osRepo, clienteRepo, veiculoRepo, servicoRepo, pecaRepo),
+		osUseCase:      usecase.NewOrdemServicoUseCase(osRepo, clienteRepo, veiculoRepo, servicoRepo, pecaRepo, notifier),
 		authUseCase:    usecase.NewAuthUseCase(usuarioRepo),
 	}
 }
