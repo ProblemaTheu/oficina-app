@@ -10,7 +10,6 @@ import (
 	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 // ── mock osRepo ───────────────────────────────────────────────────────────────
@@ -19,12 +18,12 @@ type mockOsRepo struct {
 	buscarStatusIDFn    func(ctx context.Context, nome entity.Status) (uuid.UUID, error)
 	gerarNumeroFn       func(ctx context.Context) (string, error)
 	criarFn             func(ctx context.Context, os *entity.OrdemServico, sv []entity.ItemOsServico, pc []entity.ItemOsPeca) (*entity.OrdemServico, error)
-	listarFn            func(ctx context.Context, p repository.ListarOSParams) ([]*entity.OrdemServico, int, error)
+	listarFn            func(ctx context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error)
 	buscarPorIDFn       func(ctx context.Context, id string) (*entity.OrdemServicoCompleta, error)
 	atualizarStatusErr  error
 	registrarHistErr    error
 	deduzirEstoqueErr   error
-	relatorioFn         func(ctx context.Context, p repository.RelatorioTempoMedioParams) ([]repository.ItemTempoMedio, error)
+	relatorioFn         func(ctx context.Context, p usecase.RelatorioTempoMedioParams) ([]usecase.ItemTempoMedio, error)
 	precarregarCacheErr error
 }
 
@@ -47,7 +46,7 @@ func (m *mockOsRepo) Criar(ctx context.Context, os *entity.OrdemServico, sv []en
 	os.ID = uuid.New()
 	return os, nil
 }
-func (m *mockOsRepo) Listar(ctx context.Context, p repository.ListarOSParams) ([]*entity.OrdemServico, int, error) {
+func (m *mockOsRepo) Listar(ctx context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
 	if m.listarFn != nil {
 		return m.listarFn(ctx, p)
 	}
@@ -68,7 +67,7 @@ func (m *mockOsRepo) RegistrarHistorico(_ context.Context, _ uuid.UUID, _ *uuid.
 func (m *mockOsRepo) DeduzirEstoquePecas(_ context.Context, _ uuid.UUID) error {
 	return m.deduzirEstoqueErr
 }
-func (m *mockOsRepo) RelatorioTempoMedio(ctx context.Context, p repository.RelatorioTempoMedioParams) ([]repository.ItemTempoMedio, error) {
+func (m *mockOsRepo) RelatorioTempoMedio(ctx context.Context, p usecase.RelatorioTempoMedioParams) ([]usecase.ItemTempoMedio, error) {
 	if m.relatorioFn != nil {
 		return m.relatorioFn(ctx, p)
 	}
