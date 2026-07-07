@@ -15,12 +15,12 @@ import (
 // ── mock ──────────────────────────────────────────────────────────────────────
 
 type mockUsuarioRepo struct {
-	papelID    uuid.UUID
-	papelErr   error
-	salvarErr  error
-	usuario    *entity.Usuario
-	emailErr   error
-	nomePapel  string
+	papelID      uuid.UUID
+	papelErr     error
+	salvarErr    error
+	usuario      *entity.Usuario
+	emailErr     error
+	nomePapel    string
 	nomePapelErr error
 }
 

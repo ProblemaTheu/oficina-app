@@ -61,7 +61,7 @@ func (r *PecaRepository) BuscarTodos() ([]*entity.Peca, error) {
 	if err != nil {
 		return nil, fmt.Errorf("PecaRepository.BuscarTodos: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var pecas []*entity.Peca
 

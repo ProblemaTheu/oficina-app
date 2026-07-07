@@ -70,7 +70,7 @@ func (r *VeiculoRepository) BuscarTodos() ([]*entity.Veiculo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("VeiculoRepository.BuscarTodos: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var veiculos []*entity.Veiculo
 
@@ -195,7 +195,7 @@ func (r *VeiculoRepository) BuscarPorClienteID(clienteID string) ([]*entity.Veic
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var veiculos []*entity.Veiculo
 

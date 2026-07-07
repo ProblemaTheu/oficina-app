@@ -67,7 +67,7 @@ func (r *ServicoRepository) BuscarTodos() ([]*entity.Servico, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ServicoRepository.BuscarTodos: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var servicos []*entity.Servico
 

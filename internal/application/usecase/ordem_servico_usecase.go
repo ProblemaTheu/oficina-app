@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -403,6 +402,3 @@ func (uc *OrdemServicoUseCase) RelatorioTempoMedio(ctx context.Context, input Re
 func (uc *OrdemServicoUseCase) InicializarStatusCache(ctx context.Context) error {
 	return uc.osRepo.PrecarregarStatusCache(ctx)
 }
-
-// Apenas para testar se sql.ErrNoRows é acessível indiretamente.
-var _ = sql.ErrNoRows

@@ -20,10 +20,6 @@ import (
 	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
-// errNaoImplementado é retornado por endpoints ainda não implementados,
-// resultando em HTTP 500 até que a lógica seja preenchida.
-var errNaoImplementado = errors.New("não implementado")
-
 // Server implementa StrictServerInterface gerado pelo oapi-codegen.
 //
 // Cada grupo de métodos corresponde a um recurso da API (Clientes, Veículos,
@@ -220,8 +216,6 @@ func (s *Server) PostClients(_ context.Context, request PostClientsRequestObject
 //   - 200: ClienteResponse com os dados do cliente.
 //   - 401: token ausente ou inválido.
 //   - 404: cliente não encontrado.
-//
-// TODO: implementar busca por ID no repositório.
 func (s *Server) GetClientsId(_ context.Context, request GetClientsIdRequestObject) (GetClientsIdResponseObject, error) {
 	cliente, err := s.clientUseCase.FindByID(request.Id.String())
 	if err != nil {
@@ -252,8 +246,6 @@ func (s *Server) GetClientsId(_ context.Context, request GetClientsIdRequestObje
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 404: cliente não encontrado.
-//
-// TODO: implementar atualização no repositório.
 func (s *Server) PutClientsId(_ context.Context, request PutClientsIdRequestObject) (PutClientsIdResponseObject, error) {
 	body := request.Body
 
@@ -290,8 +282,6 @@ func (s *Server) PutClientsId(_ context.Context, request PutClientsIdRequestObje
 //   - 401: token ausente ou inválido.
 //   - 404: cliente não encontrado.
 //   - 409: cliente possui veículos ou ordens de serviço associados.
-//
-// TODO: implementar remoção no repositório com validação de dependências.
 func (s *Server) DeleteClientsId(_ context.Context, request DeleteClientsIdRequestObject) (DeleteClientsIdResponseObject, error) {
 	err := s.clientUseCase.Delete(request.Id.String())
 	if err != nil {
@@ -316,8 +306,6 @@ func (s *Server) DeleteClientsId(_ context.Context, request DeleteClientsIdReque
 //   - 200: VeiculoListResponse com data[] e meta de paginação.
 //   - 401: token ausente ou inválido.
 //   - 404: cliente não encontrado.
-//
-// TODO: implementar listagem de veículos por cliente_id.
 func (s *Server) GetClientsIdVehicles(
 	ctx context.Context,
 	request GetClientsIdVehiclesRequestObject,
@@ -359,8 +347,6 @@ func (s *Server) GetClientsIdVehicles(
 // Respostas:
 //   - 200: VeiculoListResponse.
 //   - 401: token ausente ou inválido.
-//
-// TODO: implementar listagem de veículos.
 func (s *Server) GetVehicles(_ context.Context, request GetVehiclesRequestObject) (GetVehiclesResponseObject, error) {
 	veiculos, err := s.vehicleUseCase.List()
 	if err != nil {
@@ -400,8 +386,6 @@ func (s *Server) GetVehicles(_ context.Context, request GetVehiclesRequestObject
 //   - 401: token ausente ou inválido.
 //   - 404: cliente informado não encontrado.
 //   - 409: placa já cadastrada.
-//
-// TODO: implementar criação de veículo.
 func (s *Server) PostVehicles(_ context.Context, request PostVehiclesRequestObject) (PostVehiclesResponseObject, error) {
 	body := request.Body
 
@@ -435,8 +419,6 @@ func (s *Server) PostVehicles(_ context.Context, request PostVehiclesRequestObje
 //   - 200: VeiculoResponse.
 //   - 401: token ausente ou inválido.
 //   - 404: veículo não encontrado.
-//
-// TODO: implementar busca de veículo por ID.
 func (s *Server) GetVehiclesId(_ context.Context, request GetVehiclesIdRequestObject) (GetVehiclesIdResponseObject, error) {
 	veiculo, err := s.vehicleUseCase.FindByID(request.Id.String())
 	if err != nil {
@@ -464,8 +446,6 @@ func (s *Server) GetVehiclesId(_ context.Context, request GetVehiclesIdRequestOb
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 404: veículo não encontrado.
-//
-// TODO: implementar atualização de veículo.
 func (s *Server) PutVehiclesId(_ context.Context, request PutVehiclesIdRequestObject) (PutVehiclesIdResponseObject, error) {
 	body := request.Body
 
@@ -493,8 +473,6 @@ func (s *Server) PutVehiclesId(_ context.Context, request PutVehiclesIdRequestOb
 //   - 401: token ausente ou inválido.
 //   - 404: veículo não encontrado.
 //   - 409: veículo possui ordens de serviço associadas.
-//
-// TODO: implementar remoção de veículo com validação de dependências.
 func (s *Server) DeleteVehiclesId(_ context.Context, request DeleteVehiclesIdRequestObject) (DeleteVehiclesIdResponseObject, error) {
 	err := s.vehicleUseCase.Delete(request.Id.String())
 	if err != nil {
@@ -518,8 +496,6 @@ func (s *Server) DeleteVehiclesId(_ context.Context, request DeleteVehiclesIdReq
 // Respostas:
 //   - 200: ServicoListResponse.
 //   - 401: token ausente ou inválido.
-//
-// TODO: implementar listagem de serviços.
 func (s *Server) GetServices(_ context.Context, request GetServicesRequestObject) (GetServicesResponseObject, error) {
 	servicos, err := s.serviceUseCase.List()
 	if err != nil {
@@ -556,8 +532,6 @@ func (s *Server) GetServices(_ context.Context, request GetServicesRequestObject
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 409: já existe um serviço com este nome.
-//
-// TODO: implementar criação de serviço.
 func (s *Server) PostServices(_ context.Context, request PostServicesRequestObject) (PostServicesResponseObject, error) {
 	body := request.Body
 
@@ -589,8 +563,6 @@ func (s *Server) PostServices(_ context.Context, request PostServicesRequestObje
 //   - 200: ServicoResponse.
 //   - 401: token ausente ou inválido.
 //   - 404: serviço não encontrado.
-//
-// TODO: implementar busca de serviço por ID.
 func (s *Server) GetServicesId(_ context.Context, request GetServicesIdRequestObject) (GetServicesIdResponseObject, error) {
 	servico, err := s.serviceUseCase.FindByID(request.Id.String())
 	if err != nil {
@@ -617,8 +589,6 @@ func (s *Server) GetServicesId(_ context.Context, request GetServicesIdRequestOb
 //   - 401: token ausente ou inválido.
 //   - 404: serviço não encontrado.
 //   - 409: já existe outro serviço com este nome.
-//
-// TODO: implementar atualização de serviço.
 func (s *Server) PutServicesId(_ context.Context, request PutServicesIdRequestObject) (PutServicesIdResponseObject, error) {
 	body := request.Body
 
@@ -646,8 +616,6 @@ func (s *Server) PutServicesId(_ context.Context, request PutServicesIdRequestOb
 //   - 401: token ausente ou inválido.
 //   - 404: serviço não encontrado.
 //   - 409: serviço referenciado em ordens de serviço existentes.
-//
-// TODO: implementar remoção de serviço com validação de dependências.
 func (s *Server) DeleteServicesId(_ context.Context, request DeleteServicesIdRequestObject) (DeleteServicesIdResponseObject, error) {
 	err := s.serviceUseCase.Delete(request.Id.String())
 	if err != nil {
@@ -673,8 +641,6 @@ func (s *Server) DeleteServicesId(_ context.Context, request DeleteServicesIdReq
 // Respostas:
 //   - 200: PecaListResponse.
 //   - 401: token ausente ou inválido.
-//
-// TODO: implementar listagem de peças.
 func (s *Server) GetParts(_ context.Context, request GetPartsRequestObject) (GetPartsResponseObject, error) {
 	pecas, err := s.partUseCase.List()
 	if err != nil {
@@ -712,8 +678,6 @@ func (s *Server) GetParts(_ context.Context, request GetPartsRequestObject) (Get
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 409: já existe uma peça com este código.
-//
-// TODO: implementar criação de peça.
 func (s *Server) PostParts(_ context.Context, request PostPartsRequestObject) (PostPartsResponseObject, error) {
 	body := request.Body
 
@@ -746,8 +710,6 @@ func (s *Server) PostParts(_ context.Context, request PostPartsRequestObject) (P
 //   - 200: PecaResponse (inclui campo calculado estoque_baixo).
 //   - 401: token ausente ou inválido.
 //   - 404: peça não encontrada.
-//
-// TODO: implementar busca de peça por ID.
 func (s *Server) GetPartsId(_ context.Context, request GetPartsIdRequestObject) (GetPartsIdResponseObject, error) {
 	peca, err := s.partUseCase.FindByID(request.Id.String())
 	if err != nil {
@@ -774,8 +736,6 @@ func (s *Server) GetPartsId(_ context.Context, request GetPartsIdRequestObject) 
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 404: peça não encontrada.
-//
-// TODO: implementar atualização de peça.
 func (s *Server) PutPartsId(_ context.Context, request PutPartsIdRequestObject) (PutPartsIdResponseObject, error) {
 	body := request.Body
 
@@ -802,8 +762,6 @@ func (s *Server) PutPartsId(_ context.Context, request PutPartsIdRequestObject) 
 //   - 401: token ausente ou inválido.
 //   - 404: peça não encontrada.
 //   - 409: peça referenciada em ordens de serviço existentes.
-//
-// TODO: implementar remoção de peça com validação de dependências.
 func (s *Server) DeletePartsId(_ context.Context, request DeletePartsIdRequestObject) (DeletePartsIdResponseObject, error) {
 	err := s.partUseCase.Delete(request.Id.String())
 	if err != nil {
@@ -831,8 +789,6 @@ func (s *Server) DeletePartsId(_ context.Context, request DeletePartsIdRequestOb
 //   - 401: token ausente ou inválido.
 //   - 404: peça não encontrada.
 //   - 422: estoque insuficiente para realizar saída.
-//
-// TODO: implementar movimentação de estoque.
 func (s *Server) PatchPartsIdStock(_ context.Context, request PatchPartsIdStockRequestObject) (PatchPartsIdStockResponseObject, error) {
 	body := request.Body
 
@@ -1306,11 +1262,11 @@ func (s *Server) GetReportsAvgExecutionTime(ctx context.Context, request GetRepo
 		input.ServicoID = &id
 	}
 	if request.Params.DataInicio != nil {
-		s := request.Params.DataInicio.Time.Format("2006-01-02")
+		s := request.Params.DataInicio.Format("2006-01-02")
 		input.DataInicio = &s
 	}
 	if request.Params.DataFim != nil {
-		s := request.Params.DataFim.Time.Format("2006-01-02")
+		s := request.Params.DataFim.Format("2006-01-02")
 		input.DataFim = &s
 	}
 

@@ -30,7 +30,7 @@ func (m *mockPecaRepoUC) BuscarTodos() ([]*entity.Peca, error) { return nil, nil
 func (m *mockPecaRepoUC) BuscarPorID(_ string) (*entity.Peca, error) {
 	return m.peca, m.buscarErr
 }
-func (m *mockPecaRepoUC) Atualizar(p *entity.Peca) (*entity.Peca, error)        { return p, nil }
+func (m *mockPecaRepoUC) Atualizar(p *entity.Peca) (*entity.Peca, error) { return p, nil }
 func (m *mockPecaRepoUC) AtualizarEstoque(p *entity.Peca) (*entity.Peca, error) {
 	if m.atualizarEstFn != nil {
 		return m.atualizarEstFn(p)

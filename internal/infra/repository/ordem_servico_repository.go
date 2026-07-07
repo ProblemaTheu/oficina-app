@@ -60,7 +60,7 @@ func (r *OrdemServicoRepository) PrecarregarStatusCache(ctx context.Context) err
 	if err != nil {
 		return fmt.Errorf("PrecarregarStatusCache: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	r.statusCacheMu.Lock()
 	defer r.statusCacheMu.Unlock()
@@ -208,7 +208,7 @@ func (r *OrdemServicoRepository) BuscarPorID(ctx context.Context, id string) (*e
 	if err != nil {
 		return nil, fmt.Errorf("OrdemServicoRepository.BuscarPorID itens_servico: %w", err)
 	}
-	defer rowsS.Close()
+	defer rowsS.Close() //nolint:errcheck
 
 	for rowsS.Next() {
 		var item entity.ItemOS
@@ -236,7 +236,7 @@ func (r *OrdemServicoRepository) BuscarPorID(ctx context.Context, id string) (*e
 	if err != nil {
 		return nil, fmt.Errorf("OrdemServicoRepository.BuscarPorID itens_peca: %w", err)
 	}
-	defer rowsP.Close()
+	defer rowsP.Close() //nolint:errcheck
 
 	for rowsP.Next() {
 		var item entity.ItemOS
@@ -313,7 +313,7 @@ func (r *OrdemServicoRepository) Listar(ctx context.Context, params usecase.List
 	if err != nil {
 		return nil, 0, fmt.Errorf("OrdemServicoRepository.Listar: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var oss []*entity.OrdemServico
 	for rows.Next() {
@@ -414,7 +414,7 @@ func (r *OrdemServicoRepository) DeduzirEstoquePecas(ctx context.Context, osID u
 	if err != nil {
 		return fmt.Errorf("DeduzirEstoquePecas query: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	type linhaEstoque struct {
 		pecaID       uuid.UUID
@@ -487,7 +487,6 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	if params.DataFim != nil {
 		query += fmt.Sprintf(" AND o.criado_em <= $%d", argIdx)
 		args = append(args, *params.DataFim)
-		argIdx++
 	}
 
 	query += " GROUP BY s.id, s.nome ORDER BY s.nome"
@@ -496,7 +495,7 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	if err != nil {
 		return nil, fmt.Errorf("RelatorioTempoMedio: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var resultado []usecase.ItemTempoMedio
 	for rows.Next() {
@@ -515,29 +514,4 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	}
 
 	return resultado, nil
-}
-
-// BuscarItensPecaParaVerificacao retorna peça+quantidade para validação de estoque.
-func (r *OrdemServicoRepository) BuscarItensPecaParaVerificacao(ctx context.Context, osID uuid.UUID) ([]entity.ItemOsPeca, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, os_id, peca_id, quantidade, preco_unitario, criado_em, atualizado_em
-		FROM itens_os_pecas WHERE os_id = $1
-	`, osID)
-	if err != nil {
-		return nil, fmt.Errorf("BuscarItensPecaParaVerificacao: %w", err)
-	}
-	defer rows.Close()
-
-	var itens []entity.ItemOsPeca
-	for rows.Next() {
-		var item entity.ItemOsPeca
-		if err := rows.Scan(
-			&item.ID, &item.OsID, &item.PecaID, &item.Quantidade,
-			&item.PrecoUnitario, &item.CriadoEm, &item.AtualizadoEm,
-		); err != nil {
-			return nil, err
-		}
-		itens = append(itens, item)
-	}
-	return itens, rows.Err()
 }

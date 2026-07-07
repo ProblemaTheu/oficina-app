@@ -81,11 +81,13 @@ func (m *mockOsRepo) PrecarregarStatusCache(_ context.Context) error {
 
 type osCliRepo struct{ cliente *entity.Cliente }
 
-func (r *osCliRepo) Salvar(c *entity.Cliente) (*entity.Cliente, error)    { return c, nil }
-func (r *osCliRepo) BuscarTodos() ([]*entity.Cliente, error)               { return nil, nil }
-func (r *osCliRepo) BuscarPorDocumento(_ string) (*entity.Cliente, error)  { return &entity.Cliente{}, nil }
-func (r *osCliRepo) Atualizar(c *entity.Cliente) (*entity.Cliente, error)  { return c, nil }
-func (r *osCliRepo) Remover(_ string) error                                { return nil }
+func (r *osCliRepo) Salvar(c *entity.Cliente) (*entity.Cliente, error) { return c, nil }
+func (r *osCliRepo) BuscarTodos() ([]*entity.Cliente, error)           { return nil, nil }
+func (r *osCliRepo) BuscarPorDocumento(_ string) (*entity.Cliente, error) {
+	return &entity.Cliente{}, nil
+}
+func (r *osCliRepo) Atualizar(c *entity.Cliente) (*entity.Cliente, error) { return c, nil }
+func (r *osCliRepo) Remover(_ string) error                               { return nil }
 func (r *osCliRepo) BuscarPorID(_ string) (*entity.Cliente, error) {
 	if r.cliente != nil {
 		return r.cliente, nil
@@ -95,10 +97,10 @@ func (r *osCliRepo) BuscarPorID(_ string) (*entity.Cliente, error) {
 
 type osVeicRepo struct{ veiculo *entity.Veiculo }
 
-func (r *osVeicRepo) Salvar(v *entity.Veiculo) (*entity.Veiculo, error)  { return v, nil }
-func (r *osVeicRepo) BuscarTodos() ([]*entity.Veiculo, error)            { return nil, nil }
-func (r *osVeicRepo) Atualizar(v *entity.Veiculo) (*entity.Veiculo, error) { return v, nil }
-func (r *osVeicRepo) Remover(_ string) error                             { return nil }
+func (r *osVeicRepo) Salvar(v *entity.Veiculo) (*entity.Veiculo, error)      { return v, nil }
+func (r *osVeicRepo) BuscarTodos() ([]*entity.Veiculo, error)                { return nil, nil }
+func (r *osVeicRepo) Atualizar(v *entity.Veiculo) (*entity.Veiculo, error)   { return v, nil }
+func (r *osVeicRepo) Remover(_ string) error                                 { return nil }
 func (r *osVeicRepo) BuscarPorClienteID(_ string) ([]*entity.Veiculo, error) { return nil, nil }
 func (r *osVeicRepo) BuscarPorID(_ string) (*entity.Veiculo, error) {
 	if r.veiculo != nil {
@@ -109,10 +111,10 @@ func (r *osVeicRepo) BuscarPorID(_ string) (*entity.Veiculo, error) {
 
 type osSvcRepo struct{ servico *entity.Servico }
 
-func (r *osSvcRepo) Salvar(s *entity.Servico) (*entity.Servico, error)  { return s, nil }
-func (r *osSvcRepo) BuscarTodos() ([]*entity.Servico, error)            { return nil, nil }
+func (r *osSvcRepo) Salvar(s *entity.Servico) (*entity.Servico, error)    { return s, nil }
+func (r *osSvcRepo) BuscarTodos() ([]*entity.Servico, error)              { return nil, nil }
 func (r *osSvcRepo) Atualizar(s *entity.Servico) (*entity.Servico, error) { return s, nil }
-func (r *osSvcRepo) Remover(_ string) error                             { return nil }
+func (r *osSvcRepo) Remover(_ string) error                               { return nil }
 func (r *osSvcRepo) BuscarPorID(_ string) (*entity.Servico, error) {
 	if r.servico != nil {
 		return r.servico, nil
@@ -120,13 +122,16 @@ func (r *osSvcRepo) BuscarPorID(_ string) (*entity.Servico, error) {
 	return &entity.Servico{ID: uuid.New(), PrecoBase: 100.0}, nil
 }
 
-type osPecaRepo struct{ peca *entity.Peca; buscarErr error }
+type osPecaRepo struct {
+	peca      *entity.Peca
+	buscarErr error
+}
 
-func (r *osPecaRepo) Salvar(p *entity.Peca) (*entity.Peca, error)          { return p, nil }
-func (r *osPecaRepo) BuscarTodos() ([]*entity.Peca, error)                 { return nil, nil }
-func (r *osPecaRepo) Atualizar(p *entity.Peca) (*entity.Peca, error)       { return p, nil }
+func (r *osPecaRepo) Salvar(p *entity.Peca) (*entity.Peca, error)           { return p, nil }
+func (r *osPecaRepo) BuscarTodos() ([]*entity.Peca, error)                  { return nil, nil }
+func (r *osPecaRepo) Atualizar(p *entity.Peca) (*entity.Peca, error)        { return p, nil }
 func (r *osPecaRepo) AtualizarEstoque(p *entity.Peca) (*entity.Peca, error) { return p, nil }
-func (r *osPecaRepo) Remover(_ string) error                               { return nil }
+func (r *osPecaRepo) Remover(_ string) error                                { return nil }
 func (r *osPecaRepo) BuscarPorID(_ string) (*entity.Peca, error) {
 	if r.buscarErr != nil {
 		return nil, r.buscarErr

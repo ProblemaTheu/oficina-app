@@ -7,11 +7,11 @@ import (
 )
 
 type Cliente struct {
-	ID          uuid.UUID
-	Nome        string
-	CpfCnpj     string
-	Email       *string
-	Telefone    *string
-	CriadoEm   time.Time
+	ID           uuid.UUID
+	Nome         string
+	CpfCnpj      string
+	Email        *string
+	Telefone     *string
+	CriadoEm     time.Time
 	AtualizadoEm time.Time
 }

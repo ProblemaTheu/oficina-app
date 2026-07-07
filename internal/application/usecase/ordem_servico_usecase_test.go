@@ -15,7 +15,6 @@ func novoClienteID() uuid.UUID { return uuid.New() }
 func novoVeiculoID() uuid.UUID { return uuid.New() }
 func novoServicoID() uuid.UUID { return uuid.New() }
 func novoPecaID() uuid.UUID    { return uuid.New() }
-func novoStatusID() uuid.UUID  { return uuid.New() }
 
 // ── máquina de estados (puro, sem banco) ─────────────────────────────────────
 
@@ -57,64 +56,6 @@ func TestTransicaoStatus_TransicaoInvalida(t *testing.T) {
 			t.Errorf("esperava transição INVÁLIDA de '%s' → '%s'", c.de, c.para)
 		}
 	}
-}
-
-// ── mocks dos repositórios ────────────────────────────────────────────────────
-
-// mockClienteRepo simula o ClienteRepository.
-type mockClienteRepo struct {
-	clientes map[string]*entity.Cliente
-}
-
-func (m *mockClienteRepo) BuscarPorID(id string) (*entity.Cliente, error) {
-	c, ok := m.clientes[id]
-	if !ok {
-		return nil, &domainerros.ErrNaoEncontrado{Recurso: "cliente"}
-	}
-	return c, nil
-}
-
-func (m *mockClienteRepo) BuscarPorDocumento(doc string) (*entity.Cliente, error) {
-	return nil, &domainerros.ErrNaoEncontrado{Recurso: "cliente"}
-}
-
-// mockVeiculoRepo simula o VeiculoRepository.
-type mockVeiculoRepo struct {
-	veiculos map[string]*entity.Veiculo
-}
-
-func (m *mockVeiculoRepo) BuscarPorID(id string) (*entity.Veiculo, error) {
-	v, ok := m.veiculos[id]
-	if !ok {
-		return nil, &domainerros.ErrNaoEncontrado{Recurso: "veículo"}
-	}
-	return v, nil
-}
-
-// mockServicoRepo simula o ServicoRepository.
-type mockServicoRepo struct {
-	servicos map[string]*entity.Servico
-}
-
-func (m *mockServicoRepo) BuscarPorID(id string) (*entity.Servico, error) {
-	s, ok := m.servicos[id]
-	if !ok {
-		return nil, &domainerros.ErrNaoEncontrado{Recurso: "serviço"}
-	}
-	return s, nil
-}
-
-// mockPecaRepo simula o PecaRepository.
-type mockPecaRepo struct {
-	pecas map[string]*entity.Peca
-}
-
-func (m *mockPecaRepo) BuscarPorID(id string) (*entity.Peca, error) {
-	p, ok := m.pecas[id]
-	if !ok {
-		return nil, &domainerros.ErrNaoEncontrado{Recurso: "peça"}
-	}
-	return p, nil
 }
 
 // ── validações de regras de negócio (sem banco) ───────────────────────────────
@@ -349,9 +290,6 @@ func isErrNaoProcessavel(err error, target **domainerros.ErrNaoProcessavel) bool
 }
 
 func isAs(err error, target interface{}) bool {
-	type asInterface interface {
-		As(interface{}) bool
-	}
 	// Usa a interface errors.As indiretamente para evitar importar "errors"
 	// e manter o teste focado apenas no pacote usecase_test.
 	switch t := target.(type) {

@@ -25,7 +25,7 @@ func (m *mockClienteRepoUC) Salvar(c *entity.Cliente) (*entity.Cliente, error) {
 	c.ID = uuid.New()
 	return c, nil
 }
-func (m *mockClienteRepoUC) BuscarTodos() ([]*entity.Cliente, error)  { return nil, nil }
+func (m *mockClienteRepoUC) BuscarTodos() ([]*entity.Cliente, error) { return nil, nil }
 func (m *mockClienteRepoUC) BuscarPorDocumento(_ string) (*entity.Cliente, error) {
 	return &entity.Cliente{}, nil
 }

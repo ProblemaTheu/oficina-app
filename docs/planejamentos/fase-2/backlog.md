@@ -42,7 +42,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 ## E1 — Refatoração e testes
 
-### F2-1.1 — Auditoria de Clean Code
+### F2-1.1 — Auditoria de Clean Code ✅
+- **Status:** Concluída. Removidos `var _ = sql.ErrNoRows`, `BuscarItensPecaParaVerificacao`, `errNaoImplementado`, mocks não usados em testes e 20 comentários `TODO` obsoletos. `.golangci.yml` adicionado (padrão + revive + gofmt); `golangci-lint run` com 0 apontamentos.
 - **Descrição:** Revisar nomes, coesão de funções, remoção de código morto e comentários desatualizados.
 - **Critérios de aceite:**
   - Remover artefatos como `var _ = sql.ErrNoRows` (comentário "apenas para testar…") em `ordem_servico_usecase.go`.

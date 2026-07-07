@@ -13,8 +13,8 @@ import (
 // ── mocks ─────────────────────────────────────────────────────────────────────
 
 type mockVeiculoRepoUC struct {
-	salvarFn       func(v *entity.Veiculo) (*entity.Veiculo, error)
-	buscarIDFn     func(id string) (*entity.Veiculo, error)
+	salvarFn        func(v *entity.Veiculo) (*entity.Veiculo, error)
+	buscarIDFn      func(id string) (*entity.Veiculo, error)
 	buscarClienteFn func(clienteID string) ([]*entity.Veiculo, error)
 }
 
@@ -45,11 +45,15 @@ type mockClienteRepoForVehicle struct {
 	buscarIDFn func(id string) (*entity.Cliente, error)
 }
 
-func (m *mockClienteRepoForVehicle) Salvar(c *entity.Cliente) (*entity.Cliente, error)           { return c, nil }
-func (m *mockClienteRepoForVehicle) BuscarTodos() ([]*entity.Cliente, error)                     { return nil, nil }
-func (m *mockClienteRepoForVehicle) BuscarPorDocumento(_ string) (*entity.Cliente, error)        { return &entity.Cliente{}, nil }
-func (m *mockClienteRepoForVehicle) Atualizar(c *entity.Cliente) (*entity.Cliente, error)        { return c, nil }
-func (m *mockClienteRepoForVehicle) Remover(_ string) error                                      { return nil }
+func (m *mockClienteRepoForVehicle) Salvar(c *entity.Cliente) (*entity.Cliente, error) { return c, nil }
+func (m *mockClienteRepoForVehicle) BuscarTodos() ([]*entity.Cliente, error)           { return nil, nil }
+func (m *mockClienteRepoForVehicle) BuscarPorDocumento(_ string) (*entity.Cliente, error) {
+	return &entity.Cliente{}, nil
+}
+func (m *mockClienteRepoForVehicle) Atualizar(c *entity.Cliente) (*entity.Cliente, error) {
+	return c, nil
+}
+func (m *mockClienteRepoForVehicle) Remover(_ string) error { return nil }
 func (m *mockClienteRepoForVehicle) BuscarPorID(id string) (*entity.Cliente, error) {
 	if m.buscarIDFn != nil {
 		return m.buscarIDFn(id)

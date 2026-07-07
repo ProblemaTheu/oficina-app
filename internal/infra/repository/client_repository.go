@@ -64,7 +64,7 @@ func (r *ClienteRepository) BuscarTodos() ([]*entity.Cliente, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ClienteRepository.BuscarTodos: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var clientes []*entity.Cliente
 	for rows.Next() {
