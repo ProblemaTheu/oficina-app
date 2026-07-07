@@ -74,7 +74,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** G
 - **Depende de:** E2
 
-### F2-1.4 — (Opcional) Testes de integração de repositório
+### F2-1.4 — (Opcional) Testes de integração de repositório ✅
+- **Status:** Concluída. Suíte com build tag `integration` em `internal/infra/repository/integration_test.go` valida SQL real: ordenação/exclusão lógica do `Listar`, transação de `DeduzirEstoquePecas` (sucesso e rollback), `AtualizarStatus` com diagnóstico/timestamps e `GerarNumeroOS`. Execução local via `scripts/test-integration.sh` (Postgres efêmero em Docker); CI via `.github/workflows/integration.yml` (service container).
 - **Descrição:** Validar SQL real (ordenação, filtros, transações de estoque) contra um Postgres efêmero.
 - **Critérios de aceite:** Suite de integração roda em CI com container Postgres e cobre `Listar`, `DeduzirEstoquePecas` e transições.
 - **Sugestão técnica:** `testcontainers-go` ou service container do GitHub Actions. Marcar com build tag `//go:build integration` para separar do unit test rápido.
