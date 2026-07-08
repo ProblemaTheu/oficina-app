@@ -304,35 +304,40 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 ## E7 — Documentação e entrega
 
-### F2-7.1 — Atualizar README com arquitetura da Fase 2
+### F2-7.1 — Atualizar README com arquitetura da Fase 2 ✅
+- **Status:** Concluída. Nova seção "Fase 2 — Objetivos e arquitetura da solução" (objetivos, 2 diagramas Mermaid, tabela de entregáveis com links); Quickstart/Docker atualizados (`.env` + Mailpit); novas seções Deploy em Kubernetes e Infraestrutura com Terraform; variáveis de ambiente completas; CI/CD com os 3 workflows; estrutura do projeto atualizada. Link do vídeo com placeholder até a gravação.
 - **Descrição:** Documentar solução, arquitetura e instruções.
 - **Critérios de aceite:** README com: descrição/objetivos da Fase 2; desenho da arquitetura (componentes da aplicação, infraestrutura provisionada, fluxo de deploy); instruções de execução local, deploy K8s e Terraform; links da coleção e do vídeo.
 - **Sugestão técnica:** Diagramas em Mermaid (versionáveis) e/ou exportados do Miro. Reaproveitar o board existente.
 - **Estimativa:** M
 - **Depende de:** E4, E5, E6
 
-### F2-7.2 — Desenho da arquitetura
+### F2-7.2 — Desenho da arquitetura ✅
+- **Status:** Concluída. Dois diagramas Mermaid versionados no README (arquitetura da solução com K8s/HPA/Postgres/Mailpit/webhook e fluxo de deploy com GitHub Actions/Docker Hub/Terraform); renderização validada com mermaid-cli. Para o PDF da entrega, exportar via mermaid.live (instrução em entrega.md).
 - **Descrição:** Diagrama dos componentes e do fluxo de deploy.
 - **Critérios de aceite:** Diagrama mostra API, banco, K8s (pods/HPA/service/ingress), Docker Hub, pipeline CI/CD e integrações (webhook/e-mail). Exportado em imagem e embutido no README/PDF.
 - **Sugestão técnica:** Atualizar o board do Miro e exportar; ou Mermaid `flowchart`.
 - **Estimativa:** M
 - **Depende de:** F2-7.1
 
-### F2-7.3 — Coleção de APIs atualizada
+### F2-7.3 — Coleção de APIs atualizada ✅
+- **Status:** Concluída. Coleção e OpenAPI sincronizados na F2-2.4 (webhook com pre-request script HMAC, incluir_encerradas); links no README (Quickstart e tabela de entregáveis).
 - **Descrição:** Sincronizar Postman/OpenAPI com as novas rotas.
 - **Critérios de aceite:** `docs/postman_collection.json` e `docs/openapi.yaml` cobrem webhook, nova listagem e eventual `/cancel`; link no README.
 - **Sugestão técnica:** Exportar do Postman após validar manualmente; ou servir Swagger UI a partir do OpenAPI embutido.
 - **Estimativa:** P
 - **Depende de:** F2-2.4
 
-### F2-7.4 — Vídeo demonstrativo (≤15 min)
+### F2-7.4 — Vídeo demonstrativo (≤15 min) 🎬
+- **Status:** Preparada — gravação é ação do usuário. Roteiro completo com tempos, comandos e checklist em `docs/planejamentos/fase-2/roteiro-video.md` (cobre as 4 demonstrações exigidas: deploy, CI/CD, APIs, escalabilidade). Após publicar, colar o link no README e no PDF.
 - **Descrição:** Gravar demonstração do ambiente em execução.
 - **Critérios de aceite:** Vídeo publicado (YouTube/Vimeo, público ou não listado) demonstrando: deploy da aplicação, execução do CI/CD, consumo das APIs e escalabilidade automática (simulação de carga). Link no README e no PDF.
 - **Sugestão técnica:** Roteiro: (1) `terraform apply` sobe cluster; (2) pipeline builda/publica; (3) deploy no K8s; (4) chamadas de API (abertura de OS, webhook de aprovação, e-mail no MailHog); (5) `hey`/`k6` gera carga e HPA escala (`kubectl get hpa -w`).
 - **Estimativa:** M
 - **Depende de:** Todos os épicos
 
-### F2-7.5 — Entrega no portal
+### F2-7.5 — Entrega no portal 📦
+- **Status:** Preparada — submissão é ação do usuário. Checklist e conteúdo pronto do PDF em `docs/planejamentos/fase-2/entrega.md` (compartilhar repo com soat-architecture, link do vídeo, diagrama exportado).
 - **Descrição:** Submeter a entrega formal.
 - **Critérios de aceite:** Repositório compartilhado com o usuário `soat-architecture`; PDF com link do repo, desenho da arquitetura e link do vídeo submetido no portal do aluno.
 - **Sugestão técnica:** Conferir permissão de acesso ao repo antes da submissão.
