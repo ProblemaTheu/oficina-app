@@ -3,10 +3,14 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o api ./cmd/api
+# -trimpath e -ldflags "-s -w": build reprodutível e binário menor (sem
+# caminhos da máquina, tabela de símbolos nem debug info)
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o api ./cmd/api
 
 FROM alpine:3.21
-RUN addgroup -S app && adduser -S app -G app
+# ca-certificates: TLS de saída (ex.: provedor SMTP real)
+RUN apk add --no-cache ca-certificates \
+  && addgroup -S app && adduser -S app -G app
 WORKDIR /app
 COPY --chown=app:app --from=builder /app/api ./api
 USER app

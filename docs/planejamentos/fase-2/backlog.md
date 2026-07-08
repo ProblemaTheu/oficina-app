@@ -136,7 +136,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 ## E3 — Containerização (revisão)
 
-### F2-3.1 — Revisar Dockerfile
+### F2-3.1 — Revisar Dockerfile ✅
+- **Status:** Concluída. `-trimpath -ldflags="-s -w"` (32,4MB → 27,2MB), `.dockerignore` (docs/pdfs/.git/etc. fora do contexto), `ca-certificates` no runtime para TLS de saída. Non-root, HEALTHCHECK e multi-stage já existiam. Trivy continua coberto pelo security.yml.
 - **Descrição:** Endurecer e otimizar a imagem.
 - **Critérios de aceite:**
   - Build reprodutível (versão de Go fixada — já usa `golang:1.26-alpine`).
