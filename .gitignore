@@ -34,3 +34,15 @@ Thumbs.db
 
 coverage.out
 coverage
+
+# Terraform (o .terraform.lock.hcl É versionado)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+
+# Secrets de Kubernetes com valores reais
+k8s/**/secret.yaml
+# Kubeconfig gerado pelo provider kind
+infra/**/oficina-config

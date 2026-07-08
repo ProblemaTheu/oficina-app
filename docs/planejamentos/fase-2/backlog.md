@@ -235,28 +235,32 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 ## E5 — Terraform / IaC (`/infra`)
 
-### F2-5.1 — Estrutura de módulos e backend
+### F2-5.1 — Estrutura de módulos e backend ✅
+- **Status:** Concluída. `/infra` com `modules/kind-cluster` e `environments/{local,aws}`; providers fixados em `versions.tf`; state local com migração para S3+DynamoDB esboçada (comentada).
 - **Descrição:** Organizar o Terraform em módulos reutilizáveis com separação local/AWS.
 - **Critérios de aceite:** `/infra` com `modules/` e `environments/local` + `environments/aws`; `versions.tf` com providers fixados; backend de state definido (local agora, S3 no futuro).
 - **Sugestão técnica:** `environments/local` provisiona cluster kind e aplica manifestos; `environments/aws` provisiona VPC, EKS, RDS e ECR. Manter `aws` funcional mas não aplicado por padrão.
 - **Estimativa:** M
 - **Depende de:** —
 
-### F2-5.2 — Provisionamento do cluster local (kind/minikube)
+### F2-5.2 — Provisionamento do cluster local (kind/minikube) ✅
+- **Status:** Concluída. Provider `tehcyx/kind` cria o cluster e o kubeconfig (contexto `kind-oficina`); metrics-server instalado via Helm com `--kubelet-insecure-tls`. Verificado: `terraform apply` recriou o cluster do zero e o deploy da app funcionou em cima (HPA com métricas).
 - **Descrição:** Subir o cluster local via Terraform.
 - **Critérios de aceite:** `terraform apply` cria o cluster local e deixa o `kubeconfig` acessível; opcionalmente instala metrics-server e ingress.
 - **Sugestão técnica:** Provider `tehcyx/kind` ou `null_resource` chamando `kind create cluster`. Documentar pré-requisitos (Docker, kind).
 - **Estimativa:** M
 - **Depende de:** F2-5.1
 
-### F2-5.3 — Módulo AWS (EKS + RDS + ECR) — preparado para o futuro
+### F2-5.3 — Módulo AWS (EKS + RDS + ECR) — preparado para o futuro ✅
+- **Status:** Concluída (preparado, opt-in). VPC (2 AZs, NAT único), EKS (node group t3.medium 2–3) e RDS Postgres 15 privado com SG restrito aos nós, via módulos oficiais terraform-aws-modules; `terraform validate` OK. **Sem ECR por decisão**: registry é o Docker Hub. Custo alertado no README; nunca aplicado por padrão.
 - **Descrição:** Escrever (sem necessariamente aplicar) o provisionamento de cluster e banco na AWS.
 - **Critérios de aceite:** Módulos para VPC, EKS, RDS (Postgres) e ECR; variáveis e outputs documentados; `terraform plan` válido.
 - **Sugestão técnica:** Usar módulos oficiais `terraform-aws-modules/{vpc,eks,rds}`. Deixar claro no README que é opt-in e gera custo. Não commitar credenciais.
 - **Estimativa:** GG
 - **Depende de:** F2-5.1
 
-### F2-5.4 — Documentação do Terraform
+### F2-5.4 — Documentação do Terraform ✅
+- **Status:** Concluída. `infra/README.md` com pré-requisitos, comandos (init/plan/apply/destroy), tabelas de recursos e variáveis por ambiente, e decisões (Docker Hub sem ECR, state local).
 - **Descrição:** Documentar quais recursos são criados e como aplicar.
 - **Critérios de aceite:** `infra/README.md` com pré-requisitos, comandos (`init/plan/apply/destroy`), variáveis e diagrama dos recursos, para local e AWS.
 - **Sugestão técnica:** Gerar tabela de variáveis (ou usar `terraform-docs`).
