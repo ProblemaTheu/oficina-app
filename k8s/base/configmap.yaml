@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-config
+  labels:
+    app.kubernetes.io/part-of: tech-challenge
+data:
+  # Banco de dados (host aponta para o Service do Postgres in-cluster;
+  # no overlay aws será substituído pelo endpoint do RDS)
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: tech_challenge_db
+
+  # Notificação de mudança de status ("log" ou "smtp")
+  NOTIFIER: log
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  EMAIL_FROM: oficina@tech-challenge.local

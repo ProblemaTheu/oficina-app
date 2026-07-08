@@ -164,14 +164,16 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 ## E4 — Kubernetes (`/k8s`)
 
-### F2-4.1 — Estrutura base e namespace
+### F2-4.1 — Estrutura base e namespace ✅
+- **Status:** Concluída. Layout Kustomize: `k8s/base` + `overlays/local` + `overlays/aws` (preparado); namespace `oficina`; `k8s/README.md` com instruções.
 - **Descrição:** Organizar `/k8s` e criar namespace dedicado.
 - **Critérios de aceite:** `/k8s` com layout claro (base + overlays, ou pastas por recurso). `kubectl apply` cria o namespace `oficina` (ou similar).
 - **Sugestão técnica:** Usar **Kustomize** (`base/` + `overlays/local` + `overlays/aws`) para reaproveitar manifestos entre ambientes.
 - **Estimativa:** P
 - **Depende de:** —
 
-### F2-4.2 — ConfigMap e Secret
+### F2-4.2 — ConfigMap e Secret ✅
+- **Status:** Concluída. `oficina-config` (DB_HOST/PORT/NAME, NOTIFIER, SMTP, EMAIL_FROM) + `oficina-secrets` (DB_USER/PASSWORD, JWT_SECRET, WEBHOOK_SECRET) consumidos via `envFrom`. `secret.example.yaml` versionado como template; valores reais criados a partir do `.env` pelo script de deploy.
 - **Descrição:** Externalizar configuração e segredos.
 - **Critérios de aceite:**
   - `ConfigMap` com variáveis não sensíveis (DB_HOST, DB_PORT, DB_NAME, portas, remetente de e-mail).
@@ -182,7 +184,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** M
 - **Depende de:** F2-4.1
 
-### F2-4.3 — Deployment da aplicação
+### F2-4.3 — Deployment da aplicação ✅
+- **Status:** Concluída. 2 réplicas, RollingUpdate (maxUnavailable 0), probes em `/health/ready` e `/health/live`, requests 100m/128Mi e limits 500m/256Mi, securityContext non-root (UID 100) com rootfs read-only, imagem parametrizada por tag via kustomize.
 - **Descrição:** Deployment da API com boas práticas.
 - **Critérios de aceite:**
   - `readinessProbe` → `/health/ready`; `livenessProbe` → `/health/live`.
@@ -193,14 +196,16 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** M
 - **Depende de:** F2-4.2
 
-### F2-4.4 — Service
+### F2-4.4 — Service ✅
+- **Status:** Concluída. ClusterIP 80→8080; acesso local via `kubectl port-forward` documentado no `k8s/README.md`.
 - **Descrição:** Expor a aplicação no cluster.
 - **Critérios de aceite:** `Service` ClusterIP para a API; acesso externo via `port-forward` (local) ou Ingress/LoadBalancer (AWS).
 - **Sugestão técnica:** ClusterIP + Ingress (nginx) no overlay. Local: `kubectl port-forward` documentado.
 - **Estimativa:** P
 - **Depende de:** F2-4.3
 
-### F2-4.5 — Horizontal Pod Autoscaler (HPA)
+### F2-4.5 — Horizontal Pod Autoscaler (HPA) ✅
+- **Status:** Concluída. `autoscaling/v2`, CPU 50%, min 2 / max 5, janela de scale-down de 60s. Comprovado no kind: sob carga escalou 2→5 réplicas (cpu 107%/50%). metrics-server instalado pelo script com `--kubelet-insecure-tls`.
 - **Descrição:** Escalar pods conforme CPU/memória.
 - **Critérios de aceite:**
   - `HPA` escala a API entre min e max réplicas por utilização de CPU (e/ou memória).
@@ -210,14 +215,16 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** M
 - **Depende de:** F2-4.3
 
-### F2-4.6 — Banco de dados no cluster (ambiente local)
+### F2-4.6 — Banco de dados no cluster (ambiente local) ✅
+- **Status:** Concluída. StatefulSet `postgres:15.7` com PVC (1Gi), Service e credenciais via Secret, só no overlay local (AWS usará RDS). App conectou e migrations rodaram no start.
 - **Descrição:** Provisionar Postgres para o ambiente local em K8s.
 - **Critérios de aceite:** `StatefulSet` (ou Deployment) do Postgres com `PVC`, `Service` e credenciais via Secret. App conecta com sucesso; migrations rodam no start.
 - **Sugestão técnica:** `StatefulSet` + `PersistentVolumeClaim`. Em **AWS**, substituir por **RDS** (provisionado no Terraform, E5) — daí o overlay `aws` não inclui o Postgres in-cluster.
 - **Estimativa:** M
 - **Depende de:** F2-4.2
 
-### F2-4.7 — (Opcional) Job de migrations
+### F2-4.7 — (Opcional) Job de migrations ☑️
+- **Status:** Dispensada com justificativa. O `golang-migrate` usa advisory lock do Postgres: com 2+ réplicas as execuções concorrentes no boot são serializadas e idempotentes — sem corrida. Decisão documentada no `k8s/README.md`.
 - **Descrição:** Rodar migrations como Job/initContainer em vez de no boot da app.
 - **Critérios de aceite:** Migrations aplicadas de forma controlada antes do rollout; app não corre migrations concorrentemente em múltiplas réplicas.
 - **Sugestão técnica:** Como a app roda migrations no start e haverá ≥2 réplicas, avaliar mover para um `Job`/`initContainer` para evitar corrida. `golang-migrate` já é usado.

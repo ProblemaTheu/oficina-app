@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: oficina
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+# O Secret NÃO é versionado com valores reais: ver secret.example.yaml
+# (o script scripts/k8s-local-deploy.sh cria a partir do .env)
