@@ -26,7 +26,7 @@ func fakeSMTPServer(t *testing.T) (addr string, recebido chan string) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		r := bufio.NewReader(conn)
 		write := func(s string) { _, _ = conn.Write([]byte(s + "\r\n")) }
