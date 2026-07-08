@@ -271,7 +271,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 
 ## E6 — CI/CD
 
-### F2-6.1 — Workflow de CI (build + test + lint)
+### F2-6.1 — Workflow de CI (build + test + lint) ✅
+- **Status:** Concluída. `.github/workflows/ci.yml` com jobs "Build e testes" (`go vet`, `go build`, `go test -race` com cobertura) e "Lint" (`golangci-lint` com a config do repo, incl. build tag integration), ambos com Job Summary detalhado (placar, tabela por pacote, falhas, cobertura por função). **Decisão do time: dispara apenas em PR para a main.** Para bloquear merge, habilitar branch protection com os required checks "Build e testes" e "Lint".
 - **Descrição:** Validar cada push/PR.
 - **Critérios de aceite:** Workflow roda `go build`, `go test` (com cobertura), `golangci-lint` e `go vet`; falha bloqueia o merge.
 - **Sugestão técnica:** Reaproveitar cache do `actions/setup-go`. Manter o `security.yml` existente (govulncheck/gosec/Trivy/Sonar) como parte da suíte de qualidade.
