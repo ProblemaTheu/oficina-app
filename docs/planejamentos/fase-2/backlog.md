@@ -149,7 +149,8 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** P
 - **Depende de:** —
 
-### F2-3.2 — Revisar docker-compose para desenvolvimento local
+### F2-3.2 — Revisar docker-compose para desenvolvimento local ✅
+- **Status:** Concluída. Segredos movidos para `.env` (`.env.example` versionado; compose falha com mensagem clara se `.env` faltar); serviço Mailpit (SMTP fake com UI em `:8025`) integrado ao fluxo de notificação (`NOTIFIER=smtp` por padrão no compose). Verificado ponta a ponta: mudança de status → e-mail capturado no Mailpit.
 - **Descrição:** Facilitar o ciclo local e alinhar com K8s.
 - **Critérios de aceite:**
   - Segredos via `.env` (não hardcoded no compose); `.env.example` versionado.
