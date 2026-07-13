@@ -105,7 +105,7 @@ flowchart LR
     tf["Terraform<br/>infra/environments"] -- provisiona --> k8s
 ```
 
-> Os jobs de push da imagem (F2-6.2) e deploy automatizado (F2-6.3) estão planejados no backlog; hoje o deploy local é feito por `scripts/k8s-local-deploy.sh` sobre o cluster provisionado pelo Terraform.
+> O job de push da imagem (F2-6.2) roda a cada push na `main`. O job de deploy (F2-6.3) fica pronto para um EKS real (autenticação via OIDC) mas só é executado quando a variável de repositório `DEPLOY_ENABLED=true` está setada — um runner hospedado do GitHub não alcança um cluster local (kind/minikube), então na demonstração em vídeo o deploy local é feito manualmente com `scripts/k8s-local-deploy.sh` sobre o cluster provisionado pelo Terraform.
 
 ### Onde está cada coisa
 
@@ -702,15 +702,27 @@ Os testes cobrem a máquina de estados das ordens de serviço (`ordem_servico_us
 
 ## CI/CD e Segurança
 
-Três workflows em `.github/workflows/`, todos com Job Summary detalhado (placar de testes, cobertura, tabelas de vulnerabilidades):
+Quatro workflows em `.github/workflows/`, todos com Job Summary detalhado (placar de testes, cobertura, tabelas de vulnerabilidades):
 
 | Workflow | Gatilho | O que faz |
 |---|---|---|
 | [`ci.yml`](.github/workflows/ci.yml) | PR → `main` | `go vet` + build + testes unitários com `-race` e cobertura + `golangci-lint` |
 | [`integration.yml`](.github/workflows/integration.yml) | push `main`, PRs | Testes de integração do repositório contra Postgres real (service container) |
 | [`security.yml`](.github/workflows/security.yml) | push/PR `main`, manual | Scanners de segurança (tabela abaixo) |
+| [`cd.yml`](.github/workflows/cd.yml) | push `main`/tag `v*`, manual | Build + push da imagem no Docker Hub (F2-6.2) e deploy no cluster (F2-6.3) |
 
-> Próximos passos do backlog (E6): build+push da imagem para o Docker Hub em merge na `main` (F2-6.2) e deploy automatizado no cluster (F2-6.3).
+### Segredos e variáveis do CI/CD (F2-6.4)
+
+O job de deploy roda sob o [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) `production`, que pode exigir *required reviewers* antes de liberar a execução. Nenhum segredo fica em texto plano no repositório — tudo é referenciado via `secrets`/`vars`:
+
+| Nome | Tipo | Onde é usado |
+|---|---|---|
+| `DOCKERHUB_USERNAME` | Secret (repo) | Login no Docker Hub (`cd.yml` → build-and-push) |
+| `DOCKERHUB_TOKEN` | Secret (repo) | Login no Docker Hub (`cd.yml` → build-and-push) |
+| `AWS_DEPLOY_ROLE_ARN` | Secret (environment `production`) | `aws-actions/configure-aws-credentials` via OIDC — sem chave de longa duração |
+| `EKS_CLUSTER_NAME`, `AWS_REGION` | Variable (environment `production`) | `aws eks update-kubeconfig` |
+| `DEPLOY_ENABLED` | Variable (repo) | Liga/desliga o job de deploy — evita falha em ambientes sem cluster acessível |
+| `SONAR_TOKEN` | Secret (repo, já existente) | `security.yml` → análise SonarCloud |
 
 ### Scanners de segurança
 

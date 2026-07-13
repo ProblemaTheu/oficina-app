@@ -279,21 +279,24 @@ Convenção de estimativa: `P` pequeno (~½ dia), `M` médio (~1 dia), `G` grand
 - **Estimativa:** M
 - **Depende de:** F2-1.1
 
-### F2-6.2 — Build e push da imagem Docker (Docker Hub)
+### F2-6.2 — Build e push da imagem Docker (Docker Hub) ✅
+- **Status:** Concluída. `.github/workflows/cd.yml`, job `build-and-push`: dispara em push na `main`, tag `v*` ou manualmente; login com `docker/login-action`, build com `docker/build-push-action` (cache `type=gha`) e push para `docker.io/problematheu/tech-challenge-api` com tag pelo SHA curto e `latest`.
 - **Descrição:** Construir e publicar a imagem no Docker Hub.
 - **Critérios de aceite:** Em push na `main` (ou tag), imagem é construída e publicada com tag por SHA e `latest`; login via secrets do GitHub (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`).
-- **Sugestão técnica:** `docker/login-action` + `docker/build-push-action` com `cache-from/to`. Multi-plataforma (amd64/arm64) opcional.
+- **Sugestão técnica:** `docker/login-action` + `docker/build-push-action` com `cache-from/to`. Multi-plataforma (amd64/arm64) opcional — não habilitada (custo de build via QEMU não compensa para o escopo do desafio).
 - **Estimativa:** M
 - **Depende de:** F2-3.1, F2-6.1
 
-### F2-6.3 — Deploy no cluster Kubernetes
+### F2-6.3 — Deploy no cluster Kubernetes ✅
+- **Status:** Concluída com a limitação documentada na sugestão técnica. `.github/workflows/cd.yml`, job `deploy`: `kubectl apply -k k8s/overlays/aws`, `kubectl set image` com a tag publicada e `kubectl rollout status`. Autenticação no EKS via OIDC (`aws-actions/configure-aws-credentials`, sem chave de longa duração). O job só roda com a variável de repositório `DEPLOY_ENABLED=true` (evita falha em ambientes sem cluster real) e pode trocar para runner self-hosted via `DEPLOY_RUNNER_LABEL`. Migrations não exigem passo à parte: rodam no boot da app com advisory lock (decisão F2-4.7, ver k8s/README.md). Para a demonstração em vídeo, sem um EKS provisionado (custo), o deploy é feito manualmente com `scripts/k8s-local-deploy.sh` contra o cluster local.
 - **Descrição:** Aplicar os manifestos e o banco no cluster a partir da pipeline.
 - **Critérios de aceite:** Após publicar a imagem, o job faz `kubectl apply`/`kustomize build | apply` no cluster alvo, atualiza a tag da imagem e aguarda o rollout; migrations aplicadas.
 - **Sugestão técnica:** Local não é acessível pelo runner hospedado — para a demonstração use **self-hosted runner** ou execute o deploy manualmente/por script no vídeo, deixando o job pronto para EKS (kubeconfig via secret/OIDC). Documentar essa limitação com honestidade.
 - **Estimativa:** G
 - **Depende de:** F2-6.2, E4
 
-### F2-6.4 — Gestão de secrets da pipeline
+### F2-6.4 — Gestão de secrets da pipeline ✅
+- **Status:** Concluída. Job de deploy roda sob o GitHub Environment `production` (permite configurar required reviewers). `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` como secrets do repositório; `AWS_DEPLOY_ROLE_ARN` como secret do environment `production` (usado só via OIDC, nunca versionado); `EKS_CLUSTER_NAME`/`AWS_REGION`/`DEPLOY_ENABLED` como variables (não sensíveis); `SONAR_TOKEN` mantido como já estava. Tabela de referência em README → CI/CD e Segurança.
 - **Descrição:** Centralizar segredos do CI/CD.
 - **Critérios de aceite:** Segredos (`DOCKERHUB_TOKEN`, `KUBECONFIG`/OIDC, `SONAR_TOKEN` já existente) configurados no repositório e referenciados; nenhum segredo em texto plano no código.
 - **Sugestão técnica:** GitHub Environments com required reviewers para o ambiente de deploy.
