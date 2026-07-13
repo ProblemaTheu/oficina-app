@@ -1,0 +1,128 @@
+name: CD
+
+# Publica a imagem no Docker Hub a cada push na main (ou tag v*) e, na
+# sequência, aplica os manifestos no cluster Kubernetes alvo.
+#
+# O job de deploy assume um runner com alcance de rede até o cluster:
+#   - Em EKS real, a autenticação é via OIDC (sem segredo de longa duração)
+#     e um runner hospedado do GitHub já alcança a API pública do cluster.
+#   - Contra um cluster local (kind/minikube) o runner hospedado do GitHub
+#     NÃO enxerga a rede local — nesse caso é necessário um runner
+#     self-hosted (troque `vars.DEPLOY_RUNNER_LABEL`) ou faça o deploy
+#     manualmente com `scripts/k8s-local-deploy.sh` (como no vídeo de
+#     demonstração). Documentado com honestidade no backlog (F2-6.3).
+#
+# O job de deploy só roda se a variável de repositório DEPLOY_ENABLED for
+# "true" — assim o pipeline não quebra em ambientes sem cluster provisionado.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch: {}
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────
+  # F2-6.2 — Build + push da imagem no Docker Hub
+  # ─────────────────────────────────────────────
+  build-and-push:
+    name: Build e push da imagem
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.sha_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Definir tags da imagem
+        id: meta
+        run: echo "sha_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build e push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # linux/arm64 é opcional: exige docker/setup-qemu-action e
+          # aumenta bastante o tempo de build (emulação via QEMU).
+          platforms: linux/amd64
+          tags: |
+            docker.io/problematheu/tech-challenge-api:${{ steps.meta.outputs.sha_tag }}
+            docker.io/problematheu/tech-challenge-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Job Summary
+        run: |
+          {
+            echo "# 🐳 CD — Build e push da imagem"
+            echo
+            echo "Publicada em \`docker.io/problematheu/tech-challenge-api\`:"
+            echo "- \`${{ steps.meta.outputs.sha_tag }}\`"
+            echo "- \`latest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────
+  # F2-6.3 — Deploy no cluster Kubernetes (EKS)
+  # ─────────────────────────────────────────────
+  deploy:
+    name: Deploy no cluster
+    needs: build-and-push
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ${{ vars.DEPLOY_RUNNER_LABEL || 'ubuntu-latest' }}
+    environment: production
+    permissions:
+      contents: read
+      id-token: write # necessário para autenticação AWS via OIDC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Atualizar kubeconfig do EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ vars.EKS_CLUSTER_NAME || 'tech-challenge-eks' }}" \
+            --region "${{ vars.AWS_REGION || 'us-east-1' }}"
+
+      - name: Aplicar manifestos (kustomize overlay aws)
+        run: kubectl apply -k k8s/overlays/aws
+
+      - name: Atualizar tag da imagem
+        run: |
+          kubectl -n oficina set image deployment/api \
+            api=docker.io/problematheu/tech-challenge-api:${{ needs.build-and-push.outputs.image_tag }}
+
+      - name: Aguardar rollout
+        run: kubectl -n oficina rollout status deployment/api --timeout=180s
+
+      - name: Job Summary
+        run: |
+          {
+            echo "# 🚀 CD — Deploy no cluster"
+            echo
+            echo "Imagem \`${{ needs.build-and-push.outputs.image_tag }}\` implantada em \`oficina/api\`."
+            echo
+            echo "> Migrations rodam no boot da aplicação (advisory lock do Postgres via golang-migrate — ver k8s/README.md)."
+          } >> "$GITHUB_STEP_SUMMARY"

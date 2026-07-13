@@ -1,0 +1,26 @@
+# Overlay AWS (EKS + RDS) — preparado para o futuro (ver F2-5.3).
+# Diferenças em relação ao local:
+#   - sem Postgres in-cluster (DB_HOST aponta para o endpoint do RDS)
+#   - sem Mailpit (usar provedor SMTP real via Secret)
+#   - imagem vinda do Docker Hub (tag definida pelo CI/CD)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: oficina
+
+resources:
+  - ../../base
+
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: oficina-config
+      data:
+        # Substituir pelo endpoint do RDS gerado pelo Terraform (output)
+        DB_HOST: SUBSTITUIR_PELO_ENDPOINT_RDS
+        NOTIFIER: smtp
+        # Substituir pelo provedor SMTP real
+        SMTP_HOST: SUBSTITUIR_PELO_SMTP_REAL
+        SMTP_PORT: "587"

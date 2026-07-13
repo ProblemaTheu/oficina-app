@@ -36,11 +36,11 @@ func TestNewPlate_FormatoMercosul(t *testing.T) {
 func TestNewPlate_Invalida(t *testing.T) {
 	casos := []string{
 		"",
-		"ABC123",    // 6 caracteres
-		"ABCD1234",  // 4 letras no início
-		"1234ABC",   // dígitos antes das letras
-		"ABC12D3",   // Mercosul com padrão errado
-		"AB1234",    // só 2 letras no início
+		"ABC123",   // 6 caracteres
+		"ABCD1234", // 4 letras no início
+		"1234ABC",  // dígitos antes das letras
+		"ABC12D3",  // Mercosul com padrão errado
+		"AB1234",   // só 2 letras no início
 	}
 	for _, c := range casos {
 		_, err := valueobject.NewPlate(c)

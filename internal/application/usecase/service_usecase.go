@@ -1,12 +1,12 @@
 package usecase
 
 import (
-	"errors"
 	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
+	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
 
 type ServiceUseCase struct {
@@ -21,15 +21,15 @@ func (uc *ServiceUseCase) Create(nome string, descricao *string, precoBase float
 	slog.Info("executando caso de uso: criar serviço")
 
 	if strings.TrimSpace(nome) == "" {
-		return nil, errors.New("nome é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "nome é obrigatório"}
 	}
 
 	if precoBase < 0 {
-		return nil, errors.New("preço base não pode ser negativo")
+		return nil, &domainerros.ErrValidacao{Mensagem: "preço base não pode ser negativo"}
 	}
 
 	if tempoMinutos <= 0 {
-		return nil, errors.New("tempo em minutos deve ser maior que zero")
+		return nil, &domainerros.ErrValidacao{Mensagem: "tempo em minutos deve ser maior que zero"}
 	}
 
 	servico := &entity.Servico{
@@ -51,11 +51,11 @@ func (uc *ServiceUseCase) FindByID(id string) (*entity.Servico, error) {
 	slog.Info("executando caso de uso: buscar serviço por ID", "id", id)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return nil, errors.New("id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	return uc.repo.BuscarPorID(id)
@@ -65,11 +65,11 @@ func (uc *ServiceUseCase) Update(id string, nome *string, descricao *string, pre
 	slog.Info("executando caso de uso: atualizar serviço", "id", id)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return nil, errors.New("id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	servicoAtual, err := uc.repo.BuscarPorID(id)
@@ -79,7 +79,7 @@ func (uc *ServiceUseCase) Update(id string, nome *string, descricao *string, pre
 
 	if nome != nil {
 		if strings.TrimSpace(*nome) == "" {
-			return nil, errors.New("nome não pode ser vazio")
+			return nil, &domainerros.ErrValidacao{Mensagem: "nome não pode ser vazio"}
 		}
 
 		servicoAtual.Nome = strings.TrimSpace(*nome)
@@ -91,7 +91,7 @@ func (uc *ServiceUseCase) Update(id string, nome *string, descricao *string, pre
 
 	if precoBase != nil {
 		if *precoBase < 0 {
-			return nil, errors.New("preço base não pode ser negativo")
+			return nil, &domainerros.ErrValidacao{Mensagem: "preço base não pode ser negativo"}
 		}
 
 		servicoAtual.PrecoBase = *precoBase
@@ -99,7 +99,7 @@ func (uc *ServiceUseCase) Update(id string, nome *string, descricao *string, pre
 
 	if tempoMinutos != nil {
 		if *tempoMinutos <= 0 {
-			return nil, errors.New("tempo em minutos deve ser maior que zero")
+			return nil, &domainerros.ErrValidacao{Mensagem: "tempo em minutos deve ser maior que zero"}
 		}
 
 		servicoAtual.TempoMinutos = *tempoMinutos
@@ -112,11 +112,11 @@ func (uc *ServiceUseCase) Delete(id string) error {
 	slog.Info("executando caso de uso: remover serviço", "id", id)
 
 	if id == "" {
-		return errors.New("id é obrigatório")
+		return &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return errors.New("id inválido")
+		return &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	return uc.repo.Remover(id)

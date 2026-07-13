@@ -10,7 +10,6 @@ import (
 	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 // ── mock osRepo ───────────────────────────────────────────────────────────────
@@ -19,12 +18,13 @@ type mockOsRepo struct {
 	buscarStatusIDFn    func(ctx context.Context, nome entity.Status) (uuid.UUID, error)
 	gerarNumeroFn       func(ctx context.Context) (string, error)
 	criarFn             func(ctx context.Context, os *entity.OrdemServico, sv []entity.ItemOsServico, pc []entity.ItemOsPeca) (*entity.OrdemServico, error)
-	listarFn            func(ctx context.Context, p repository.ListarOSParams) ([]*entity.OrdemServico, int, error)
+	listarFn            func(ctx context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error)
 	buscarPorIDFn       func(ctx context.Context, id string) (*entity.OrdemServicoCompleta, error)
 	atualizarStatusErr  error
 	registrarHistErr    error
 	deduzirEstoqueErr   error
-	relatorioFn         func(ctx context.Context, p repository.RelatorioTempoMedioParams) ([]repository.ItemTempoMedio, error)
+	deduzirChamadas     int
+	relatorioFn         func(ctx context.Context, p usecase.RelatorioTempoMedioParams) ([]usecase.ItemTempoMedio, error)
 	precarregarCacheErr error
 }
 
@@ -47,7 +47,7 @@ func (m *mockOsRepo) Criar(ctx context.Context, os *entity.OrdemServico, sv []en
 	os.ID = uuid.New()
 	return os, nil
 }
-func (m *mockOsRepo) Listar(ctx context.Context, p repository.ListarOSParams) ([]*entity.OrdemServico, int, error) {
+func (m *mockOsRepo) Listar(ctx context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
 	if m.listarFn != nil {
 		return m.listarFn(ctx, p)
 	}
@@ -66,9 +66,10 @@ func (m *mockOsRepo) RegistrarHistorico(_ context.Context, _ uuid.UUID, _ *uuid.
 	return m.registrarHistErr
 }
 func (m *mockOsRepo) DeduzirEstoquePecas(_ context.Context, _ uuid.UUID) error {
+	m.deduzirChamadas++
 	return m.deduzirEstoqueErr
 }
-func (m *mockOsRepo) RelatorioTempoMedio(ctx context.Context, p repository.RelatorioTempoMedioParams) ([]repository.ItemTempoMedio, error) {
+func (m *mockOsRepo) RelatorioTempoMedio(ctx context.Context, p usecase.RelatorioTempoMedioParams) ([]usecase.ItemTempoMedio, error) {
 	if m.relatorioFn != nil {
 		return m.relatorioFn(ctx, p)
 	}
@@ -82,11 +83,13 @@ func (m *mockOsRepo) PrecarregarStatusCache(_ context.Context) error {
 
 type osCliRepo struct{ cliente *entity.Cliente }
 
-func (r *osCliRepo) Salvar(c *entity.Cliente) (*entity.Cliente, error)    { return c, nil }
-func (r *osCliRepo) BuscarTodos() ([]*entity.Cliente, error)               { return nil, nil }
-func (r *osCliRepo) BuscarPorDocumento(_ string) (*entity.Cliente, error)  { return &entity.Cliente{}, nil }
-func (r *osCliRepo) Atualizar(c *entity.Cliente) (*entity.Cliente, error)  { return c, nil }
-func (r *osCliRepo) Remover(_ string) error                                { return nil }
+func (r *osCliRepo) Salvar(c *entity.Cliente) (*entity.Cliente, error) { return c, nil }
+func (r *osCliRepo) BuscarTodos() ([]*entity.Cliente, error)           { return nil, nil }
+func (r *osCliRepo) BuscarPorDocumento(_ string) (*entity.Cliente, error) {
+	return &entity.Cliente{}, nil
+}
+func (r *osCliRepo) Atualizar(c *entity.Cliente) (*entity.Cliente, error) { return c, nil }
+func (r *osCliRepo) Remover(_ string) error                               { return nil }
 func (r *osCliRepo) BuscarPorID(_ string) (*entity.Cliente, error) {
 	if r.cliente != nil {
 		return r.cliente, nil
@@ -96,10 +99,10 @@ func (r *osCliRepo) BuscarPorID(_ string) (*entity.Cliente, error) {
 
 type osVeicRepo struct{ veiculo *entity.Veiculo }
 
-func (r *osVeicRepo) Salvar(v *entity.Veiculo) (*entity.Veiculo, error)  { return v, nil }
-func (r *osVeicRepo) BuscarTodos() ([]*entity.Veiculo, error)            { return nil, nil }
-func (r *osVeicRepo) Atualizar(v *entity.Veiculo) (*entity.Veiculo, error) { return v, nil }
-func (r *osVeicRepo) Remover(_ string) error                             { return nil }
+func (r *osVeicRepo) Salvar(v *entity.Veiculo) (*entity.Veiculo, error)      { return v, nil }
+func (r *osVeicRepo) BuscarTodos() ([]*entity.Veiculo, error)                { return nil, nil }
+func (r *osVeicRepo) Atualizar(v *entity.Veiculo) (*entity.Veiculo, error)   { return v, nil }
+func (r *osVeicRepo) Remover(_ string) error                                 { return nil }
 func (r *osVeicRepo) BuscarPorClienteID(_ string) ([]*entity.Veiculo, error) { return nil, nil }
 func (r *osVeicRepo) BuscarPorID(_ string) (*entity.Veiculo, error) {
 	if r.veiculo != nil {
@@ -110,10 +113,10 @@ func (r *osVeicRepo) BuscarPorID(_ string) (*entity.Veiculo, error) {
 
 type osSvcRepo struct{ servico *entity.Servico }
 
-func (r *osSvcRepo) Salvar(s *entity.Servico) (*entity.Servico, error)  { return s, nil }
-func (r *osSvcRepo) BuscarTodos() ([]*entity.Servico, error)            { return nil, nil }
+func (r *osSvcRepo) Salvar(s *entity.Servico) (*entity.Servico, error)    { return s, nil }
+func (r *osSvcRepo) BuscarTodos() ([]*entity.Servico, error)              { return nil, nil }
 func (r *osSvcRepo) Atualizar(s *entity.Servico) (*entity.Servico, error) { return s, nil }
-func (r *osSvcRepo) Remover(_ string) error                             { return nil }
+func (r *osSvcRepo) Remover(_ string) error                               { return nil }
 func (r *osSvcRepo) BuscarPorID(_ string) (*entity.Servico, error) {
 	if r.servico != nil {
 		return r.servico, nil
@@ -121,13 +124,16 @@ func (r *osSvcRepo) BuscarPorID(_ string) (*entity.Servico, error) {
 	return &entity.Servico{ID: uuid.New(), PrecoBase: 100.0}, nil
 }
 
-type osPecaRepo struct{ peca *entity.Peca; buscarErr error }
+type osPecaRepo struct {
+	peca      *entity.Peca
+	buscarErr error
+}
 
-func (r *osPecaRepo) Salvar(p *entity.Peca) (*entity.Peca, error)          { return p, nil }
-func (r *osPecaRepo) BuscarTodos() ([]*entity.Peca, error)                 { return nil, nil }
-func (r *osPecaRepo) Atualizar(p *entity.Peca) (*entity.Peca, error)       { return p, nil }
+func (r *osPecaRepo) Salvar(p *entity.Peca) (*entity.Peca, error)           { return p, nil }
+func (r *osPecaRepo) BuscarTodos() ([]*entity.Peca, error)                  { return nil, nil }
+func (r *osPecaRepo) Atualizar(p *entity.Peca) (*entity.Peca, error)        { return p, nil }
 func (r *osPecaRepo) AtualizarEstoque(p *entity.Peca) (*entity.Peca, error) { return p, nil }
-func (r *osPecaRepo) Remover(_ string) error                               { return nil }
+func (r *osPecaRepo) Remover(_ string) error                                { return nil }
 func (r *osPecaRepo) BuscarPorID(_ string) (*entity.Peca, error) {
 	if r.buscarErr != nil {
 		return nil, r.buscarErr
@@ -141,7 +147,7 @@ func (r *osPecaRepo) BuscarPorID(_ string) (*entity.Peca, error) {
 // ── helper ────────────────────────────────────────────────────────────────────
 
 func osUseCase(osR *mockOsRepo) *usecase.OrdemServicoUseCase {
-	return usecase.NewOrdemServicoUseCase(osR, &osCliRepo{}, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{})
+	return usecase.NewOrdemServicoUseCase(osR, &osCliRepo{}, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, nil)
 }
 
 func osCompleta(status entity.Status) *entity.OrdemServicoCompleta {
@@ -208,6 +214,252 @@ func TestOSRejeitarOrcamento_Sucesso(t *testing.T) {
 	_, err := osUseCase(osR).RejeitarOrcamento(context.Background(), uuid.New().String(), &motivo)
 	if err != nil {
 		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+}
+
+// ── Notificação de mudança de status ──────────────────────────────────────────
+
+type mockNotifier struct {
+	ch  chan usecase.NotificacaoStatus
+	err error
+}
+
+func (m *mockNotifier) NotificarMudancaStatus(_ context.Context, n usecase.NotificacaoStatus) error {
+	if m.ch != nil {
+		m.ch <- n
+	}
+	return m.err
+}
+
+// osUseCaseNotificando monta o use case com notifier e um cliente com e-mail.
+func osUseCaseNotificando(osR *mockOsRepo, n *mockNotifier) *usecase.OrdemServicoUseCase {
+	email := "cliente@teste.com"
+	cli := &osCliRepo{cliente: &entity.Cliente{ID: uuid.New(), Nome: "Cliente Teste", Email: &email}}
+	return usecase.NewOrdemServicoUseCase(osR, cli, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, n)
+}
+
+func esperarNotificacao(t *testing.T, ch chan usecase.NotificacaoStatus) usecase.NotificacaoStatus {
+	t.Helper()
+	select {
+	case n := <-ch:
+		return n
+	case <-time.After(2 * time.Second):
+		t.Fatal("esperava notificação, mas nenhuma foi enviada")
+		return usecase.NotificacaoStatus{}
+	}
+}
+
+func garantirSemNotificacao(t *testing.T, ch chan usecase.NotificacaoStatus) {
+	t.Helper()
+	select {
+	case n := <-ch:
+		t.Errorf("não esperava notificação, mas recebeu para status '%s'", n.NovoStatus)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestOSNotificacao_AprovarOrcamento(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	if _, err := osUseCaseNotificando(osR, notif).AprovarOrcamento(context.Background(), uuid.New().String()); err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	n := esperarNotificacao(t, notif.ch)
+	if n.NovoStatus != entity.StatusEmExecucao {
+		t.Errorf("esperava notificação de 'em_execucao', obteve '%s'", n.NovoStatus)
+	}
+	if n.DestinatarioEmail != "cliente@teste.com" {
+		t.Errorf("destinatário incorreto: %s", n.DestinatarioEmail)
+	}
+}
+
+func TestOSNotificacao_RejeitarOrcamentoComMotivo(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	motivo := "orçamento acima do esperado"
+	if _, err := osUseCaseNotificando(osR, notif).RejeitarOrcamento(context.Background(), uuid.New().String(), &motivo); err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	n := esperarNotificacao(t, notif.ch)
+	if n.NovoStatus != entity.StatusFinalizada {
+		t.Errorf("esperava notificação de 'finalizada', obteve '%s'", n.NovoStatus)
+	}
+	if n.Motivo == nil || *n.Motivo != motivo {
+		t.Errorf("esperava motivo repassado na notificação, obteve %v", n.Motivo)
+	}
+}
+
+func TestOSNotificacao_AvancarStatusEntregue(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusFinalizada), nil
+		},
+	}
+	_, err := osUseCaseNotificando(osR, notif).AvancarStatus(context.Background(), usecase.AvancarStatusInput{
+		OsID:       uuid.New().String(),
+		NovoStatus: entity.StatusEntregue,
+	})
+	if err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	if n := esperarNotificacao(t, notif.ch); n.NovoStatus != entity.StatusEntregue {
+		t.Errorf("esperava notificação de 'entregue', obteve '%s'", n.NovoStatus)
+	}
+}
+
+func TestOSNotificacao_EmDiagnosticoNaoNotifica(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusRecebida), nil
+		},
+	}
+	_, err := osUseCaseNotificando(osR, notif).AvancarStatus(context.Background(), usecase.AvancarStatusInput{
+		OsID:       uuid.New().String(),
+		NovoStatus: entity.StatusEmDiagnostico,
+	})
+	if err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	garantirSemNotificacao(t, notif.ch)
+}
+
+func TestOSNotificacao_ErroNaoFalhaTransicao(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1), err: errors.New("provedor fora do ar")}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	if _, err := osUseCaseNotificando(osR, notif).AprovarOrcamento(context.Background(), uuid.New().String()); err != nil {
+		t.Errorf("falha do notifier não deve falhar a transição; obteve: %v", err)
+	}
+	esperarNotificacao(t, notif.ch) // o envio foi tentado
+}
+
+func TestOSNotificacao_ClienteSemEmailNaoEnvia(t *testing.T) {
+	notif := &mockNotifier{ch: make(chan usecase.NotificacaoStatus, 1)}
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	// osCliRepo padrão devolve cliente sem e-mail
+	uc := usecase.NewOrdemServicoUseCase(osR, &osCliRepo{}, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, notif)
+	if _, err := uc.AprovarOrcamento(context.Background(), uuid.New().String()); err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	garantirSemNotificacao(t, notif.ch)
+}
+
+// ── ProcessarRespostaOrcamento (webhook) ──────────────────────────────────────
+
+func TestOSProcessarResposta_DecisaoInvalida(t *testing.T) {
+	_, err := osUseCase(&mockOsRepo{}).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), "talvez", nil)
+	var ev *domainerros.ErrValidacao
+	if !errors.As(err, &ev) {
+		t.Errorf("esperava ErrValidacao para decisão desconhecida, obteve: %v", err)
+	}
+}
+
+func TestOSProcessarResposta_AprovadoSucesso(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoAprovado, nil)
+	if err != nil {
+		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+	if osR.deduzirChamadas != 1 {
+		t.Errorf("esperava 1 dedução de estoque, obteve %d", osR.deduzirChamadas)
+	}
+}
+
+func TestOSProcessarResposta_RecusadoSucesso(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusAguardandoAprovacao), nil
+		},
+	}
+	motivo := "muito caro"
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoRecusado, &motivo)
+	if err != nil {
+		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+	if osR.deduzirChamadas != 0 {
+		t.Errorf("recusa não deve deduzir estoque; obteve %d deduções", osR.deduzirChamadas)
+	}
+}
+
+func TestOSProcessarResposta_IdempotenteAprovado(t *testing.T) {
+	// OS já aprovada anteriormente: em_execucao com AprovadoEm preenchido.
+	// Reprocessar a mesma notificação não deve deduzir estoque de novo.
+	aprovadoEm := time.Now()
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			oc := osCompleta(entity.StatusEmExecucao)
+			oc.AprovadoEm = &aprovadoEm
+			return oc, nil
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoAprovado, nil)
+	if err != nil {
+		t.Errorf("esperava idempotência (sem erro), obteve: %v", err)
+	}
+	if osR.deduzirChamadas != 0 {
+		t.Errorf("notificação repetida não deve deduzir estoque; obteve %d deduções", osR.deduzirChamadas)
+	}
+}
+
+func TestOSProcessarResposta_IdempotenteRecusado(t *testing.T) {
+	reprovadoEm := time.Now()
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			oc := osCompleta(entity.StatusFinalizada)
+			oc.ReprovadoEm = &reprovadoEm
+			return oc, nil
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoRecusado, nil)
+	if err != nil {
+		t.Errorf("esperava idempotência (sem erro), obteve: %v", err)
+	}
+}
+
+func TestOSProcessarResposta_EstadoInvalido(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return osCompleta(entity.StatusRecebida), nil
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoAprovado, nil)
+	var np *domainerros.ErrNaoProcessavel
+	if !errors.As(err, &np) {
+		t.Errorf("esperava ErrNaoProcessavel para OS fora de aguardando_aprovacao, obteve: %v", err)
+	}
+}
+
+func TestOSProcessarResposta_OSNaoEncontrada(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return nil, &domainerros.ErrNaoEncontrado{Recurso: "ordem de serviço"}
+		},
+	}
+	_, err := osUseCase(osR).ProcessarRespostaOrcamento(context.Background(), uuid.New().String(), usecase.DecisaoRecusado, nil)
+	var ne *domainerros.ErrNaoEncontrado
+	if !errors.As(err, &ne) {
+		t.Errorf("esperava ErrNaoEncontrado, obteve: %v", err)
 	}
 }
 
@@ -303,7 +555,14 @@ func TestOSListarOS_ComFiltros(t *testing.T) {
 	status := "recebida"
 	clienteID := uuid.New().String()
 	veiculoID := uuid.New().String()
-	_, _, err := osUseCase(&mockOsRepo{}).ListarOS(context.Background(), usecase.ListarOSInput{
+
+	var recebido usecase.ListarOSParams
+	repo := &mockOsRepo{listarFn: func(_ context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
+		recebido = p
+		return nil, 0, nil
+	}}
+
+	_, _, err := osUseCase(repo).ListarOS(context.Background(), usecase.ListarOSInput{
 		Status:    &status,
 		ClienteID: &clienteID,
 		VeiculoID: &veiculoID,
@@ -311,6 +570,31 @@ func TestOSListarOS_ComFiltros(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+	if recebido.Status == nil || *recebido.Status != entity.Status(status) {
+		t.Errorf("esperava status '%s' repassado ao repositório, obteve %v", status, recebido.Status)
+	}
+	if recebido.IncluirEncerradas {
+		t.Error("IncluirEncerradas deveria ser false por padrão")
+	}
+}
+
+func TestOSListarOS_IncluirEncerradas(t *testing.T) {
+	var recebido usecase.ListarOSParams
+	repo := &mockOsRepo{listarFn: func(_ context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
+		recebido = p
+		return nil, 0, nil
+	}}
+
+	_, _, err := osUseCase(repo).ListarOS(context.Background(), usecase.ListarOSInput{
+		IncluirEncerradas: true,
+		Page:              1, Limit: 10,
+	})
+	if err != nil {
+		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+	if !recebido.IncluirEncerradas {
+		t.Error("esperava IncluirEncerradas=true repassado ao repositório")
 	}
 }
 
@@ -350,7 +634,7 @@ func TestOSCriarOS_Sucesso(t *testing.T) {
 	svcR := &osSvcRepo{servico: &entity.Servico{ID: servicoID, PrecoBase: 100.0}}
 	pecR := &osPecaRepo{}
 
-	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, svcR, pecR)
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, svcR, pecR, nil)
 	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
 		ClienteID: clienteID.String(),
 		VeiculoID: veiculoID.String(),
@@ -358,5 +642,148 @@ func TestOSCriarOS_Sucesso(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("esperava sucesso, obteve: %v", err)
+	}
+}
+
+func TestOSCriarOS_ClienteIDInvalido(t *testing.T) {
+	_, err := osUseCase(&mockOsRepo{}).CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: "não-é-uuid",
+		VeiculoID: uuid.New().String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	var ne *domainerros.ErrNaoEncontrado
+	if !errors.As(err, &ne) {
+		t.Errorf("esperava ErrNaoEncontrado para cliente_id inválido, obteve: %v", err)
+	}
+}
+
+func TestOSCriarOS_VeiculoIDInvalido(t *testing.T) {
+	clienteID := uuid.New()
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	uc := usecase.NewOrdemServicoUseCase(&mockOsRepo{}, cliR, &osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, nil)
+
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: "não-é-uuid",
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	var ne *domainerros.ErrNaoEncontrado
+	if !errors.As(err, &ne) {
+		t.Errorf("esperava ErrNaoEncontrado para veiculo_id inválido, obteve: %v", err)
+	}
+}
+
+func TestOSCriarOS_ComServicosEPecas_CalculaValorTotal(t *testing.T) {
+	clienteID := uuid.New()
+	veiculoID := uuid.New()
+	servicoID := uuid.New()
+	pecaID := uuid.New()
+
+	var valorTotal float64
+	osR := &mockOsRepo{
+		criarFn: func(_ context.Context, os *entity.OrdemServico, _ []entity.ItemOsServico, _ []entity.ItemOsPeca) (*entity.OrdemServico, error) {
+			valorTotal = os.ValorTotal
+			os.ID = uuid.New()
+			return os, nil
+		},
+	}
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	veicR := &osVeicRepo{veiculo: &entity.Veiculo{ID: veiculoID, ClienteID: clienteID}}
+	svcR := &osSvcRepo{servico: &entity.Servico{ID: servicoID, PrecoBase: 150.0}}
+	pecR := &osPecaRepo{peca: &entity.Peca{ID: pecaID, Preco: 40.0, EstoqueAtual: 10}}
+
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, svcR, pecR, nil)
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: veiculoID.String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: servicoID.String(), Quantidade: 2}},
+		// Quantidade 0 deve ser normalizada para 1
+		Pecas: []usecase.ItemPecaOSInput{{PecaID: pecaID.String(), Quantidade: 0}},
+	})
+	if err != nil {
+		t.Fatalf("esperava sucesso, obteve: %v", err)
+	}
+	// 2 × 150.0 (serviço) + 1 × 40.0 (peça, quantidade normalizada) = 340.0
+	if valorTotal != 340.0 {
+		t.Errorf("esperava valor total 340.0, obteve %.2f", valorTotal)
+	}
+}
+
+func TestOSCriarOS_FalhaAoGerarNumero(t *testing.T) {
+	clienteID := uuid.New()
+	veiculoID := uuid.New()
+	osR := &mockOsRepo{
+		gerarNumeroFn: func(_ context.Context) (string, error) {
+			return "", errors.New("sequence indisponível")
+		},
+	}
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	veicR := &osVeicRepo{veiculo: &entity.Veiculo{ID: veiculoID, ClienteID: clienteID}}
+
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, &osSvcRepo{}, &osPecaRepo{}, nil)
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: veiculoID.String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	if err == nil {
+		t.Error("esperava erro propagado da geração de número")
+	}
+}
+
+func TestOSCriarOS_FalhaAoBuscarStatusInicial(t *testing.T) {
+	clienteID := uuid.New()
+	veiculoID := uuid.New()
+	osR := &mockOsRepo{
+		buscarStatusIDFn: func(_ context.Context, _ entity.Status) (uuid.UUID, error) {
+			return uuid.Nil, errors.New("status não cadastrado")
+		},
+	}
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	veicR := &osVeicRepo{veiculo: &entity.Veiculo{ID: veiculoID, ClienteID: clienteID}}
+
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, &osSvcRepo{}, &osPecaRepo{}, nil)
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: veiculoID.String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	if err == nil {
+		t.Error("esperava erro propagado da busca do status inicial")
+	}
+}
+
+func TestOSCriarOS_FalhaAoPersistir(t *testing.T) {
+	clienteID := uuid.New()
+	veiculoID := uuid.New()
+	osR := &mockOsRepo{
+		criarFn: func(_ context.Context, _ *entity.OrdemServico, _ []entity.ItemOsServico, _ []entity.ItemOsPeca) (*entity.OrdemServico, error) {
+			return nil, errors.New("banco indisponível")
+		},
+	}
+	cliR := &osCliRepo{cliente: &entity.Cliente{ID: clienteID}}
+	veicR := &osVeicRepo{veiculo: &entity.Veiculo{ID: veiculoID, ClienteID: clienteID}}
+
+	uc := usecase.NewOrdemServicoUseCase(osR, cliR, veicR, &osSvcRepo{}, &osPecaRepo{}, nil)
+	_, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(),
+		VeiculoID: veiculoID.String(),
+		Servicos:  []usecase.ItemServicoOSInput{{ServicoID: uuid.New().String(), Quantidade: 1}},
+	})
+	if err == nil {
+		t.Error("esperava erro propagado da persistência")
+	}
+}
+
+func TestOSConsultarStatusPublico_NaoEncontrada(t *testing.T) {
+	osR := &mockOsRepo{
+		buscarPorIDFn: func(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
+			return nil, &domainerros.ErrNaoEncontrado{Recurso: "ordem de serviço"}
+		},
+	}
+	_, err := osUseCase(osR).ConsultarStatusPublico(context.Background(), uuid.New().String())
+	var ne *domainerros.ErrNaoEncontrado
+	if !errors.As(err, &ne) {
+		t.Errorf("esperava ErrNaoEncontrado, obteve: %v", err)
 	}
 }

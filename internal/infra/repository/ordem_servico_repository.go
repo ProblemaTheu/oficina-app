@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
@@ -59,7 +60,7 @@ func (r *OrdemServicoRepository) PrecarregarStatusCache(ctx context.Context) err
 	if err != nil {
 		return fmt.Errorf("PrecarregarStatusCache: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	r.statusCacheMu.Lock()
 	defer r.statusCacheMu.Unlock()
@@ -207,7 +208,7 @@ func (r *OrdemServicoRepository) BuscarPorID(ctx context.Context, id string) (*e
 	if err != nil {
 		return nil, fmt.Errorf("OrdemServicoRepository.BuscarPorID itens_servico: %w", err)
 	}
-	defer rowsS.Close()
+	defer rowsS.Close() //nolint:errcheck
 
 	for rowsS.Next() {
 		var item entity.ItemOS
@@ -235,7 +236,7 @@ func (r *OrdemServicoRepository) BuscarPorID(ctx context.Context, id string) (*e
 	if err != nil {
 		return nil, fmt.Errorf("OrdemServicoRepository.BuscarPorID itens_peca: %w", err)
 	}
-	defer rowsP.Close()
+	defer rowsP.Close() //nolint:errcheck
 
 	for rowsP.Next() {
 		var item entity.ItemOS
@@ -260,17 +261,8 @@ func (r *OrdemServicoRepository) BuscarPorID(ctx context.Context, id string) (*e
 	return completa, nil
 }
 
-// ListarParams contém os filtros para listagem de OSs.
-type ListarOSParams struct {
-	Status    *entity.Status
-	ClienteID *uuid.UUID
-	VeiculoID *uuid.UUID
-	Page      int
-	Limit     int
-}
-
 // Listar retorna OSs paginadas com filtros opcionais.
-func (r *OrdemServicoRepository) Listar(ctx context.Context, params ListarOSParams) ([]*entity.OrdemServico, int, error) {
+func (r *OrdemServicoRepository) Listar(ctx context.Context, params usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
 	query := `
 		SELECT
 			o.id, o.numero, o.cliente_id, o.veiculo_id, o.status_id, s.nome_status,
@@ -292,6 +284,11 @@ func (r *OrdemServicoRepository) Listar(ctx context.Context, params ListarOSPara
 		countQuery += cond
 		args = append(args, string(*params.Status))
 		argIdx++
+	} else if !params.IncluirEncerradas {
+		// Exclusão lógica: OSs encerradas não aparecem na listagem padrão.
+		cond := " AND s.nome_status NOT IN ('finalizada', 'entregue')"
+		query += cond
+		countQuery += cond
 	}
 	if params.ClienteID != nil {
 		cond := fmt.Sprintf(" AND o.cliente_id = $%d", argIdx)
@@ -313,7 +310,16 @@ func (r *OrdemServicoRepository) Listar(ctx context.Context, params ListarOSPara
 		return nil, 0, fmt.Errorf("OrdemServicoRepository.Listar count: %w", err)
 	}
 
-	query += fmt.Sprintf(" ORDER BY o.criado_em DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	// Prioridade de atendimento do enunciado; mais antigas primeiro em cada grupo.
+	query += fmt.Sprintf(`
+		ORDER BY CASE s.nome_status
+			WHEN 'em_execucao'          THEN 1
+			WHEN 'aguardando_aprovacao' THEN 2
+			WHEN 'em_diagnostico'       THEN 3
+			WHEN 'recebida'             THEN 4
+			ELSE 5
+		END, o.criado_em ASC
+		LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
 	offset := (params.Page - 1) * params.Limit
 	args = append(args, params.Limit, offset)
 
@@ -321,7 +327,7 @@ func (r *OrdemServicoRepository) Listar(ctx context.Context, params ListarOSPara
 	if err != nil {
 		return nil, 0, fmt.Errorf("OrdemServicoRepository.Listar: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var oss []*entity.OrdemServico
 	for rows.Next() {
@@ -422,7 +428,7 @@ func (r *OrdemServicoRepository) DeduzirEstoquePecas(ctx context.Context, osID u
 	if err != nil {
 		return fmt.Errorf("DeduzirEstoquePecas query: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	type linhaEstoque struct {
 		pecaID       uuid.UUID
@@ -462,23 +468,8 @@ func (r *OrdemServicoRepository) DeduzirEstoquePecas(ctx context.Context, osID u
 	return tx.Commit()
 }
 
-// RelatorioTempoMedioParams são os filtros do relatório.
-type RelatorioTempoMedioParams struct {
-	ServicoID  *uuid.UUID
-	DataInicio *time.Time
-	DataFim    *time.Time
-}
-
-// ItemTempoMedio é o resultado do relatório por serviço.
-type ItemTempoMedio struct {
-	ServicoID         uuid.UUID
-	ServicoNome       string
-	TotalExecucoes    int
-	TempoMedioMinutos float64
-}
-
 // RelatorioTempoMedio calcula o tempo médio de execução agrupado por serviço.
-func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params RelatorioTempoMedioParams) ([]ItemTempoMedio, error) {
+func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params usecase.RelatorioTempoMedioParams) ([]usecase.ItemTempoMedio, error) {
 	query := `
 		SELECT
 			s.id,
@@ -510,7 +501,6 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	if params.DataFim != nil {
 		query += fmt.Sprintf(" AND o.criado_em <= $%d", argIdx)
 		args = append(args, *params.DataFim)
-		argIdx++
 	}
 
 	query += " GROUP BY s.id, s.nome ORDER BY s.nome"
@@ -519,11 +509,11 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	if err != nil {
 		return nil, fmt.Errorf("RelatorioTempoMedio: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
-	var resultado []ItemTempoMedio
+	var resultado []usecase.ItemTempoMedio
 	for rows.Next() {
-		var item ItemTempoMedio
+		var item usecase.ItemTempoMedio
 		if err := rows.Scan(&item.ServicoID, &item.ServicoNome, &item.TotalExecucoes, &item.TempoMedioMinutos); err != nil {
 			return nil, fmt.Errorf("RelatorioTempoMedio scan: %w", err)
 		}
@@ -534,33 +524,8 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	}
 
 	if resultado == nil {
-		resultado = []ItemTempoMedio{}
+		resultado = []usecase.ItemTempoMedio{}
 	}
 
 	return resultado, nil
-}
-
-// BuscarItensPecaParaVerificacao retorna peça+quantidade para validação de estoque.
-func (r *OrdemServicoRepository) BuscarItensPecaParaVerificacao(ctx context.Context, osID uuid.UUID) ([]entity.ItemOsPeca, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, os_id, peca_id, quantidade, preco_unitario, criado_em, atualizado_em
-		FROM itens_os_pecas WHERE os_id = $1
-	`, osID)
-	if err != nil {
-		return nil, fmt.Errorf("BuscarItensPecaParaVerificacao: %w", err)
-	}
-	defer rows.Close()
-
-	var itens []entity.ItemOsPeca
-	for rows.Next() {
-		var item entity.ItemOsPeca
-		if err := rows.Scan(
-			&item.ID, &item.OsID, &item.PecaID, &item.Quantidade,
-			&item.PrecoUnitario, &item.CriadoEm, &item.AtualizadoEm,
-		); err != nil {
-			return nil, err
-		}
-		itens = append(itens, item)
-	}
-	return itens, rows.Err()
 }

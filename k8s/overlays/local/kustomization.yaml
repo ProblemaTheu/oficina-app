@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: oficina
+
+resources:
+  - ../../base
+  - postgres.yaml
+  - mailpit.yaml
+
+# Imagem construída localmente e carregada no kind (kind load docker-image);
+# imagePullPolicy Never impede o cluster de tentar buscar no registry.
+images:
+  - name: docker.io/problematheu/tech-challenge-api
+    newName: tech-challenge-api
+    newTag: local
+
+patches:
+  - target:
+      kind: Deployment
+      name: api
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+  # Local: e-mails vão para o Mailpit in-cluster
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: oficina-config
+      data:
+        NOTIFIER: smtp

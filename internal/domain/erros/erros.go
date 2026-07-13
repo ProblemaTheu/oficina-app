@@ -25,6 +25,16 @@ func (e *ErrNaoEncontrado) Error() string {
 	return fmt.Sprintf("%s não encontrado", e.Recurso)
 }
 
+// ErrValidacao é retornado quando a entrada não satisfaz validações de
+// obrigatoriedade ou formato (HTTP 400).
+type ErrValidacao struct {
+	Mensagem string
+}
+
+func (e *ErrValidacao) Error() string {
+	return e.Mensagem
+}
+
 // ErrNaoProcessavel é retornado quando uma regra de negócio impede o
 // processamento da requisição (HTTP 422). O campo Codigo identifica a regra
 // violada de forma legível por máquina.

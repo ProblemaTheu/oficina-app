@@ -30,6 +30,9 @@ var publicRoutes = []publicRoute{
 	{"POST", regexp.MustCompile(`^/v1/auth/register$`)},
 	// Consulta pública de status de OS (cliente final, sem conta)
 	{"GET", regexp.MustCompile(`^/v1/work-orders/[^/]+/status$`)},
+	// Webhook de resposta de orçamento — autenticado por assinatura HMAC
+	// (ver AssinaturaWebhook), não por JWT
+	{"POST", regexp.MustCompile(`^/v1/webhooks/budget-response$`)},
 }
 
 func jwtSecret() []byte {

@@ -6,8 +6,34 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
+
+// ListarOSParams contém os filtros para listagem de OSs.
+type ListarOSParams struct {
+	Status    *entity.Status
+	ClienteID *uuid.UUID
+	VeiculoID *uuid.UUID
+	// IncluirEncerradas inclui OSs finalizadas/entregues na listagem padrão
+	// (quando Status é informado, o filtro explícito prevalece).
+	IncluirEncerradas bool
+	Page              int
+	Limit             int
+}
+
+// RelatorioTempoMedioParams são os filtros do relatório.
+type RelatorioTempoMedioParams struct {
+	ServicoID  *uuid.UUID
+	DataInicio *time.Time
+	DataFim    *time.Time
+}
+
+// ItemTempoMedio é o resultado do relatório por serviço.
+type ItemTempoMedio struct {
+	ServicoID         uuid.UUID
+	ServicoNome       string
+	TotalExecucoes    int
+	TempoMedioMinutos float64
+}
 
 type clienteRepo interface {
 	Salvar(cliente *entity.Cliente) (*entity.Cliente, error)
@@ -51,15 +77,31 @@ type usuarioRepo interface {
 	BuscarNomePapel(ctx context.Context, papelID uuid.UUID) (string, error)
 }
 
+// NotificacaoStatus contém os dados para notificar o cliente sobre a mudança
+// de status de sua Ordem de Serviço.
+type NotificacaoStatus struct {
+	DestinatarioEmail string
+	DestinatarioNome  string
+	NumeroOS          string
+	NovoStatus        entity.Status
+	Motivo            *string
+}
+
+// notifier é a porta de saída para notificar o cliente (e-mail, SMS, etc.).
+// Implementações vivem na infra (ex.: SMTP, log para ambiente local).
+type notifier interface {
+	NotificarMudancaStatus(ctx context.Context, n NotificacaoStatus) error
+}
+
 type osRepo interface {
 	BuscarStatusID(ctx context.Context, nome entity.Status) (uuid.UUID, error)
 	GerarNumeroOS(ctx context.Context) (string, error)
 	Criar(ctx context.Context, os *entity.OrdemServico, itensServico []entity.ItemOsServico, itensPeca []entity.ItemOsPeca) (*entity.OrdemServico, error)
-	Listar(ctx context.Context, params repository.ListarOSParams) ([]*entity.OrdemServico, int, error)
+	Listar(ctx context.Context, params ListarOSParams) ([]*entity.OrdemServico, int, error)
 	BuscarPorID(ctx context.Context, id string) (*entity.OrdemServicoCompleta, error)
 	AtualizarStatus(ctx context.Context, osID uuid.UUID, novoStatusID uuid.UUID, diagnostico *string, aprovadoEm *time.Time, reprovadoEm *time.Time, iniciadoEm *time.Time, finalizadoEm *time.Time, entregueEm *time.Time) error
 	RegistrarHistorico(ctx context.Context, osID uuid.UUID, statusAnteriorID *uuid.UUID, statusNovoID uuid.UUID, observacao *string) error
 	DeduzirEstoquePecas(ctx context.Context, osID uuid.UUID) error
-	RelatorioTempoMedio(ctx context.Context, params repository.RelatorioTempoMedioParams) ([]repository.ItemTempoMedio, error)
+	RelatorioTempoMedio(ctx context.Context, params RelatorioTempoMedioParams) ([]ItemTempoMedio, error)
 	PrecarregarStatusCache(ctx context.Context) error
 }

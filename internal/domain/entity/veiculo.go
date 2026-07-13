@@ -14,6 +14,6 @@ type Veiculo struct {
 	Modelo       string
 	Ano          int
 	Cor          *string
-	CriadoEm    time.Time
+	CriadoEm     time.Time
 	AtualizadoEm time.Time
 }

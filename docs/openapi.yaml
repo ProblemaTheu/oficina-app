@@ -556,42 +556,6 @@ components:
 
     # ── Ordens de Serviço ─────────────────────────────────────────────────────
 
-    ItemOsRequest:
-      type: object
-      required: [tipo, referencia_id, quantidade]
-      properties:
-        tipo:
-          type: string
-          enum: [servico, peca]
-        referencia_id:
-          type: string
-          format: uuid
-        quantidade:
-          type: integer
-          minimum: 1
-
-    ItemOsResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        tipo:
-          type: string
-        referencia_id:
-          type: string
-          format: uuid
-        nome:
-          type: string
-        quantidade:
-          type: integer
-        preco_unitario:
-          type: number
-          format: double
-        subtotal:
-          type: number
-          format: double
-
     ClienteResumoResponse:
       type: object
       properties:
@@ -749,6 +713,22 @@ components:
       properties:
         motivo:
           type: string
+
+    WebhookRespostaOrcamentoRequest:
+      type: object
+      required: [os_id, decisao]
+      properties:
+        os_id:
+          type: string
+          format: uuid
+          description: Identificador da OS cujo orçamento foi respondido
+        decisao:
+          type: string
+          enum: [aprovado, recusado]
+          description: Decisão do cliente sobre o orçamento
+        motivo:
+          type: string
+          description: Motivo informado pelo cliente (opcional, usado na recusa)
 
     OrdemServicoStatusPublicoResponse:
       type: object
@@ -1459,6 +1439,12 @@ paths:
     get:
       tags: [Ordens de Serviço]
       summary: Listar ordens de serviço
+      description: >
+        Retorna as OSs ordenadas por prioridade de status (em_execucao >
+        aguardando_aprovacao > em_diagnostico > recebida) e, dentro de cada
+        status, da mais antiga para a mais recente. OSs `finalizada` e
+        `entregue` são excluídas da listagem padrão; use
+        `incluir_encerradas=true` (ou o filtro `status`) para consultá-las.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
@@ -1466,6 +1452,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: incluir_encerradas
+          in: query
+          description: Inclui OSs finalizadas e entregues na listagem
+          schema:
+            type: boolean
+            default: false
         - name: cliente_id
           in: query
           schema:
@@ -1601,6 +1593,52 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           description: Entidade não processável
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /webhooks/budget-response:
+    post:
+      tags: [Webhooks]
+      summary: Webhook de resposta do orçamento (aprovação/recusa)
+      description: >
+        Endpoint inbound para provedores externos (ex.: serviço de e-mail)
+        notificarem a decisão do cliente sobre o orçamento. Não usa JWT:
+        a autenticidade é validada pela assinatura HMAC-SHA256 do corpo,
+        enviada no header `X-Signature` (hex), calculada com o segredo
+        compartilhado configurado em `WEBHOOK_SECRET`. Reprocessar a mesma
+        notificação é idempotente: se a decisão já foi aplicada, responde
+        200 sem efeito duplicado.
+      security: []
+      parameters:
+        - name: X-Signature
+          in: header
+          required: true
+          description: HMAC-SHA256 (hex) do corpo da requisição
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRespostaOrcamentoRequest'
+      responses:
+        '200':
+          description: Decisão processada (ou já aplicada anteriormente)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdemServicoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: OS não está aguardando aprovação
           content:
             application/json:
               schema:

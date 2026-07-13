@@ -1,0 +1,189 @@
+name: Testes de integração
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Repositório × PostgreSQL real
+  # Valida o SQL de verdade: ordenação/exclusão
+  # lógica da listagem, transação de estoque,
+  # transições de status e sequência de números.
+  # ─────────────────────────────────────────────
+  integration:
+    name: Repositório × PostgreSQL
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15.7
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tc1_it
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Testes de integração (saída JSON)
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/tc1_it?sslmode=disable
+        run: |
+          set -o pipefail
+          go test -tags integration -count=1 -v -json \
+            -covermode=atomic \
+            -coverprofile=integration-coverage.out \
+            -coverpkg=./internal/infra/repository/... \
+            ./internal/infra/repository/ 2>&1 | tee integration-tests.json
+
+      - name: Gerar relatório de cobertura
+        if: always()
+        run: |
+          if [ -s integration-coverage.out ]; then
+            go tool cover -func=integration-coverage.out > integration-coverage.txt || true
+          fi
+
+      - name: Job Summary — Testes de integração
+        if: always()
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+
+          run_url = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          lines = ["# 🧪 Testes de Integração — Repositório × PostgreSQL\n"]
+          lines.append(
+              f"> **Commit:** `${{ github.sha }}`  |  "
+              f"**Branch:** `${{ github.ref_name }}`  |  "
+              f"**Banco:** `postgres:15.7` (service container)  |  "
+              f"[Ver execução]({run_url})\n"
+          )
+
+          # ── Parse do go test -json ───────────────────────────────
+          testes = {}   # nome -> {"resultado": str, "duracao": float}
+          saidas = {}   # nome -> [linhas de output]
+          duracao_total = 0.0
+
+          if os.path.exists("integration-tests.json"):
+              with open("integration-tests.json") as f:
+                  for raw in f:
+                      raw = raw.strip()
+                      if not raw:
+                          continue
+                      try:
+                          ev = json.loads(raw)
+                      except Exception:
+                          continue
+                      nome = ev.get("Test")
+                      acao = ev.get("Action")
+                      if nome:
+                          if acao in ("pass", "fail", "skip"):
+                              testes[nome] = {
+                                  "resultado": acao,
+                                  "duracao": ev.get("Elapsed", 0.0),
+                              }
+                          elif acao == "output":
+                              saidas.setdefault(nome, []).append(ev.get("Output", ""))
+                      elif acao in ("pass", "fail") and ev.get("Elapsed") is not None:
+                          duracao_total = ev["Elapsed"]
+
+          ICONES = {"pass": "✅", "fail": "❌", "skip": "⏭️"}
+          passaram = sum(1 for t in testes.values() if t["resultado"] == "pass")
+          falharam = sum(1 for t in testes.values() if t["resultado"] == "fail")
+          ignorados = sum(1 for t in testes.values() if t["resultado"] == "skip")
+
+          # ── Placar ───────────────────────────────────────────────
+          lines.append("## Placar\n")
+          if not testes:
+              lines.append("**⚠️ Nenhum teste executado** — a suíte pode ter sido "
+                           "ignorada (TEST_DATABASE_URL ausente) ou falhou na compilação.\n")
+          elif falharam:
+              lines.append(f"**🔴 {falharam} falha(s)** | ✅ {passaram} passaram | "
+                           f"⏭️ {ignorados} ignorados | ⏱️ {duracao_total:.2f}s\n")
+          else:
+              lines.append(f"**🟢 Todos passaram** — ✅ {passaram} testes | "
+                           f"⏭️ {ignorados} ignorados | ⏱️ {duracao_total:.2f}s\n")
+
+          # ── Tabela por teste ─────────────────────────────────────
+          if testes:
+              lines.append("| Resultado | Teste | Duração |")
+              lines.append("|-----------|-------|---------|")
+              for nome in sorted(testes, key=lambda n: (testes[n]["resultado"] != "fail", n)):
+                  t = testes[nome]
+                  lines.append(f"| {ICONES.get(t['resultado'], '⚪')} `{t['resultado']}` "
+                               f"| `{nome}` | {t['duracao']:.2f}s |")
+              lines.append("")
+
+          # ── Saída dos testes que falharam ────────────────────────
+          falhas = [n for n, t in testes.items() if t["resultado"] == "fail"]
+          if falhas:
+              lines.append("## Saída das falhas\n")
+              for nome in falhas:
+                  lines.append(f"<details><summary>❌ {nome}</summary>\n")
+                  lines.append("```")
+                  lines.append("".join(saidas.get(nome, ["(sem saída)"])).rstrip())
+                  lines.append("```")
+                  lines.append("\n</details>\n")
+
+          # ── Cobertura do pacote repository ───────────────────────
+          lines.append("## Cobertura do pacote `infra/repository`\n")
+          if os.path.exists("integration-coverage.txt"):
+              with open("integration-coverage.txt") as f:
+                  cov = [l.rstrip() for l in f if l.strip()]
+              total = next((l for l in cov if l.startswith("total:")), None)
+              if total:
+                  pct = total.split()[-1]
+                  lines.append(f"**Total: {pct}** (só a suíte de integração — "
+                               f"o pacote não tem testes unitários por depender de SQL real)\n")
+              lines.append("<details><summary>Cobertura por função</summary>\n")
+              lines.append("```")
+              lines.extend(cov)
+              lines.append("```")
+              lines.append("\n</details>\n")
+          else:
+              lines.append("*Relatório de cobertura não disponível.*\n")
+
+          # ── O que esta suíte garante ─────────────────────────────
+          lines.append("## O que esta suíte garante\n")
+          lines.append("| Área | Validação |")
+          lines.append("|------|-----------|")
+          lines.append("| Listagem de OS | Ordenação por prioridade de status + mais antigas primeiro; exclusão lógica de `finalizada`/`entregue`; `incluir_encerradas`; filtro por status |")
+          lines.append("| Estoque | `DeduzirEstoquePecas` deduz na quantidade certa e **reverte a transação inteira** quando falta estoque |")
+          lines.append("| Transições | `AtualizarStatus` persiste status, diagnóstico e timestamps (`aprovado_em`/`iniciado_em`) |")
+          lines.append("| Numeração | `GerarNumeroOS` no formato `OS-YYYY-NNNNN`, sequencial e único |")
+          lines.append("| Migrations | Aplicadas do zero num banco efêmero a cada execução |")
+          lines.append("")
+          lines.append("---")
+          lines.append(f"*Saída completa dos testes disponível nos [Artifacts]({run_url}) desta execução.*")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n")
+          PYEOF
+
+      - name: Upload integration artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-reports
+          path: |
+            integration-tests.json
+            integration-coverage.out
+            integration-coverage.txt
+          retention-days: 30

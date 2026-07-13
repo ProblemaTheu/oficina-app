@@ -1,5 +1,6 @@
 version: '3.8'
 
+# Segredos e configurações vêm do arquivo .env (copie de .env.example).
 services:
   app:
     build: .
@@ -9,23 +10,31 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: tech_challenge_db
-      JWT_SECRET: "tech-challenge-super-secret-key-change-in-production"
+      DB_USER: ${DB_USER:?copie .env.example para .env}
+      DB_PASSWORD: ${DB_PASSWORD:?copie .env.example para .env}
+      DB_NAME: ${DB_NAME:?copie .env.example para .env}
+      JWT_SECRET: ${JWT_SECRET:?copie .env.example para .env}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?copie .env.example para .env}
+      # Notificações de mudança de status: "smtp" entrega no Mailpit local
+      NOTIFIER: ${NOTIFIER:-smtp}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      EMAIL_FROM: ${EMAIL_FROM:-oficina@tech-challenge.local}
     restart: on-failure
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   db:
     image: postgres:15.7
     container_name: tech_challenge_db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: tech_challenge_db
+      POSTGRES_USER: ${DB_USER:?copie .env.example para .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?copie .env.example para .env}
+      POSTGRES_DB: ${DB_NAME:?copie .env.example para .env}
     ports:
       - "5433:5432"
     volumes:
@@ -35,6 +44,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Servidor SMTP fake para desenvolvimento: captura os e-mails enviados pela
+  # aplicação e exibe numa UI web — http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: tech_challenge_mailpit
+    restart: always
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # UI web
 
 volumes:
   pgdata:

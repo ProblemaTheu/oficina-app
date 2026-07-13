@@ -1,11 +1,11 @@
 package usecase
 
 import (
-	"errors"
 	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
+	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
 )
 
@@ -24,10 +24,10 @@ func (uc *ClientUseCase) Create(nome string, documento string, email *string, te
 	slog.Info("executando caso de uso: criar cliente")
 
 	if nome == "" {
-		return nil, errors.New("nome é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "nome é obrigatório"}
 	}
 	if documento == "" {
-		return nil, errors.New("documento é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "documento é obrigatório"}
 	}
 
 	doc, err := valueobject.NewDocument(documento)
@@ -63,7 +63,7 @@ func (uc *ClientUseCase) List() ([]*entity.Cliente, error) {
 func (uc *ClientUseCase) FindByDocumento(documento string) (*entity.Cliente, error) {
 	slog.Info("executando caso de uso: buscar cliente por documento")
 	if documento == "" {
-		return nil, errors.New("documento é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "documento é obrigatório"}
 	}
 	return uc.repo.BuscarPorDocumento(documento)
 }
@@ -73,7 +73,7 @@ func (uc *ClientUseCase) FindByID(id string) (*entity.Cliente, error) {
 	slog.Info("executando caso de uso: buscar cliente por ID", "id", id)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	return uc.repo.BuscarPorID(id)
@@ -84,12 +84,12 @@ func (uc *ClientUseCase) Update(id string, nome *string, email *string, telefone
 	slog.Info("executando caso de uso: atualizar cliente", "id", id)
 
 	if id == "" {
-		return nil, errors.New("id é obrigatório")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	parsedID, err := uuid.Parse(id)
 	if err != nil {
-		return nil, errors.New("id inválido")
+		return nil, &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	clienteAtual, err := uc.repo.BuscarPorID(id)
@@ -117,11 +117,11 @@ func (uc *ClientUseCase) Delete(id string) error {
 	slog.Info("executando caso de uso: remover cliente", "id", id)
 
 	if id == "" {
-		return errors.New("id é obrigatório")
+		return &domainerros.ErrValidacao{Mensagem: "id é obrigatório"}
 	}
 
 	if _, err := uuid.Parse(id); err != nil {
-		return errors.New("id inválido")
+		return &domainerros.ErrValidacao{Mensagem: "id inválido"}
 	}
 
 	return uc.repo.Remover(id)

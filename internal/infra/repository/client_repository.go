@@ -64,7 +64,7 @@ func (r *ClienteRepository) BuscarTodos() ([]*entity.Cliente, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ClienteRepository.BuscarTodos: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var clientes []*entity.Cliente
 	for rows.Next() {
@@ -95,8 +95,11 @@ func (r *ClienteRepository) BuscarPorID(id string) (*entity.Cliente, error) {
 		&cliente.Telefone,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "cliente"}
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ClienteRepository.BuscarPorID: %w", err)
 	}
 
 	return &cliente, nil
@@ -126,8 +129,14 @@ func (r *ClienteRepository) Atualizar(cliente *entity.Cliente) (*entity.Cliente,
 		&cliente.Telefone,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "cliente"}
+	}
 	if err != nil {
-		return nil, err
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			return nil, &domainerros.ErrConflito{Campo: campoDoConstraint(pqErr.Constraint)}
+		}
+		return nil, fmt.Errorf("ClienteRepository.Atualizar: %w", err)
 	}
 
 	return cliente, nil
@@ -150,7 +159,7 @@ func (r *ClienteRepository) Remover(id string) error {
 	}
 
 	if rows == 0 {
-		return sql.ErrNoRows
+		return &domainerros.ErrNaoEncontrado{Recurso: "cliente"}
 	}
 
 	return nil

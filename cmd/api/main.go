@@ -16,7 +16,7 @@ import (
 
 func main() {
 	db := database.Connect()
-	defer db.Close()
+	defer db.Close() //nolint:errcheck
 
 	if err := database.RunMigrations(db); err != nil {
 		log.Fatalf("falha ao executar migrations: %v", err)
@@ -30,7 +30,10 @@ func main() {
 		log.Printf("aviso: falha ao pré-carregar caches: %v", err)
 	}
 
-	strictHandler := api.NewStrictHandler(server, nil)
+	strictHandler := api.NewStrictHandlerWithOptions(server, nil, api.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  api.TratarErroRequisicao,
+		ResponseErrorHandlerFunc: api.TratarErroResposta,
+	})
 
 	r := chi.NewRouter()
 
@@ -39,7 +42,9 @@ func main() {
 	r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "UP"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "UP"}); err != nil {
+			log.Printf("health: falha ao escrever resposta: %v", err)
+		}
 	})
 
 	// Readiness: a aplicação está pronta para receber tráfego (verifica dependências)
@@ -53,14 +58,18 @@ func main() {
 	//   - /v1/auth/login       → permitAll
 	//   - /v1/auth/register    → permitAll
 	//   - /v1/work-orders/{id}/status → permitAll
+	//   - /v1/webhooks/*       → assinatura HMAC (X-Signature), sem JWT
 	//   - demais rotas         → authenticated (Bearer JWT HS256)
 	r.Group(func(r chi.Router) {
+		r.Use(apimiddleware.AssinaturaWebhook())
 		r.Use(apimiddleware.JWT())
 		api.HandlerFromMuxWithBaseURL(strictHandler, r, "/v1")
 	})
 
 	log.Println("servidor rodando na porta 8080")
-	http.ListenAndServe(":8080", r)
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		log.Fatalf("falha ao iniciar servidor: %v", err)
+	}
 }
 
 type componentHealth struct {
@@ -100,7 +109,9 @@ func healthReadyHandler(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Printf("health: falha ao escrever resposta: %v", err)
+		}
 	}
 }
 

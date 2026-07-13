@@ -25,7 +25,7 @@ func (m *mockClienteRepoUC) Salvar(c *entity.Cliente) (*entity.Cliente, error) {
 	c.ID = uuid.New()
 	return c, nil
 }
-func (m *mockClienteRepoUC) BuscarTodos() ([]*entity.Cliente, error)  { return nil, nil }
+func (m *mockClienteRepoUC) BuscarTodos() ([]*entity.Cliente, error) { return nil, nil }
 func (m *mockClienteRepoUC) BuscarPorDocumento(_ string) (*entity.Cliente, error) {
 	return &entity.Cliente{}, nil
 }
@@ -172,5 +172,21 @@ func TestClientDelete_IDVazioRetornaErro(t *testing.T) {
 	uc := usecase.NewClientUseCase(&mockClienteRepoUC{})
 	if err := uc.Delete(""); err == nil {
 		t.Error("esperava erro para id vazio")
+	}
+}
+
+func TestClientFindByDocumento_Sucesso(t *testing.T) {
+	uc := usecase.NewClientUseCase(&mockClienteRepoUC{})
+	if _, err := uc.FindByDocumento("11144477735"); err != nil {
+		t.Errorf("erro inesperado: %v", err)
+	}
+}
+
+func TestClientFindByDocumento_VazioRetornaErro(t *testing.T) {
+	uc := usecase.NewClientUseCase(&mockClienteRepoUC{})
+	_, err := uc.FindByDocumento("")
+	var ev *domainerros.ErrValidacao
+	if !errors.As(err, &ev) {
+		t.Errorf("esperava ErrValidacao para documento vazio, obteve: %v", err)
 	}
 }

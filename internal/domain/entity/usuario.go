@@ -12,6 +12,6 @@ type Usuario struct {
 	Email        string
 	SenhaHash    string
 	PapelID      uuid.UUID
-	CriadoEm    time.Time
+	CriadoEm     time.Time
 	AtualizadoEm time.Time
 }

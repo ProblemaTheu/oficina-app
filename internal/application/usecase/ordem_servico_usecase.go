@@ -2,8 +2,6 @@ package usecase
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 // OrdemServicoUseCase centraliza todos os casos de uso de Ordens de Serviço.
@@ -21,15 +18,19 @@ type OrdemServicoUseCase struct {
 	veiculoRepo veiculoRepo
 	servicoRepo servicoRepo
 	pecaRepo    pecaRepo
+	notifier    notifier
 }
 
-// NewOrdemServicoUseCase cria uma nova instância do use case.
+// NewOrdemServicoUseCase cria uma nova instância do use case. O notifier é
+// opcional (pode ser nil): quando presente, o cliente é notificado nas
+// mudanças de status relevantes.
 func NewOrdemServicoUseCase(
 	osR osRepo,
 	cliR clienteRepo,
 	veicR veiculoRepo,
 	svcR servicoRepo,
 	pecR pecaRepo,
+	notif notifier,
 ) *OrdemServicoUseCase {
 	return &OrdemServicoUseCase{
 		osRepo:      osR,
@@ -37,7 +38,54 @@ func NewOrdemServicoUseCase(
 		veiculoRepo: veicR,
 		servicoRepo: svcR,
 		pecaRepo:    pecR,
+		notifier:    notif,
 	}
+}
+
+// statusNotificaveis são as mudanças de status comunicadas ao cliente.
+var statusNotificaveis = map[entity.Status]bool{
+	entity.StatusAguardandoAprovacao: true,
+	entity.StatusEmExecucao:          true,
+	entity.StatusFinalizada:          true,
+	entity.StatusEntregue:            true,
+}
+
+// notificarMudancaStatus dispara a notificação ao cliente de forma assíncrona.
+// O envio nunca bloqueia nem falha a transição: erros (cliente sem e-mail,
+// provedor indisponível) são apenas logados.
+func (uc *OrdemServicoUseCase) notificarMudancaStatus(os *entity.OrdemServico, novoStatus entity.Status, motivo *string) {
+	if uc.notifier == nil || !statusNotificaveis[novoStatus] {
+		return
+	}
+
+	clienteID := os.ClienteID.String()
+	numero := os.Numero
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		cliente, err := uc.clienteRepo.BuscarPorID(clienteID)
+		if err != nil {
+			slog.Error("notificação: falha ao buscar cliente", "os", numero, "err", err)
+			return
+		}
+		if cliente.Email == nil || *cliente.Email == "" {
+			slog.Warn("notificação: cliente sem e-mail cadastrado", "os", numero, "cliente", cliente.Nome)
+			return
+		}
+
+		n := NotificacaoStatus{
+			DestinatarioEmail: *cliente.Email,
+			DestinatarioNome:  cliente.Nome,
+			NumeroOS:          numero,
+			NovoStatus:        novoStatus,
+			Motivo:            motivo,
+		}
+		if err := uc.notifier.NotificarMudancaStatus(ctx, n); err != nil {
+			slog.Error("notificação: falha ao enviar", "os", numero, "status", novoStatus, "err", err)
+		}
+	}()
 }
 
 // CriarOSInput é o payload de criação de OS.
@@ -184,20 +232,22 @@ func (uc *OrdemServicoUseCase) CriarOS(ctx context.Context, input CriarOSInput) 
 
 // ListarOSInput são os filtros da listagem.
 type ListarOSInput struct {
-	Status    *string
-	ClienteID *string
-	VeiculoID *string
-	Page      int
-	Limit     int
+	Status            *string
+	ClienteID         *string
+	VeiculoID         *string
+	IncluirEncerradas bool
+	Page              int
+	Limit             int
 }
 
 // ListarOS retorna OSs paginadas.
 func (uc *OrdemServicoUseCase) ListarOS(ctx context.Context, input ListarOSInput) ([]*entity.OrdemServico, int, error) {
 	slog.Info("executando caso de uso: listar OSs")
 
-	params := repository.ListarOSParams{
-		Page:  input.Page,
-		Limit: input.Limit,
+	params := ListarOSParams{
+		IncluirEncerradas: input.IncluirEncerradas,
+		Page:              input.Page,
+		Limit:             input.Limit,
 	}
 	if input.Status != nil {
 		s := entity.Status(*input.Status)
@@ -252,7 +302,7 @@ func (uc *OrdemServicoUseCase) AvancarStatus(ctx context.Context, input AvancarS
 
 	if input.NovoStatus == entity.StatusAguardandoAprovacao {
 		if input.Diagnostico == nil || *input.Diagnostico == "" {
-			return nil, errors.New("campo 'diagnostico' é obrigatório na transição para aguardando_aprovacao")
+			return nil, &domainerros.ErrValidacao{Mensagem: "campo 'diagnostico' é obrigatório na transição para aguardando_aprovacao"}
 		}
 	}
 
@@ -280,6 +330,8 @@ func (uc *OrdemServicoUseCase) AvancarStatus(ctx context.Context, input AvancarS
 	}
 
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, input.Observacao)
+
+	uc.notificarMudancaStatus(os, input.NovoStatus, input.Observacao)
 
 	return uc.osRepo.BuscarPorID(ctx, input.OsID)
 }
@@ -317,7 +369,46 @@ func (uc *OrdemServicoUseCase) AprovarOrcamento(ctx context.Context, osID string
 
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, nil)
 
+	uc.notificarMudancaStatus(os, entity.StatusEmExecucao, nil)
+
 	return uc.osRepo.BuscarPorID(ctx, osID)
+}
+
+// Decisões aceitas pelo webhook de resposta de orçamento.
+const (
+	DecisaoAprovado = "aprovado"
+	DecisaoRecusado = "recusado"
+)
+
+// ProcessarRespostaOrcamento aplica a decisão do cliente recebida via webhook,
+// reutilizando AprovarOrcamento/RejeitarOrcamento. É idempotente: se a mesma
+// decisão já foi aplicada (notificação reenviada pelo provedor), retorna a OS
+// atual sem produzir efeito duplicado (ex.: não deduz estoque novamente).
+func (uc *OrdemServicoUseCase) ProcessarRespostaOrcamento(ctx context.Context, osID, decisao string, motivo *string) (*entity.OrdemServicoCompleta, error) {
+	slog.Info("executando caso de uso: processar resposta de orçamento", "id", osID, "decisao", decisao)
+
+	if decisao != DecisaoAprovado && decisao != DecisaoRecusado {
+		return nil, &domainerros.ErrValidacao{Mensagem: fmt.Sprintf("decisão '%s' inválida: use '%s' ou '%s'", decisao, DecisaoAprovado, DecisaoRecusado)}
+	}
+
+	osCompleta, err := uc.osRepo.BuscarPorID(ctx, osID)
+	if err != nil {
+		return nil, err
+	}
+	os := &osCompleta.OrdemServico
+
+	// Idempotência: a decisão já foi aplicada anteriormente.
+	switch {
+	case decisao == DecisaoAprovado && os.StatusNome == entity.StatusEmExecucao && os.AprovadoEm != nil:
+		return osCompleta, nil
+	case decisao == DecisaoRecusado && os.StatusNome == entity.StatusFinalizada && os.ReprovadoEm != nil:
+		return osCompleta, nil
+	}
+
+	if decisao == DecisaoAprovado {
+		return uc.AprovarOrcamento(ctx, osID)
+	}
+	return uc.RejeitarOrcamento(ctx, osID, motivo)
 }
 
 // RejeitarOrcamento rejeita o orçamento e avança para finalizada.
@@ -349,6 +440,8 @@ func (uc *OrdemServicoUseCase) RejeitarOrcamento(ctx context.Context, osID strin
 
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, motivo)
 
+	uc.notificarMudancaStatus(os, entity.StatusFinalizada, motivo)
+
 	return uc.osRepo.BuscarPorID(ctx, osID)
 }
 
@@ -371,10 +464,10 @@ type RelatorioTempoMedioInput struct {
 }
 
 // RelatorioTempoMedio calcula o tempo médio de execução por serviço.
-func (uc *OrdemServicoUseCase) RelatorioTempoMedio(ctx context.Context, input RelatorioTempoMedioInput) ([]repository.ItemTempoMedio, error) {
+func (uc *OrdemServicoUseCase) RelatorioTempoMedio(ctx context.Context, input RelatorioTempoMedioInput) ([]ItemTempoMedio, error) {
 	slog.Info("executando caso de uso: relatório tempo médio")
 
-	params := repository.RelatorioTempoMedioParams{}
+	params := RelatorioTempoMedioParams{}
 
 	if input.ServicoID != nil {
 		id, err := uuid.Parse(*input.ServicoID)
@@ -404,6 +497,3 @@ func (uc *OrdemServicoUseCase) RelatorioTempoMedio(ctx context.Context, input Re
 func (uc *OrdemServicoUseCase) InicializarStatusCache(ctx context.Context) error {
 	return uc.osRepo.PrecarregarStatusCache(ctx)
 }
-
-// Apenas para testar se sql.ErrNoRows é acessível indiretamente.
-var _ = sql.ErrNoRows

@@ -1,0 +1,193 @@
+name: CI
+
+# Roda somente quando uma Pull Request é aberta/atualizada contra a main.
+# Falhas aqui devem bloquear o merge (configurar branch protection com
+# required checks: "Build e testes" e "Lint").
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Build + testes unitários (com -race e cobertura)
+  # ─────────────────────────────────────────────
+  build-test:
+    name: Build e testes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Testes unitários (JSON + cobertura + race)
+        run: |
+          set -o pipefail
+          go test -race -count=1 -json \
+            -covermode=atomic \
+            -coverprofile=coverage.out \
+            ./... 2>&1 | tee unit-tests.json
+
+      - name: Gerar relatório de cobertura
+        if: always()
+        run: |
+          if [ -s coverage.out ]; then
+            go tool cover -func=coverage.out > coverage.txt || true
+          fi
+
+      - name: Job Summary — Build e testes
+        if: always()
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+
+          run_url = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          lines = ["# 🔨 CI — Build e Testes Unitários\n"]
+          lines.append(
+              f"> **PR:** #${{ github.event.pull_request.number }}  |  "
+              f"**Branch:** `${{ github.head_ref }}` → `${{ github.base_ref }}`  |  "
+              f"[Ver execução]({run_url})\n"
+          )
+
+          # ── Parse do go test -json ───────────────────────────────
+          testes = {}
+          saidas = {}
+          pacotes = {}
+
+          if os.path.exists("unit-tests.json"):
+              with open("unit-tests.json") as f:
+                  for raw in f:
+                      raw = raw.strip()
+                      if not raw:
+                          continue
+                      try:
+                          ev = json.loads(raw)
+                      except Exception:
+                          continue
+                      nome = ev.get("Test")
+                      pkg = ev.get("Package", "")
+                      acao = ev.get("Action")
+                      if nome:
+                          chave = f"{pkg}.{nome}"
+                          if acao in ("pass", "fail", "skip"):
+                              testes[chave] = {"resultado": acao, "duracao": ev.get("Elapsed", 0.0), "nome": nome, "pkg": pkg}
+                          elif acao == "output":
+                              saidas.setdefault(chave, []).append(ev.get("Output", ""))
+                      elif acao in ("pass", "fail", "skip") and pkg:
+                          pacotes[pkg] = acao
+
+          passaram = sum(1 for t in testes.values() if t["resultado"] == "pass")
+          falharam = sum(1 for t in testes.values() if t["resultado"] == "fail")
+          ignorados = sum(1 for t in testes.values() if t["resultado"] == "skip")
+
+          # ── Placar ───────────────────────────────────────────────
+          lines.append("## Placar\n")
+          if not testes:
+              lines.append("**⚠️ Nenhum teste executado** — verifique a saída do job.\n")
+          elif falharam:
+              lines.append(f"**🔴 {falharam} falha(s)** | ✅ {passaram} passaram | ⏭️ {ignorados} ignorados\n")
+          else:
+              lines.append(f"**🟢 Todos passaram** — ✅ {passaram} testes | ⏭️ {ignorados} ignorados | detector de corrida (-race) ativo\n")
+
+          # ── Resultado por pacote ─────────────────────────────────
+          if pacotes:
+              ICONES = {"pass": "✅", "fail": "❌", "skip": "⏭️"}
+              lines.append("| Pacote | Resultado | Testes |")
+              lines.append("|--------|-----------|--------|")
+              for pkg in sorted(pacotes, key=lambda p: (pacotes[p] != "fail", p)):
+                  qtd = sum(1 for t in testes.values() if t["pkg"] == pkg)
+                  nome_curto = pkg.replace("github.com/problematheu/tech-challenge-1/", "")
+                  lines.append(f"| `{nome_curto}` | {ICONES.get(pacotes[pkg], '⚪')} `{pacotes[pkg]}` | {qtd} |")
+              lines.append("")
+
+          # ── Saída dos testes que falharam ────────────────────────
+          falhas = [c for c, t in testes.items() if t["resultado"] == "fail"]
+          if falhas:
+              lines.append("## Saída das falhas\n")
+              for chave in falhas:
+                  t = testes[chave]
+                  lines.append(f"<details><summary>❌ {t['nome']} ({t['pkg']})</summary>\n")
+                  lines.append("```")
+                  lines.append("".join(saidas.get(chave, ["(sem saída)"])).rstrip())
+                  lines.append("```")
+                  lines.append("\n</details>\n")
+
+          # ── Cobertura ────────────────────────────────────────────
+          lines.append("## Cobertura\n")
+          if os.path.exists("coverage.txt"):
+              with open("coverage.txt") as f:
+                  cov = [l.rstrip() for l in f if l.strip()]
+              total = next((l for l in cov if l.startswith("total:")), None)
+              if total:
+                  lines.append(f"**Total: {total.split()[-1]}**\n")
+              lines.append("<details><summary>Cobertura por função</summary>\n")
+              lines.append("```")
+              lines.extend(cov)
+              lines.append("```")
+              lines.append("\n</details>\n")
+          else:
+              lines.append("*Relatório de cobertura não disponível.*\n")
+
+          lines.append("---")
+          lines.append(f"*Cobertura completa e saída dos testes nos [Artifacts]({run_url}).*")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n")
+          PYEOF
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-reports
+          path: |
+            unit-tests.json
+            coverage.out
+            coverage.txt
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 2. Lint (golangci-lint — mesma config do repo)
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          args: --build-tags integration
+
+      - name: Job Summary — Lint
+        if: always()
+        run: |
+          {
+            echo "# 🧹 CI — Lint"
+            echo
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "**🟢 golangci-lint sem apontamentos** (config: \`.golangci.yml\` — errcheck, govet, ineffassign, staticcheck, unused, revive, gofmt)"
+            else
+              echo "**🔴 golangci-lint encontrou problemas** — ver o log do step acima."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
