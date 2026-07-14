@@ -2,7 +2,7 @@
 
 > API REST para gestão completa de uma oficina mecânica: autenticação JWT, clientes, veículos, catálogo de serviços, controle de estoque de peças e ordens de serviço com máquina de estados. Construída em Go com arquitetura API-first — o contrato OpenAPI é a fonte da verdade e o código de roteamento/serialização é gerado automaticamente.
 >
-> **Fase 2**: a aplicação evoluiu para escalar — webhook de aprovação de orçamento, notificação por e-mail, deploy em Kubernetes com autoescalonamento (HPA), infraestrutura provisionada com Terraform e pipeline de CI/CD.
+> **Fase 2**: a aplicação evoluiu para escalar, agora com webhook de aprovação de orçamento, notificação por e-mail, deploy em Kubernetes com autoescalonamento (HPA), infraestrutura provisionada com Terraform e pipeline de CI/CD.
 
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15.7-336791?logo=postgresql&logoColor=white)
