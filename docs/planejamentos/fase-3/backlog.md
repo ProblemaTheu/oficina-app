@@ -327,9 +327,10 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
           StringLike = {
             "token.actions.githubusercontent.com:sub" = [
               "repo:${local.org}/${each.value}:ref:refs/heads/main",
-              "repo:${local.org}/${each.value}:ref:refs/heads/homolog",
-              "repo:${local.org}/${each.value}:environment:homolog",
               "repo:${local.org}/${each.value}:environment:prod",
+              # formato com IDs imutáveis — ver aviso abaixo
+              "repo:${local.org}@*/${each.value}@*:ref:refs/heads/main",
+              "repo:${local.org}@*/${each.value}@*:environment:prod",
             ]
           }
         }
@@ -354,7 +355,30 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
         aws-region: us-east-1
   ```
 
-  > O repo atual já usa esse padrão em `.github/workflows/cd.yml` (job `deploy`) — a role só não existia. Agora existe.
+  > 🚨 **A armadilha que fez o primeiro teste falhar (02/09).** Quase todo tutorial mostra o `sub` como `repo:Dono/repo:ref:refs/heads/main`. Mas o GitHub emite **immutable subject claims**, com os IDs numéricos embutidos:
+  >
+  > ```
+  > repo:ProblemaTheu@86577215/oficina-infra-k8s@1354226544:ref:refs/heads/main
+  > ```
+  >
+  > Existe **justamente** para que renomear um repositório não quebre a trust policy — ironicamente, o cenário desta fase. Com apenas o formato clássico na policy, o erro é `Not authorized to perform sts:AssumeRoleWithWebIdentity`, sem nenhuma pista de qual condição falhou.
+  >
+  > **Não adivinhe o `sub` — leia-o.** Um step que decodifica o payload resolve em uma execução:
+  >
+  > ```yaml
+  > - name: Claims do token OIDC
+  >   run: |
+  >     TOKEN=$(curl -sH "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+  >       "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+  >     PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
+  >     PAYLOAD="${PAYLOAD//-/+}"; PAYLOAD="${PAYLOAD//_//}"
+  >     while [ $(( ${#PAYLOAD} % 4 )) -ne 0 ]; do PAYLOAD="${PAYLOAD}="; done
+  >     echo "$PAYLOAD" | base64 -d | jq '{sub, aud, repository, ref}'
+  > ```
+  >
+  > Imprima **apenas as claims**, nunca o token — ele é credencial. Manter as quatro entradas (formato clássico + com IDs) evita depender de qual está ativo na conta.
+  >
+  > ✅ Validado em 02/09: `assumed-role/gha-oficina-infra-k8s/GitHubActions`, sem nenhum secret de credencial AWS.
 
 - **Critérios de aceite:**
   - Provedor OIDC criado; 4 roles com `sub` restrito a `main`/`homolog`.

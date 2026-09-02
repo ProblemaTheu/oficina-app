@@ -225,7 +225,9 @@ Depois:
 - [ ] `SONAR_PROJECT_KEY` ainda é `ProblemaTheu_tech-challenge-1` — resíduo do rename; precisa de *Update key* no SonarCloud **e** da troca da variable, senão a análise cria um projeto novo e perde o histórico
 - [ ] ⛔ Branch protection nos 4 — **bloqueado por falta de `admin`**, ver [pendência](#pendência-bloqueante--acesso-aos-repositórios)
 - [ ] ⛔ Environment `prod` com reviewer obrigatório — mesma pendência
-- [ ] Workflow de teste com OIDC — **desbloqueado**, pode ser feito a qualquer momento
+- [x] Workflow de smoke test do OIDC executado com sucesso — zero credenciais armazenadas
+- [x] Trust policy corrigida para os *immutable subject claims* (o `sub` traz IDs numéricos; a policy clássica falhava)
+- [ ] **Conta New Relic** — ⚠️ ainda não criada; é pré-requisito do dia 6 (observabilidade)
 
 #### Renomear `tech-challenge-1` → `oficina-app`
 
