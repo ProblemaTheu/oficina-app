@@ -114,7 +114,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
   **Workspaces: só onde fazem sentido.** É tentador criar `homolog`/`prod` como workspaces em todos os repos, mas isso significa **duplicar tudo** — inclusive o cluster EKS (+US$ 73/mês) e a VPC. Nossa divisão:
 
-  > ⏱️ **No [plano de 10 dias](plano-10-dias.md#corte-nº-10-em-detalhe--como-fazer), nenhum repo usa workspaces** — com um ambiente só, workspace não separa nada e só cria uma forma nova de errar. Use o `default` nos três. A tabela abaixo vale para o desenho de dois ambientes.
+  > ⏱️ **[Cortes 10 e 14](plano-10-dias.md#os-cortes)** — com um ambiente só, nenhum repo usa workspaces: use o `default` nos três. A tabela abaixo descreve o desenho de dois ambientes.
 
   | Repo | Workspaces? | Por quê |
   |---|---|---|
@@ -131,7 +131,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
   > ⚠️ **Antes de commitar qualquer coisa:** remova os `.tfstate` do repositório atual e do histórico se possível, e garanta que o `.gitignore` cobre `*.tfstate*`, `.terraform/` e `*.tfvars` (exceto `*.example.tfvars`). Rode `git log --all --full-history -- "*.tfstate"` para conferir o estrago; se houver senha exposta, ela precisa ser rotacionada.
 
-- **Status:** ✅ **Concluída em 01/09/2026.** Bucket `oficina-tfstate-706215605178` (versionado, AES256, acesso público bloqueado), provedor OIDC do GitHub e 4 roles criados — 13 recursos. Código em `oficina-infra-k8s/bootstrap/`.
+- **Status:** ✅ Concluída — ver [execucao.md](execucao.md#valores-do-ambiente). Código em `oficina-infra-k8s/bootstrap/`.
 
 - **Critérios de aceite:**
   - Bucket S3 versionado e criptografado existe; lock via `use_lockfile`.
@@ -355,30 +355,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
         aws-region: us-east-1
   ```
 
-  > 🚨 **A armadilha que fez o primeiro teste falhar (02/09).** Quase todo tutorial mostra o `sub` como `repo:Dono/repo:ref:refs/heads/main`. Mas o GitHub emite **immutable subject claims**, com os IDs numéricos embutidos:
-  >
-  > ```
-  > repo:ProblemaTheu@86577215/oficina-infra-k8s@1354226544:ref:refs/heads/main
-  > ```
-  >
-  > Existe **justamente** para que renomear um repositório não quebre a trust policy — ironicamente, o cenário desta fase. Com apenas o formato clássico na policy, o erro é `Not authorized to perform sts:AssumeRoleWithWebIdentity`, sem nenhuma pista de qual condição falhou.
-  >
-  > **Não adivinhe o `sub` — leia-o.** Um step que decodifica o payload resolve em uma execução:
-  >
-  > ```yaml
-  > - name: Claims do token OIDC
-  >   run: |
-  >     TOKEN=$(curl -sH "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-  >       "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
-  >     PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
-  >     PAYLOAD="${PAYLOAD//-/+}"; PAYLOAD="${PAYLOAD//_//}"
-  >     while [ $(( ${#PAYLOAD} % 4 )) -ne 0 ]; do PAYLOAD="${PAYLOAD}="; done
-  >     echo "$PAYLOAD" | base64 -d | jq '{sub, aud, repository, ref}'
-  > ```
-  >
-  > Imprima **apenas as claims**, nunca o token — ele é credencial. Manter as quatro entradas (formato clássico + com IDs) evita depender de qual está ativo na conta.
-  >
-  > ✅ Validado em 02/09: `assumed-role/gha-oficina-infra-k8s/GitHubActions`, sem nenhum secret de credencial AWS.
+  > 🚨 **O `sub` não é o dos tutoriais.** O GitHub emite *immutable subject claims*, com os IDs numéricos do dono e do repositório embutidos — por isso as quatro entradas acima cobrem os dois formatos. Com só o formato clássico, o erro é `Not authorized to perform sts:AssumeRoleWithWebIdentity`, sem dizer qual condição falhou. O diagnóstico (ler as claims em vez de adivinhar) está em [execucao.md](execucao.md#oidc-o-sub-não-é-o-dos-tutoriais).
 
 - **Critérios de aceite:**
   - Provedor OIDC criado; 4 roles com `sub` restrito a `main`/`homolog`.
@@ -433,7 +410,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
   **4. Decisões ainda em aberto** que precisam de resposta do time antes da Sprint 1:
 
-  - [x] ~~Nomes finais dos repositórios~~ — **decidido:** renomear para `oficina-app`, `oficina-lambda-auth`, `oficina-infra-k8s`, `oficina-infra-db`. Procedimento em [plano-10-dias](plano-10-dias.md#renomear-tech-challenge-1--oficina-app)
+  - [x] ~~Nomes finais dos repositórios~~ — **decidido:** renomear para `oficina-app`, `oficina-lambda-auth`, `oficina-infra-k8s`, `oficina-infra-db`. Procedimento em [execucao.md](execucao.md#o-que-o-rename-tocou)
   - [ ] E-mail que receberá alertas do New Relic e do AWS Budgets (`var.email_alertas`)
   - [ ] Remetente do SES (`var.email_remetente`)
   - [ ] Dois ambientes ou só produção (impacta custo — ver [roadmap](roadmap.md#orçamento-e-janelas-de-provisionamento))
@@ -476,7 +453,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
   go build ./... && go test ./...
   ```
 
-  > ✅ **Decidido: renomear.** Os quatro repositórios ficam com nomenclatura consistente. O passo a passo com os 8 pontos de ajuste interno (module path, `ci.yml`, Docker Hub, Trivy, READMEs) está em [plano-10-dias](plano-10-dias.md#renomear-tech-challenge-1--oficina-app).
+  > ✅ **Decidido: renomear.** Os quatro repositórios ficam com nomenclatura consistente. O passo a passo com os 8 pontos de ajuste interno (module path, `ci.yml`, Docker Hub, Trivy, READMEs) está em [execucao.md](execucao.md#o-que-o-rename-tocou).
 
   **2. Extrair o Terraform para os repos de infra, preservando histórico** (opcional, mas elegante):
 
@@ -525,7 +502,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
 ### F3-1.2 — Proteção de branch nos 4 repositórios
 
-> ⏱️ **Plano de 10 dias:** mantenha a branch `homolog` protegida e com CI, mas **sem deploy** — só `main` implanta. As *regras de proteção* do enunciado (main protegida, PR obrigatório) continuam integralmente demonstradas.
+> ⏱️ **[Corte 10](plano-10-dias.md#os-cortes)** — `homolog` fica protegida e com CI, mas **sem deploy**; só `main` implanta. As regras de proteção do enunciado seguem integralmente demonstradas.
 
 - **Descrição:** Requisito explícito do enunciado: `main` protegida sem commits diretos, PR obrigatório para merge.
 
@@ -590,7 +567,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
 ### F3-1.3 — Ambientes do GitHub e segredos
 
-> ⏱️ **Plano de 10 dias:** crie apenas o *environment* `prod` (com reviewer obrigatório — rende a cena da aprovação no vídeo). O `homolog` não é necessário, já que nenhuma branch implanta nele.
+> ⏱️ **[Corte 10](plano-10-dias.md#os-cortes)** — crie apenas o *environment* `prod`, com reviewer obrigatório (rende a cena de aprovação no vídeo).
 
 - **Descrição:** Criar os *environments* `homolog` e `prod` em cada repo, com os segredos e variáveis que os workflows consomem — e *required reviewers* em `prod`, para que o deploy em produção seja uma decisão consciente.
 
@@ -631,7 +608,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
 ### F3-1.4 — CI/CD dos repositórios de infraestrutura
 
-> ⏱️ **Plano de 10 dias:** o `apply` dispara **só na `main`** (`push: branches: [main]`) — com homologação dispensada, um push em `homolog` aplicaria Terraform contra um ambiente inexistente e pode deixar recurso órfão cobrando. Remova também o step *Selecionar workspace*, a variável `USA_WORKSPACES` e a lógica `ref_name == 'main' && 'prod' || 'homolog'`: o ambiente é sempre `prod`.
+> ⏱️ **[Cortes 10 e 14](plano-10-dias.md#os-cortes)** — `apply` só na `main` (`push: branches: [main]`): sem ambiente de homologação, um push em `homolog` aplicaria contra um ambiente inexistente e pode deixar recurso órfão cobrando. Remova também o step *Selecionar workspace*, a variável `USA_WORKSPACES` e a lógica `ref_name == 'main' && 'prod' || 'homolog'`.
 
 - **Descrição:** Terraform em CI segue um padrão consagrado: **`plan` em PR (comentado no PR), `apply` em merge**. Nunca `apply` automático a partir de um PR — um PR malicioso destruiria a infra.
 
@@ -757,7 +734,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 ### F3-1.5 — CD da aplicação (build → registry → EKS)
 
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#os-9-cortes): sem o `TargetGroupBinding` (corte nº 1), o passo *Resolver placeholders* só precisa substituir `${DB_HOST}` — remova `$TARGET_GROUP_ARN` do `envsubst` e o arquivo `target-group-binding.yaml` do overlay.**
+> ⏱️ **[Corte 1](plano-10-dias.md#os-cortes)** — sem `TargetGroupBinding`, o passo *Resolver placeholders* só substitui `${DB_HOST}`: tire `$TARGET_GROUP_ARN` do `envsubst` e o `target-group-binding.yaml` do overlay.**
 
 - **Descrição:** Evoluir o `cd.yml` atual (que já publica no Docker Hub e tem o job de deploy pronto porém desabilitado) para deploy real, com ambiente por branch.
 
@@ -888,7 +865,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
 ### F3-1.6 — CI/CD do repositório da Lambda
 
-> ⏱️ **Plano de 10 dias:** sem workspaces (remova o `terraform workspace select`) e deploy só na `main`. Em `terraform/`, `local.env = "prod"` fixo.
+> ⏱️ **[Cortes 10 e 14](plano-10-dias.md#os-cortes)** — sem workspaces (remova o `terraform workspace select`) e deploy só na `main`. Em `terraform/`, `local.env = "prod"` fixo.
 
 - **Descrição:** Build do binário Go para Lambda, empacotamento e deploy via Terraform.
 
@@ -972,7 +949,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
 ### F3-1.7 — Suíte de segurança nos quatro repositórios
 
-> ⏱️ **Modo mínimo (corte 15):** o enunciado **não pede** análise de segurança. Faça só o `gitleaks` (5 min, e protege você de commitar segredo) e a varredura histórica. Pule `tfsec`, `checkov`, Sonar no repo da Lambda e o `security.yml` nos repos novos — o `oficina-app` já tem o dele, herdado da Fase 2, e continua rodando.
+> ⏱️ **[Cortes 8 e 15](plano-10-dias.md#os-cortes)** — o enunciado não pede análise de segurança. Faça só o `gitleaks` (5 min) e a varredura histórica. Pule `tfsec`, `checkov` e Sonar nos repos novos; o `security.yml` do `oficina-app` continua rodando.
 
 - **Descrição:** O repositório atual tem `.github/workflows/security.yml` com govulncheck, gosec, Trivy e Sonar — resultado da Fase 2. Ao dividir em quatro repos, **três nascem sem nenhuma verificação de segurança**, justo os que passam a manipular IAM, security groups e segredos. Além disso, dois riscos novos aparecem: segredo commitado (quatro repos, quatro chances) e má configuração de infraestrutura.
 
@@ -1688,7 +1665,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 ### F3-2.5 — Segredo compartilhado e remoção do fallback inseguro
 
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#os-9-cortes): **sem External Secrets Operator** (corte nº 4) — o Terraform cria o `Secret` do Kubernetes direto:
+> ⏱️ **[Corte 4](plano-10-dias.md#os-cortes)** — sem External Secrets Operator — o Terraform cria o `Secret` do Kubernetes direto:
 > ```hcl
 > resource "kubernetes_secret" "oficina" {
 >   for_each = local.ambientes
@@ -1821,7 +1798,7 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
 ### Estratégia de ambientes (leia antes de escrever HCL)
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#corte-nº-10-em-detalhe--como-fazer) há apenas o ambiente `prod`** (dispensa de homologação autorizada no fórum) **e sem `for_each`** (corte 14): escreva os recursos direto, com `prod` no nome. Todo o HCL desta seção e das seguintes usa `for_each` porque descreve o desenho de dois ambientes — traduza mentalmente `module.rds[each.key]` para `module.rds`, e `${each.key}` para `prod`.
+> ⏱️ **[Cortes 10 e 14](plano-10-dias.md#os-cortes)** — há apenas o ambiente `prod` e **sem `for_each`**: escreva os recursos direto, com `prod` no nome. Todo o HCL a seguir usa `for_each` porque descreve o desenho de dois ambientes — traduza `module.rds[each.key]` para `module.rds` e `${each.key}` para `prod`.
 >
 > Leia a seção mesmo assim: o raciocínio de compartilhado × por-ambiente é o conteúdo da **ADR-016**, e a banca avalia a decisão, não o `for_each`.
 
@@ -1998,7 +1975,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
 ### F3-3.2 — Repositório `oficina-infra-k8s`: VPC e rede
 
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#os-9-cortes): **sem NAT Gateway** (corte nº 2) — `enable_nat_gateway = false` e nós em subnet pública (`subnet_ids = module.vpc.public_subnets` no node group). Economiza US$ 8 e ~2 h de setup.**
+> ⏱️ **[Corte 2](plano-10-dias.md#os-cortes)** — sem NAT Gateway — `enable_nat_gateway = false` e nós em subnet pública (`subnet_ids = module.vpc.public_subnets` no node group). Economiza US$ 8 e ~2 h de setup.**
 
 - **Descrição:** A rede é a fundação de tudo. Migrar o módulo VPC da Fase 2, acrescentar o SG das Lambdas e publicar tudo na SSM.
 
@@ -2075,7 +2052,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
 ### F3-3.3 — Cluster EKS com escalabilidade e addons
 
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#os-9-cortes): **sem Cluster Autoscaler** (corte nº 3) — 2 nós `t3.small` fixos e HPA de 2 a 6 pods. Os `access_entries` e o `apply -target=module.eks` continuam **obrigatórios**.**
+> ⏱️ **[Corte 3](plano-10-dias.md#os-cortes)** — sem Cluster Autoscaler — 2 nós `t3.small` fixos e HPA de 2 a 6 pods. Os `access_entries` e o `apply -target=module.eks` continuam **obrigatórios**.**
 
 - **Descrição:** Cluster gerenciado com node group escalável, `metrics-server` (para o HPA), AWS Load Balancer Controller (para o `TargetGroupBinding`), External Secrets Operator e o agente do New Relic.
 
@@ -2129,17 +2106,15 @@ locals { ambientes = toset(["homolog", "prod"]) }
     --output table
   ```
 
-  ✅ **Consultado em 01/09/2026 nesta conta** — em *standard support*: **1.36** (default, suporte até 01/08/2027), 1.35 (até 26/03/2027) e 1.34 (até 01/12/2026). A versão **1.31**, que este plano fixava antes, **já está em extended support** — mantê-la teria custado ~US$ 130 em vez de US$ 21,60.
-
   ```hcl
   variable "eks_versao" {
     description = "Versão do Kubernetes no EKS (manter em standard support)"
     type        = string
-    default     = "1.36"
+    default     = "1.36"   # standard support até 01/08/2027
   }
   ```
 
-  Bônus: seu `kubectl` local é 1.36.1 — mesma *minor* do cluster, sem risco de *skew*. Confira a data de fim do suporte antes de reaproveitar este plano em outra data. Mantenha também o `kubectl` a no máximo uma *minor* de distância do cluster (`kubectl version --client`) — fora dessa janela, comandos falham de formas confusas.
+  Confira a data de fim do suporte antes de reaproveitar este plano em outra época — o comando e o histórico da consulta estão em [execucao.md](execucao.md#eks-versão-antiga-custa-6-mais). Mantenha o `kubectl` a no máximo uma *minor* do cluster.
 
   **⚠️ Duas armadilhas que travam o time por um dia inteiro cada.**
 
@@ -2273,8 +2248,8 @@ locals { ambientes = toset(["homolog", "prod"]) }
     }
   }
 
-  # ⏱️ Modo mínimo (corte 16): PULE a ResourceQuota. Ela existe para um
-  # ambiente não engolir o outro — com um namespace só, não protege de nada.
+  # ⏱️ Corte 16: PULE a ResourceQuota — ela existe para um ambiente não
+  # engolir o outro, e com um namespace só não protege de nada.
   #
   # Quota por ambiente: impede que homologação consuma o cluster inteiro
   # e deixe produção sem recurso para escalar.
@@ -2394,7 +2369,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
 ### F3-3.5 — ALB interno, Target Group e VPC Link
 
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#os-9-cortes): esta tarefa inteira é **cortada** (corte nº 1). Use `Service type: LoadBalancer` e integre o API Gateway direto no NLB via `HTTP_PROXY`, exigindo um header compartilhado. Leia esta tarefa mesmo assim — o *porquê* dela é o conteúdo da ADR que justifica o corte.**
+> ⏱️ **[Corte 1](plano-10-dias.md#os-cortes)** — tarefa cortada. Use `Service type: LoadBalancer` e integre o API Gateway direto no NLB via `HTTP_PROXY`, exigindo um header compartilhado. Leia esta tarefa mesmo assim — o *porquê* dela é o conteúdo da ADR que justifica o corte.**
 
 - **Descrição:** Este é o ponto mais sutil da arquitetura. O API Gateway vive **fora** da sua VPC; o cluster está em **subnets privadas**. A ponte é um VPC Link apontando para um Load Balancer interno. O desafio: quem cria o ALB?
 
@@ -2637,7 +2612,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
 ### F3-3.7 — Notificação por e-mail em produção (Amazon SES)
 
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#os-9-cortes): esta tarefa é **cortada** (corte nº 5) — `NOTIFIER=log` em produção e e-mail demonstrado no ambiente local com Mailpit. Elimina 3 h e a dependência de uma aprovação da AWS de até 24 h. Registre em ADR e diga no vídeo.**
+> ⏱️ **[Corte 5](plano-10-dias.md#os-cortes)** — tarefa cortada: `NOTIFIER=log` em produção e e-mail demonstrado no ambiente local com Mailpit. Elimina 3 h e a espera de até 24 h pela saída do sandbox do SES. Registre em ADR e diga no vídeo.
 
 - **Descrição:** A Fase 2 entregou notificação de status por e-mail com um `SMTPNotifier` apontando para o Mailpit local. Em produção o `ConfigMap` está com `SMTP_HOST: SUBSTITUIR_PELO_SMTP_REAL`. Se isso for para a nuvem como está, **o envio falha silenciosamente** — o design é assíncrono e não derruba a transição de status, então ninguém percebe até alguém perguntar por que o cliente não recebeu nada. Uma funcionalidade entregue na fase anterior regredindo na fase seguinte é exatamente o tipo de coisa que a banca nota.
 
@@ -2845,7 +2820,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
 
 ### F3-4.2 — APM da aplicação Go
 
-> ⏱️ **Modo mínimo (corte 11):** pule a troca do driver por `nrpq`. O APM cobre a latência das APIs, que é o requisito; o span de query no trace é diagnóstico extra que ninguém avalia.
+> ⏱️ **[Corte 11](plano-10-dias.md#os-cortes)** — pule a troca do driver por `nrpq`. O APM cobre a latência das APIs, que é o requisito; o span de query é diagnóstico extra.
 
 - **Descrição:** Instrumentar a aplicação para reportar transações, latência, throughput, erros e traces distribuídos.
 
@@ -3124,7 +3099,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
 
 ### F3-4.6 — Dashboards
 
-> ⏱️ **Modo mínimo (corte 12):** monte o dashboard **pela UI do New Relic**, não por Terraform. O enunciado pede "expor dashboards", não versioná-los. As consultas NRQL abaixo são as mesmas — só cole cada uma num widget. Mantenha **um** monitor Synthetic (para o requisito de uptime) e ignore o resto do bloco de IaC.
+> ⏱️ **[Cortes 12 e 16](plano-10-dias.md#os-cortes)** — monte o dashboard **pela UI**, não por Terraform: as consultas NRQL abaixo são as mesmas, cole cada uma num widget. Mantenha **um** monitor Synthetic (requisito de uptime) e ignore o bloco de IaC.
 
 - **Descrição:** Montar o painel que o enunciado descreve. Construa **como código** (Terraform, provider `newrelic`) no repo `infra-k8s` — assim o dashboard não se perde e demonstra maturidade.
 
@@ -3221,7 +3196,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
 
 ### F3-4.7 — Alertas
 
-> ⏱️ **Modo mínimo (corte 13):** apenas a condição **"Falhas no processamento de ordens de serviço"** — é a única que o enunciado nomeia. Crie pela UI, com destino de e-mail, e **dispare de verdade** antes de gravar. As outras duas condições são opcionais.
+> ⏱️ **[Corte 13](plano-10-dias.md#os-cortes)** — apenas a condição **"Falhas no processamento de ordens de serviço"**, a única que o enunciado nomeia. Crie pela UI, com destino de e-mail, e **dispare de verdade** antes de gravar.
 
 - **Descrição:** Requisito explícito: "alertas para falhas no processamento de ordens de serviço". Um alerta que nunca disparou não vale nada — teste antes da entrega.
 
@@ -3841,7 +3816,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
   | Secrets Manager | ~6 | ~US$ 2,40 | US$ 0,40 por segredo |
   | **Total** | | **~US$ 215/mês** | ≈ **US$ 7,20/dia** |
 
-  > ⏱️ Com os cortes do [plano de 10 dias](plano-10-dias.md#custo-real-da-nuvem) (sem NAT, sem ALB, nós `t3.small`): ~US$ 4,90/dia, **~US$ 44 pelos 9 dias**.
+  > ⏱️ Com os cortes do [plano de 10 dias](plano-10-dias.md#custo-real-da-nuvem) — sem NAT, sem ALB, nós `t3.small` e um ambiente: **~US$ 41 pelos 9 dias**.
 
   > Com workspaces duplicando VPC, EKS e NAT, o mesmo desenho custaria **~US$ 390/mês**. A decisão de arquitetura de ambientes vale, sozinha, quase metade da fatura.
 

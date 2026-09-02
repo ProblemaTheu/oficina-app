@@ -54,7 +54,7 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 
 **Duração-alvo: 14 minutos.** Grave por blocos e edite — tentar fazer em uma tomada única sempre estoura o tempo.
 
-> ⏱️ **Executando o [plano de 10 dias](plano-10-dias.md)?** O ambiente de homologação foi dispensado (corte nº 10). No bloco de CI/CD, demonstre o deploy automático em produção e **diga em uma frase** que homologação foi dispensada por orientação do fórum — em vez de deixar o avaliador notar a ausência sozinho. Confira também a [ordem de sacrifício](plano-10-dias.md#ordem-de-sacrifício-se-atrasar) antes de gravar.
+> ⏱️ Homologação foi dispensada. No bloco de CI/CD, demonstre o deploy em produção e **diga em uma frase** que a dispensa veio do fórum — melhor do que deixar o avaliador notar a ausência sozinho.
 
 ### Preparação (antes de ligar a gravação)
 
@@ -134,7 +134,7 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 
 **Recursos utilizados (AWS, us-east-1):**
 
-> 🚨 **Confira item a item antes de gerar o PDF.** Esta lista precisa espelhar **o que você realmente construiu**. O avaliador abre o repositório: descrever VPC Link, NAT Gateway ou External Secrets num PDF cujo Terraform não os contém não é otimismo, é informação incorreta na entrega — e custa mais caro do que assumir a simplificação. A lista abaixo já reflete a [variante do plano de 10 dias](plano-10-dias.md#os-9-cortes); se você implementou o desenho completo, troque pelos itens entre parênteses.
+> 🚨 **Confira item a item antes de gerar o PDF.** Esta lista precisa espelhar **o que você realmente construiu**. O avaliador abre o repositório: descrever VPC Link, NAT Gateway ou External Secrets num PDF cujo Terraform não os contém não é otimismo, é informação incorreta na entrega — e custa mais caro do que assumir a simplificação. A lista abaixo já reflete a [variante do plano de 10 dias](plano-10-dias.md#os-cortes); se você implementou o desenho completo, troque pelos itens entre parênteses.
 
 - **Entrada:** API Gateway HTTP API (uma API por ambiente), access logs em JSON e throttling por ambiente
 - **Autenticação:** duas AWS Lambda em Go (`provided.al2023`, arm64) — emissão de JWT por CPF e authorizer de borda no Gateway

@@ -2,7 +2,7 @@
 
 Documento de referência para a execução do [backlog](backlog.md). Os diagramas aqui são o **destino**; conforme os épicos forem concluídos eles migram para os READMEs dos respectivos repositórios (requisito do enunciado: "diagrama da arquitetura específica daquele repositório").
 
-> ⏱️ **Executando o [plano de 10 dias](plano-10-dias.md)?** O diagrama da seção 1 mostra o desenho completo. A variante efetivamente construída está na [seção 1.1](#11-variante-do-plano-de-10-dias-o-que-realmente-vai-ao-ar) — **é ela que vai para o README e para o PDF**. Um diagrama que mostra VPC Link onde existe um NLB público não é um detalhe estético: é a primeira coisa que o avaliador confere contra o Terraform.
+> ⏱️ A seção 1 mostra o **desenho completo**; a [seção 1.1](#11-variante-do-plano-de-10-dias-o-que-realmente-vai-ao-ar) mostra a **variante construída** — e é ela que vai para o README e para o PDF. Um diagrama com VPC Link onde existe um NLB público não é detalhe estético: é a primeira coisa que o avaliador confere contra o Terraform.
 
 ---
 
@@ -416,7 +416,7 @@ gitGraph
 | `homolog` | sim (PR obrigatório) | sim | namespace `oficina-homolog`, API Gateway `oficina-homolog` |
 | `main` | sim (PR obrigatório, sem push direto) | sim, com *environment approval* | namespace `oficina-prod`, API Gateway `oficina-prod` |
 
-> ⏱️ **Plano de 10 dias** — o ambiente de homologação foi dispensado por orientação no fórum da disciplina. A tabela vira:
+> ⏱️ Com o ambiente de homologação dispensado, a tabela vira:
 >
 > | Branch | Protegida | Deploy automático | Ambiente |
 > |---|---|---|---|

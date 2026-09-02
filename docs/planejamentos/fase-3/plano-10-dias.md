@@ -1,108 +1,98 @@
-# Plano de execução — 10 dias, uma pessoa, 01/09 → 10/09
+# Plano de execução — 01/09 → 10/09
 
-> **Este documento substitui o [roadmap.md](roadmap.md) como plano de execução.** O roadmap continua válido como referência do "jeito certo com tempo"; aqui está o que cabe na realidade: **~40 horas, uma pessoa, orçamento apertado**.
-
----
-
-## A conta que não fecha (e o que fazer sobre ela)
+> **Este é o documento de trabalho.** O [roadmap](roadmap.md) descreve o sequenciamento ideal com prazo folgado; aqui está o que cabe na realidade: **uma pessoa, ~42 h, orçamento apertado**. O que já foi feito e os valores do ambiente estão em [execucao.md](execucao.md).
 
 | | |
 |---|---|
-| Capacidade real | 7 dias × 3h + 3 dias (sáb, dom, feriado 07/09) × 7h ≈ **42 h** |
-| Ambiente de homologação | **dispensado** por orientação no fórum da disciplina (corte nº 10) |
-| Escopo do [backlog.md](backlog.md) | 43 tarefas ≈ **130 h** |
-| Déficit | **~88 h** |
+| Capacidade | 7 dias × 3 h + 3 dias (sáb, dom, feriado 07/09) × 7 h ≈ **42 h** |
+| Escopo do [backlog](backlog.md) completo | 43 tarefas ≈ **130 h** |
+| Escopo após os cortes | **~29 h** — folga de ~13 h |
+| Ambiente de homologação | dispensado por orientação no fórum da disciplina |
 
-Não existe reorganização de cronograma que resolva 88 horas. O que existe é **cortar profundidade sem cortar requisito** — e é isso que este plano faz. Cada corte abaixo mantém o item do enunciado atendido, mas com a implementação mais barata que ainda demonstra o conceito.
+Não existe cronograma que resolva 88 horas de déficit. O que existe é **cortar profundidade sem cortar requisito** — cada corte abaixo mantém o item do enunciado atendido pela implementação mais simples que ainda o demonstra.
 
-> **Princípio que guia tudo aqui:** um trade-off consciente e documentado vale mais na avaliação do que uma implementação sofisticada pela metade. Toda vez que este plano corta algo, ele diz **como justificar o corte na entrega**. Faça isso — é o que separa "não deu tempo" de "decidimos assim porque".
-
----
-
-## 🚧 Pendência bloqueante — acesso aos repositórios
-
-> **Status em 02/09, após concessão parcial.** `push` liberado nos 4 repositórios; **`admin` continua negado**. O que resta bloqueado depende do `ProblemaTheu`.
-
-`ProblemaTheu` é uma **conta de usuário** (não organização) e é a dona dos quatro repositórios. Sua conta é `Mendeszx`, e hoje tem:
-
-| Repo | pull | push | **admin** |
-|---|---|---|---|
-| `oficina-app` | ✅ | ✅ | ❌ |
-| `oficina-lambda-auth` | ✅ | ✅ | ❌ |
-| `oficina-infra-k8s` | ✅ | ✅ | ❌ |
-| `oficina-infra-db` | ✅ | ✅ | ❌ |
-
-**Já destravado com `Write`:** os 4 repositórios têm `main` e `homolog` publicadas, e **secrets e variables de repositório funcionam** — `AWS_ROLE_ARN`, `AWS_REGION` e `TF_BUCKET` já estão configurados nos 4. Testado na prática: só *ruleset* e *environment* exigem `admin`.
-
-**O que continua bloqueado:**
-
-| Bloqueado | Resposta da API | Impacto |
-|---|---|---|
-| **Branch protection nos 4** ([F3-1.2](backlog.md#f3-12--proteção-de-branch-nos-4-repositórios)) | `404 Not Found` — a API esconde o recurso em vez de dizer 403 | **Alto — requisito explícito do enunciado**: *"Branch main/master protegida"* e *"Uso obrigatório de Pull Requests"* |
-| *Environments* `prod` com reviewer ([F3-1.3](backlog.md#f3-13--ambientes-do-github-e-segredos)) | `403 Must have admin rights to Repository` | Médio — o workflow **roda** (o GitHub cria o environment sozinho no primeiro uso), mas sem o gate de aprovação. Perde-se a cena de aprovação de deploy no vídeo |
-| Adicionar `soat-architecture` ([F3-7.2](backlog.md#f3-72--pdf-do-portal-e-compartilhamento-dos-repositórios)) | — | **Alto — exigência de entrega** |
-
-**O que resolve:** o `ProblemaTheu` acessa, em cada um dos 4 repositórios, *Settings → Collaborators* e muda a role de `Mendeszx` de **Write** para **Admin**. É a mesma tela onde o `Write` já foi concedido — só trocar o valor do seletor.
-
-Alternativa: se `ProblemaTheu` for um segundo perfil seu, `gh auth login` com ele resolve na hora.
-
-**Prazo:** precisa estar resolvido **até 07/09** (feriado), que é quando o plano faz CI/CD, environments e branch protection. Depois disso, começa a comer a folga de 6 h.
-
-> ✅ **Nada disso trava o trabalho técnico.** Infraestrutura AWS, código da Lambda, migrations, observabilidade e documentação seguem normalmente — o bloqueio é só na camada de administração do GitHub, e tudo o que ele impede se aplica em minutos assim que a permissão sair.
+> **Princípio:** um trade-off consciente e documentado vale mais na avaliação do que uma implementação sofisticada pela metade. Todo corte aqui vem com o que dizer na entrega. Faça isso — é o que separa "não deu tempo" de "decidimos assim porque".
 
 ---
 
-## Os 9 cortes
+## 🚧 Bloqueio ativo
 
-| # | Corte | Economia | Como justificar na entrega |
+`Mendeszx` tem **Write**, não **Admin**, nos quatro repositórios (o dono é `ProblemaTheu`). Isso trava **branch protection**, **environment `prod`** e **adicionar o `soat-architecture`** — os dois primeiros são requisitos explícitos do enunciado, o terceiro é exigência de entrega.
+
+**Resolve:** em cada repo, *Settings → Collaborators → `Mendeszx` → Role: **Admin***. É a mesma tela onde o Write já foi concedido.
+
+**Prazo: 07/09.** Depois disso começa a consumir a folga. Detalhes e o que já funciona com Write em [execucao.md](execucao.md#pendências).
+
+---
+
+## Os cortes
+
+Nenhum remove requisito do enunciado. Os de 1 a 9 trocam robustez por tempo e viram ADR; os de 11 a 16 apenas retiram trabalho que ninguém avalia.
+
+| # | Corte | Economia | Como justificar |
 |---|---|---|---|
-| 1 | **VPC Link + ALB interno + `TargetGroupBinding`** → `Service type: LoadBalancer` (NLB público) e API Gateway fazendo `HTTP_PROXY` para ele, protegido por header secreto | **~6 h** + elimina o risco nº 1 do projeto | ADR: "o VPC Link é a topologia correta para produção; adotamos a integração direta com header compartilhado pelo prazo, e o caminho de evolução está documentado" |
-| 2 | **NAT Gateway** → nós em subnet pública com IP público | ~2 h + **US$ 8** | ADR: nós públicos com SG restritivo; em produção real iriam para subnet privada com NAT |
-| 3 | **Cluster Autoscaler** → 2 nós `t3.small` fixos, HPA escalando pods 2→6 dentro da capacidade | ~2 h | O enunciado pede "cluster com escalabilidade" — o HPA entrega isso. Cite o autoscaler como evolução na ADR-009 |
-| 4 | **External Secrets Operator** → `kubernetes_secret` criado pelo Terraform lendo o Secrets Manager | ~2 h | Mesmo resultado funcional; o ESO agrega rotação automática, que não é requisito |
-| 5 | **Amazon SES** → `NOTIFIER=log` em prod; e-mail demonstrado no ambiente local com Mailpit (que já funciona desde a Fase 2) | ~3 h + mata o risco do sandbox (aprovação de até 24 h) | README: "a integração SMTP é a mesma; muda apenas o provedor. Demonstrada localmente" |
-| 6 | **Expansão de testes** → manter a suíte da Fase 2 verde; testes novos só para validação de CPF e authorizer | ~4 h | A Fase 3 não pede cobertura; a Fase 2 já entregou 85% nos use cases |
-| 7 | **`git filter-repo`** → copiar arquivos para os repos novos | ~2 h | Ninguém avalia histórico de commit dos repos de infra |
-| 8 | **checkov + Sonar/Trivy no repo da Lambda** → apenas `gitleaks` (todos) e `tfsec` (infra) | ~2 h | Segurança presente em todos os repos, com profundidade proporcional |
-| 9 | **k6 com estágios** → loop `curl`/`hey` de 3 minutos | ~1 h | Só precisa provar que o HPA reage |
-| 10 | **Ambiente de homologação** → apenas `prod` (autorizado no fórum da disciplina) | **~3 h** + US$ 4 | Cite o fórum no README; a branch `homolog` continua existindo com CI completo |
+| 1 | **VPC Link + ALB interno + `TargetGroupBinding`** → `Service type: LoadBalancer` (NLB) e API Gateway com `HTTP_PROXY` + header compartilhado | **6 h** | ADR: topologia correta para produção; adotamos a integração direta pelo prazo, com o caminho de evolução documentado |
+| 2 | **NAT Gateway** → nós em subnet pública | 2 h + US$ 8 | ADR: SG restritivo; em produção real iriam para subnet privada |
+| 3 | **Cluster Autoscaler** → 2 nós `t3.small` fixos, HPA de 2 a 6 pods | 2 h | O enunciado pede "cluster com escalabilidade" — o HPA entrega. Autoscaler como evolução na ADR-009 |
+| 4 | **External Secrets Operator** → `kubernetes_secret` criado pelo Terraform | 2 h | Mesmo resultado; o ESO agrega rotação automática, que não é requisito |
+| 5 | **Amazon SES** → `NOTIFIER=log` em prod, e-mail demonstrado no local com Mailpit | 3 h | "A integração SMTP é a mesma; muda o provedor." Também elimina a espera de até 24 h pela saída do sandbox |
+| 6 | **Expansão de testes** → manter a suíte da Fase 2 verde; novos só para CPF e authorizer | 4 h | A Fase 3 não pede cobertura; a Fase 2 já entregou ~85% nos use cases |
+| 7 | **`git filter-repo`** → copiar arquivos | 2 h | Ninguém avalia histórico de commit de repositório de infra |
+| 8 | **Segurança dos repos novos** → só `gitleaks` | 2 h | O enunciado **não menciona** análise de segurança. O `gitleaks` fica porque custa 5 min |
+| 9 | **k6 com estágios** → loop `hey`/`curl` de 3 min | 1 h | Só precisa provar que o HPA reage |
+| 10 | ~~Ambiente de homologação~~ | 3 h + US$ 4 | ✅ **já aplicado** — ver [detalhe](#corte-nº-10--ambiente-único) |
+| 11 | **Instrumentação `nrpq` do banco** | 1 h | Pede-se latência das APIs, não breakdown por camada |
+| 12 | **Dashboards e alertas pela UI**, não por Terraform | 2 h | "Expor dashboards" é o requisito; versioná-los é elegância |
+| 13 | **Só o alerta de falha de OS** | 0,5 h | É o único que o enunciado nomeia |
+| 14 | **Sem `for_each` de ambientes** — recursos diretos | 1 h | Com um ambiente, `for_each` obriga a indexar tudo com `["prod"]` |
+| 15 | **Sem `tfsec`, `checkov` e Sonar nos repos novos** | 1,5 h | Mesma razão do corte 8 |
+| 16 | **Sem `ResourceQuota` e sem Synthetics além de um** | 0,5 h | Quota com um namespace não protege de nada |
 
-**Total economizado: ~27 h.** Escopo restante: ~36 h — e os cortes do [modo mínimo](#modo-mínimo--cortes-11-a-16) logo abaixo derrubam mais 6,5 h.
+### ⚠️ O que não cortar
 
-### Modo mínimo — cortes 11 a 16
+**O Lambda authorizer.** É a tentação óbvia (~3 h): o middleware JWT da aplicação já valida o token desde a Fase 1, então as rotas ficariam protegidas.
 
-> **Decisão do time (02/09): entregar literalmente o que foi pedido, da forma mais simples.** Os cortes abaixo removem o que está no plano por boa prática, mas **nenhum requisito do enunciado**. Ao contrário dos cortes 1–9, estes não assumem risco técnico: retiram trabalho que ninguém vai avaliar.
+Mas a seção do enunciado se chama **"Autenticação e API Gateway"** e lista os dois juntos. Sem o authorizer, o Gateway roteia mas não protege — a parte mais visível da fase. Com 13 h de folga, 3 h no item mais avaliado é o melhor uso de tempo do plano. Ele segue em último lugar na [ordem de sacrifício](#ordem-de-sacrifício-se-atrasar): se atrasar de verdade, corte; antes disso, não.
 
-| # | Corte | Economia | Por que sai |
-|---|---|---|---|
-| 11 | **Instrumentação `nrpq` do banco** | ~1 h | Perde o span de query no trace. O enunciado pede latência das APIs, não breakdown por camada |
-| 12 | **Dashboards e alertas pela UI, não por Terraform** | ~2 h | "Expor dashboards" é o requisito; como foram criados, não. IaC de dashboard é elegância |
-| 13 | **Só o alerta de falha de OS** (cortar latência e pods) | ~0,5 h | O enunciado nomeia exatamente um: *"alertas para falhas no processamento de ordens de serviço"* |
-| 14 | **Sem `for_each` de ambientes** — recursos diretos | ~1 h | Com um ambiente só, `for_each` é indireção pura. Menos código e menos erro de `each.key` |
-| 15 | **Segurança: só `gitleaks`** (sem `tfsec`, `checkov`, Sonar nos repos novos) | ~1,5 h | O enunciado **não menciona** análise de segurança. `gitleaks` fica porque custa 5 min e protege você |
-| 16 | **Sem `ResourceQuota` e sem Synthetics extra** | ~0,5 h | Quota não faz sentido com um namespace. Uptime sai do healthcheck que já existe |
+**Os diagramas de sequência.** Já estão escritos em [arquitetura.md](arquitetura.md#2-diagramas-de-sequência) — o trabalho é revisá-los contra o que foi construído. Cortar economiza ~30 min e custa um requisito nomeado (*"para o fluxo de autenticação **e** abertura de ordens de serviço"*).
 
-**Economia: ~6,5 h.** Escopo restante: **~29 h em ~42 h** — folga de ~13 h.
+### Corte nº 10 — ambiente único
 
-### ⚠️ O que eu NÃO cortaria, mesmo no modo mínimo
+O fórum liberou dispensar homologação. No Terraform, isso significa `prod` fixo e **sem `for_each`** (corte 14): escreva os recursos direto, com `prod` no nome.
 
-**O Lambda authorizer.** É a tentação óbvia (~3 h) e eu entendo o raciocínio: o middleware JWT da aplicação já valida o token desde a Fase 1, então tecnicamente as rotas ficam protegidas.
+Nos workflows, `homolog` deixa de implantar e vira branch de integração com CI completo:
 
-Mas a seção do enunciado se chama **"Autenticação e API Gateway"** e lista os dois juntos. Sem o authorizer, o Gateway roteia mas não protege — e essa é a parte mais visível da fase. Com ~13 h de folga, 3 h no item mais avaliado é o melhor uso do tempo que existe neste plano.
+```yaml
+# ci.yml — roda em PR para as duas branches protegidas
+on:
+  pull_request:
+    branches: [homolog, main]
 
-Ele continua no **último lugar** da [ordem de sacrifício](#ordem-de-sacrifício-se-atrasar): se atrasar de verdade, corte. Antes disso, não.
+# cd.yml e terraform.yml — só main implanta
+on:
+  push:
+    branches: [main]
+```
 
-### Requisito → implementação mínima
+⚠️ **Tirar `homolog` do gatilho de `push` não é opcional:** sem ambiente de homologação, um merge ali rodaria `terraform apply` contra um ambiente inexistente — no melhor caso falha, no pior cria recursos órfãos que você paga sem saber.
 
-Confira contra esta tabela antes de acrescentar qualquer coisa ao escopo:
+**Mantenha a branch.** O fluxo `feature → homolog → main` com PR e CI bloqueante continua demonstrado; some o ambiente, não o processo.
+
+> **Guarde a evidência.** O PDF do enunciado pede deploy automático das duas branches; a dispensa veio do fórum. Salve o print ou link e cite nos 4 READMEs e no PDF: *"ambiente de homologação dispensado conforme orientação no fórum da disciplina em [data] — [link]"*. Mencione também em uma frase no vídeo.
+
+---
+
+## Requisito → implementação mínima
+
+Confira antes de acrescentar qualquer coisa ao escopo. Se não está na coluna da esquerda, não entra.
 
 | O enunciado pede | Mínimo que atende |
 |---|---|
-| API Gateway | `aws_apigatewayv2_api` + rotas + integração HTTP_PROXY |
-| Rotas protegidas por CPF | `auth-token` emite JWT; `auth-authorizer` valida no Gateway |
+| API Gateway | `aws_apigatewayv2_api` + rotas + integração `HTTP_PROXY` |
+| Rotas protegidas por CPF | `auth-token` emite o JWT; `auth-authorizer` valida no Gateway |
 | Function: valida CPF, consulta existência **e status**, gera JWT | `auth-token` (~150 linhas de Go) |
 | 4 repos com CI/CD e deploy automático | 1 workflow por repo |
-| `main` protegida, PR obrigatório | Ruleset (**bloqueado por admin**) |
+| `main` protegida, PR obrigatório | Ruleset — **bloqueado por admin** |
 | Banco gerenciado | 1 RDS `db.t4g.micro` |
 | Cluster K8s com escalabilidade | EKS + HPA por CPU (já existe em `k8s/base/hpa.yaml`) |
 | Terraform | os 3 repos de infra |
@@ -111,408 +101,173 @@ Confira contra esta tabela antes de acrescentar qualquer coisa ao escopo:
 | Healthchecks e uptime | `/health/ready` (já existe) + 1 monitor Synthetic |
 | Alertas de falha de OS | 1 NRQL alert condition |
 | Logs JSON com correlação | handler `slog` JSON + middleware de correlation id |
-| Volume diário de OS · tempo médio por status · erros de integração | 2 custom events (`OrdemServicoEvent`, `IntegracaoEvent`) + 3 painéis NRQL |
+| Volume diário · tempo médio por status · erros de integração | 2 custom events + 3 painéis NRQL |
 | Diagrama de componentes · 2 de sequência | **já escritos** em [arquitetura.md](arquitetura.md) — só revisar |
-| RFCs · ADRs | 4 RFCs de 1 página + 8 ADRs curtas — argumentação já existe no [README](README.md) |
+| RFCs · ADRs | 4 RFCs de 1 página + 8 ADRs curtas — a argumentação já está no [README](README.md) |
 | Justificativa do banco + ER | RFC-002 + o ER de [arquitetura.md](arquitetura.md#3-modelo-entidade-relacionamento-alvo) |
 | 4 READMEs | **3 já escritos**; falta atualizar o do `oficina-app` |
 | Vídeo ≤ 15 min · PDF | [entrega.md](entrega.md) |
 
 ---
 
-### Corte nº 10 em detalhe — como fazer
-
-O fórum da disciplina liberou dispensar o ambiente de homologação. É o único corte que **reduz escopo sem assumir risco técnico**: os outros nove trocam robustez por tempo; este simplesmente remove trabalho.
-
-**No Terraform** (`infra-k8s` e `infra-db`), uma linha:
-
-Isso elimina: a segunda instância RDS (e sua espera de provisionamento), o segundo API Gateway com rotas e authorizer, o segundo namespace, o segundo overlay, o segundo conjunto de segredos e o segundo listener.
-
-**Não use `for_each` com um elemento** (ver [corte 14](#modo-mínimo--cortes-11-a-16)). Escreva os recursos direto, com `prod` no nome:
-
-```hcl
-# em vez de: module.rds[each.key].db_instance_endpoint
-module "rds" {
-  identifier = "oficina-prod"
-  db_name    = "oficina_prod"
-  # ...
-}
-```
-
-`for_each` sobre uma lista de um item obriga a indexar tudo com `["prod"]` e a lembrar de `each.key` em cada referência — é indireção que só paga quando existem dois ambientes de verdade.
-
-**Nos workflows**, `homolog` deixa de implantar e passa a ser branch de integração com CI completo:
-
-```yaml
-# ci.yml — roda em PR para qualquer branch protegida
-on:
-  pull_request:
-    branches: [homolog, main]
-
-# cd.yml — só main implanta
-on:
-  push:
-    branches: [main]
-```
-
-**Por que manter a branch `homolog`:** ela ainda demonstra o fluxo `feature → homolog → main` com PR obrigatório e CI bloqueante, que é o que as *regras de proteção* do enunciado cobram. Você perde o ambiente, não o processo.
-
-**⚠️ Dois efeitos colaterais que precisam de ação — senão viram bug:**
-
-**(a) Tire `homolog` do gatilho de `push` dos workflows de Terraform.** O template de [F3-1.4](backlog.md#f3-14--cicd-dos-repositórios-de-infraestrutura) dispara `apply` em push para `homolog` **e** `main`. Sem ambiente de homologação, um merge em `homolog` rodaria `terraform apply` contra um ambiente inexistente — no melhor caso falha, no pior cria recursos órfãos que você paga sem saber:
-
-```yaml
-on:
-  pull_request:
-    branches: [homolog, main]   # plan + CI: mantém as duas
-  push:
-    branches: [main]            # apply: SÓ main
-```
-
-E remova a lógica `github.ref_name == 'main' && 'prod' || 'homolog'` de todos os workflows — o ambiente agora é sempre `prod`.
-
-**(b) Os workspaces do Terraform perdem o propósito — em todos os repos.** A justificativa para o `lambda-auth` usar workspaces era "cada ambiente tem seu deploy independente". Com um ambiente só, não há o que separar. Elimine:
-
-- o step *Selecionar workspace* e a variável `USA_WORKSPACES` de [F3-1.4](backlog.md#f3-14--cicd-dos-repositórios-de-infraestrutura) e [F3-1.6](backlog.md#f3-16--cicd-do-repositório-da-lambda);
-- em [F3-2.3](backlog.md#f3-23--terraform-das-funções-e-das-rotas-no-api-gateway), troque `local.env = terraform.workspace` por `local.env = "prod"`.
-
-Os três repos passam a usar o workspace `default`. Além de economizar tempo, isso mata a classe de erro mais cara de todas: aplicar no workspace errado sem perceber.
-
-> ⚠️ **Guarde a evidência.** O PDF do enunciado diz "deploy automático das branches de homologação e produção"; a dispensa veio do fórum. Salve o print ou o link do post e **cite no README** dos quatro repositórios: *"ambiente de homologação dispensado conforme orientação no fórum da disciplina em [data] — [link]"*. Se o avaliador for pelo PDF, essa linha é a sua defesa. Mencione também no vídeo, em uma frase.
-
-**Onde gastar as ~6 h de folga:** em **nada**. Este plano não tinha buffer algum e o sábado 05/09 é o dia crítico. Resista à tentação de reinstalar o VPC Link ou o SES — se sobrar tempo de verdade na quarta 09/09, use para **ensaiar o vídeo uma segunda vez**, que é o entregável de maior peso e o menos ensaiado.
-
----
-
 ## Custo real da nuvem
 
-Com os cortes 1–3 (sem NAT, sem ALB, nós `t3.small`), ligando em **02/09** e destruindo em **10/09** — 9 dias, 24 h por dia:
+Ligando em **02/09** e destruindo após a entrega — 9 dias, 24 h por dia, com os cortes 1–3 aplicados:
 
-| Recurso | Cálculo | Total 9 dias |
+| Recurso | Cálculo | Total |
 |---|---|---|
 | EKS control plane | US$ 0,10/h × 216 h | **US$ 21,60** |
-| ↳ ⚠️ se a versão do K8s estiver em *extended support* | US$ 0,60/h × 216 h | *US$ 129,60* — ver [F3-3.3](backlog.md#f3-33--cluster-eks-com-escalabilidade-e-addons) |
-| 2× EC2 `t3.small` | US$ 0,0208/h × 2 × 216 h | US$ 9,00 |
-| NLB | US$ 0,0225/h × 216 h | US$ 4,90 |
-| 1× RDS `db.t4g.micro` | US$ 0,016/h × 216 h | US$ 3,45 |
+| ↳ ⚠️ se a versão do K8s estiver em *extended support* | US$ 0,60/h × 216 h | *US$ 129,60* |
+| 2× EC2 `t3.small` | US$ 0,0208/h × 2 × 216 h | US$ 8,99 |
+| NLB | US$ 0,0225/h × 216 h | US$ 4,86 |
+| 1× RDS `db.t4g.micro` | US$ 0,016/h × 216 h | US$ 3,46 |
 | API Gateway + Lambda + Secrets | volume da demo | ~US$ 2,00 |
 | **Total** | | **≈ US$ 41** |
 
-**Onde o Free Tier ajuda** (conta AWS nova, primeiros 12 meses):
+Com o Free Tier do RDS (750 h/mês de `db.t4g.micro`), a instância sai de graça: **piso ~US$ 37,50**. Desse total, **US$ 21,60 é o control plane do EKS** — requisito do enunciado, não escolha de arquitetura.
 
-- **RDS**: 750 h/mês de `db.t4g.micro` + 20 GB → com um ambiente só, **a instância inteira sai de graça** (−US$ 3,45). Confira em *Billing → Free Tier* que está sendo aplicado.
-- **EC2**: 750 h/mês de `t3.micro` → um dos nós pode ser `t3.micro` e sair de graça (−US$ 4,50), mas 1 GB de RAM é apertado para a aplicação + DaemonSet do New Relic. **Não arrisque** — o nó ficar sem memória no dia da gravação custa mais caro que US$ 4,50.
-- **Lambda, API Gateway, CloudWatch**: cobertos pelo volume da demonstração.
-
-**Piso realista: ~US$ 37,50** (com o Free Tier do RDS aplicado). Desse total, **US$ 21,60 é o control plane do EKS** — que é requisito do enunciado ("Cluster Kubernetes com escalabilidade"), não escolha de arquitetura. Não há como entregar a fase sem pagar isso.
-
-> ❌ **Não tente economizar destruindo e recriando todo dia.** Um ciclo `destroy` + `apply` do EKS leva ~35 minutos de relógio. Fazer isso 8 vezes queima **4,5 horas** do seu orçamento de 42 h para economizar ~US$ 20. Você está trocando a hora mais escassa do projeto por o valor de um lanche.
+> ❌ **Não destrua e recrie todo dia.** Um ciclo `destroy` + `apply` do EKS leva ~35 min. Oito ciclos queimam **4,5 h** do seu recurso mais escasso para economizar ~US$ 20.
 >
-> ✅ **Ligue em 02/09 e deixe ligado.** Além do tempo, isso resolve o problema dos dashboards: "volume diário de OS" precisa de dias acumulando dados. Ligando dia 2, você chega no dia 10 com 8 pontos no gráfico. Ligando dia 8, tem um ponto — e o painel não demonstra nada.
-
-**Antes de qualquer `apply`:** crie o AWS Budget de US$ 60 com alerta em 50% ([F3-7.3](backlog.md#f3-73--controle-de-custo-e-teardown)). São 5 minutos e é a sua rede de segurança.
+> ✅ **Deixe ligado.** Além do tempo, resolve os dashboards: "volume diário de OS" precisa de dias acumulando dados. Ligando dia 2, você chega no dia 10 com 8 pontos no gráfico; ligando dia 8, com um ponto.
 
 ---
 
-## Cronograma dia a dia
+## Cronograma
 
-Cada dia tem um **entregável verificável**. Se o dia acabar sem ele, você está atrasado — consulte a [ordem de sacrifício](#ordem-de-sacrifício-se-atrasar) no mesmo dia, não no dia 9.
+Cada dia tem um **entregável verificável**. Se o dia acabar sem ele, consulte a [ordem de sacrifício](#ordem-de-sacrifício-se-atrasar) **naquele dia**, não no dia 9.
 
-### Passo 0 — Máquina e credenciais (~30 min, antes do dia 1)
+### ✅ Passo 0 e Ter 01/09 — concluídos
 
-**Ferramentas** (macOS/Homebrew) — sem elas nada do resto roda:
+Ferramentas, credenciais AWS, quota, Budget, bootstrap, rename, os 4 repositórios publicados, variables e secrets, OIDC validado e conta New Relic. Registro completo em [execucao.md](execucao.md).
 
-```bash
-brew install awscli go kustomize helm gh gitleaks golangci-lint terraform kubectl jq
-```
+Resta apenas o que depende de `admin` — ver [bloqueio ativo](#bloqueio-ativo).
 
-**Credenciais AWS** — tem um ovo-e-galinha: não dá para criar usuário IAM pela CLI sem já ter credencial. Então o começo é pelo console:
-
-1. Conta em [aws.amazon.com](https://aws.amazon.com) (pede cartão; cobrança por uso)
-2. Console → **IAM** → *Users* → *Create user* → `<seu-nome>-cli` → *Attach policies directly* → **`AdministratorAccess`**
-3. No usuário criado → *Security credentials* → *Create access key* → **Command Line Interface (CLI)**. O *secret* aparece **uma única vez** — guarde
-4. `aws configure` → access key, secret, região **`us-east-1`**, formato **`json`**
-
-> Não use as chaves da conta **root**: elas não têm como ser restringidas nem revogadas seletivamente, e vazam com o mesmo descuido que qualquer outra.
-
-**Confirme antes de seguir:**
-
-```bash
-aws sts get-caller-identity     # deve devolver Account e Arn
-terraform version               # anote: este número vai no TF_VERSION do CI
-```
-
-✅ **Entregável:** `aws sts get-caller-identity` responde, e você anotou a versão do Terraform.
-
----
-
-### 🔴 Ter 01/09 — 3 h — Fundação (sem custo de nuvem)
-
-**Faça nos primeiros 30 minutos, antes de qualquer outra coisa:**
-
-```bash
-# 1. Quota de vCPU — a aprovação leva de horas a 2 dias e SEM ela o HPA não escala
-aws service-quotas request-service-quota-increase \
-  --service-code ec2 --quota-code L-1216C47A --desired-value 32 --region us-east-1
-
-# 2. AWS Budget — sua rede de segurança
-aws budgets create-budget --account-id <SUA_CONTA> --budget \
-  '{"BudgetName":"oficina","BudgetLimit":{"Amount":"60","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}'
-```
-
-E crie a conta New Relic (guarde **license key**, **user key** e **account ID** — são três coisas diferentes).
-
-Depois:
-- [F3-1.1](backlog.md#f3-11--criar-os-repositórios-e-migrar-o-conteúdo) — criar os 3 repos novos (copiando arquivos, sem `filter-repo`) e **renomear `tech-challenge-1` → `oficina-app`** (ver procedimento abaixo)
-- [F3-1.2](backlog.md#f3-12--proteção-de-branch-nos-4-repositórios) — branch protection nos 4 (`required_approving_review_count: 0`, você está sozinho) e criar a branch `homolog`
-- ✅ [F3-0.1](backlog.md#f3-01--backend-remoto-do-terraform-s3-com-lock-nativo) + [F3-0.4](backlog.md#f3-04--oidc-entre-github-actions-e-aws-deploy-sem-segredos-de-longa-duração) — **bootstrap concluído** (S3 + OIDC + 4 roles). Sem DynamoDB: o Terraform 1.15 usa lock nativo do S3
-
-✅ **Entregável:** `aws sts get-caller-identity` rodando num workflow do GitHub, sem nenhum secret de credencial AWS.
-
-**Executado em 01–02/09:**
-
-- [x] Conta AWS, usuário IAM `admin-cli`, CLI configurada em `us-east-1`
-- [x] Quota de vCPU 5 → 32 solicitada (`PENDING`)
-- [x] AWS Budget US$ 60, alertas em 50% previsto e 90% real
-- [x] Bootstrap aplicado — 13 recursos: bucket `oficina-tfstate-706215605178`, OIDC e 4 roles
-- [x] Ferramentas instaladas; `go`, `helm`, `kustomize`, `gh`, `gitleaks` faltavam
-- [x] Rename `tech-challenge-1` → `oficina-app` (8 pontos), build/vet/test/lint verdes
-- [x] `gitleaks` sobre os 58 commits do histórico: 3 achados, **todos falso positivo**, suprimidos em `.gitleaks.toml`
-- [x] Os 3 repos novos preparados e commitados localmente (`~/git/`), com README no formato do enunciado
-- [x] Os 3 repos publicados no GitHub, com README no formato do enunciado
-- [x] Branch `homolog` criada nos 4 repositórios
-- [x] Variables `AWS_ROLE_ARN`, `AWS_REGION` e `TF_BUCKET` configuradas nos 4 (secrets/variables **não** exigem admin)
-- [ ] `SONAR_PROJECT_KEY` ainda é `ProblemaTheu_tech-challenge-1` — resíduo do rename; precisa de *Update key* no SonarCloud **e** da troca da variable, senão a análise cria um projeto novo e perde o histórico
-- [ ] ⛔ Branch protection nos 4 — **bloqueado por falta de `admin`**, ver [pendência](#pendência-bloqueante--acesso-aos-repositórios)
-- [ ] ⛔ Environment `prod` com reviewer obrigatório — mesma pendência
-- [x] Workflow de smoke test do OIDC executado com sucesso — zero credenciais armazenadas
-- [x] Trust policy corrigida para os *immutable subject claims* (o `sub` traz IDs numéricos; a policy clássica falhava)
-- [x] Conta New Relic criada (id **8465573**); license key e user key **validadas contra a API** — envio de evento + consulta NRQL de volta, provando o pipeline do dia 6
-- [x] `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_API_KEY` e `NEW_RELIC_ACCOUNT_ID` gravados nos repositórios
-
-> 💡 **Confira o formato antes de gastar tempo depurando.** License key tem 40 caracteres e termina em `NRAL`; user key começa com `NRAK-`. Chave no formato errado dá `authentication required` e parece problema de configuração. Valide em 10 segundos:
->
-> ```bash
-> # user key
-> curl -s https://api.newrelic.com/graphql -H "Api-Key: $USER_KEY" \
->   -H 'Content-Type: application/json' \
->   -d '{"query":"{ actor { accounts { id name } } }"}'
->
-> # license key — envia um evento de verdade
-> curl -s -X POST "https://insights-collector.newrelic.com/v1/accounts/8465573/events" \
->   -H "Api-Key: $LICENSE_KEY" -H 'Content-Type: application/json' \
->   -d '[{"eventType":"SetupFase3","etapa":"teste"}]'
-> ```
->
-> Grave os segredos sem passar por chat ou histórico de shell: `gh secret set NOME --repo dono/repo < arquivo`. E use `echo -n` se for por pipe — a quebra de linha no fim é um erro que só aparece como "invalid license key" muito depois.
-
-#### Renomear `tech-challenge-1` → `oficina-app`
-
-Decisão do time: os quatro repositórios ficam com nomes consistentes. O GitHub mantém redirect do nome antigo, então links externos e o `git push` continuam funcionando — mas **oito coisas dentro do repositório não seguem o redirect** e precisam ser trocadas na mão. Reserve ~40 min.
-
-**1. Renomeie no GitHub:** `Settings → General → Repository name` → `oficina-app`.
-
-**2. Atualize o remote local:**
-
-```bash
-git remote set-url origin https://github.com/ProblemaTheu/oficina-app.git
-```
-
-**3. Module path do Go — 36 arquivos:**
-
-```bash
-go mod edit -module github.com/ProblemaTheu/oficina-app
-grep -rl "problematheu/tech-challenge-1" --include="*.go" . \
-  | xargs sed -i '' 's|problematheu/tech-challenge-1|ProblemaTheu/oficina-app|g'
-go build ./... && go test ./... && golangci-lint run
-```
-
-**4. ⚠️ `ci.yml:110` — a que ninguém percebe.** O Job Summary corta o prefixo do módulo com uma string literal:
-
-```python
-nome_curto = pkg.replace("github.com/problematheu/tech-challenge-1/", "")
-```
-
-Isso **não quebra o build**: o summary passa a mostrar o caminho completo de cada pacote e ninguém liga a causa ao rename. Troque pelo path novo — ou, melhor, torne imune:
-
-```python
-nome_curto = pkg.split("/", 3)[-1]   # descarta host/org/repo, sobra o pacote
-```
-
-**5. Imagem no Docker Hub** — `tech-challenge-api` → `oficina-api` (o [CD do plano](backlog.md#f3-15--cd-da-aplicação-build--registry--eks) já usa o nome novo). Crie o repositório no Docker Hub **antes** do primeiro push, senão o job falha com `denied: requested access to the resource is denied`. Arquivos: `cd.yml` (4 ocorrências), `k8s/base/deployment.yaml`, `k8s/overlays/local/kustomization.yaml`.
-
-**6. `security.yml`** — tag local da imagem no scan do Trivy: `tech-challenge-1:` → `oficina-app:` (3 ocorrências, linhas 197/203/213).
-
-**7. `cd.yml:106`** — o default `EKS_CLUSTER_NAME || 'tech-challenge-eks'`. O plano usa `oficina`, e o CD novo lê o nome da SSM — então esse fallback some junto na reescrita do workflow.
-
-**8. Documentação:** os dois blocos `git clone` do `README.md` (linhas 126 e 236) e o `k8s/README.md` (`docker build -t` / `kind load`).
-
-**Confira que não sobrou nada:**
-
-```bash
-grep -rn "tech-challenge-1\|tech-challenge-api" \
-  --exclude-dir=.git --exclude-dir=docs/planejamentos . || echo "limpo"
-```
-
-> `docs/planejamentos/fase-2/` **deve** manter as referências antigas — é registro histórico do que foi entregue naquela fase, não configuração ativa.
->
-> **SonarCloud:** o `sonar-project.properties` não tem `projectKey` (vem do workflow), mas o SonarCloud indexa por repositório. Depois do rename, confira em *Administration → Update key* se o projeto continua ligado — senão a análise passa a criar um projeto novo e você perde o histórico.
-
----
-
-### 🔴 Qua 02/09 — 3 h — Nuvem de pé (custo começa)
+### 🔴 Qua 02/09 — 3 h — Nuvem de pé
 
 - [F3-3.2](backlog.md#f3-32--repositório-oficina-infra-k8s-vpc-e-rede) — VPC **sem NAT**, nós em subnet pública
-- [F3-3.3](backlog.md#f3-33--cluster-eks-com-escalabilidade-e-addons) — EKS **1.36**, **2 nós `t3.small`**, addon `metrics-server`, **`access_entries` com seu usuário IAM** (senão você não usa `kubectl`), namespaces
-- [F3-3.1](backlog.md#f3-31--repositório-oficina-infra-db-rds-postgresql-gerenciado) — RDS, **uma instância** (`local.ambientes = toset(["prod"])` — corte nº 10)
+- [F3-3.3](backlog.md#f3-33--cluster-eks-com-escalabilidade-e-addons) — EKS **1.36**, 2 nós `t3.small`, addon `metrics-server`, **`access_entries` com seu usuário IAM** (senão você não usa `kubectl`), namespace
+- [F3-3.1](backlog.md#f3-31--repositório-oficina-infra-db-rds-postgresql-gerenciado) — RDS, uma instância
 
-⚠️ **Primeiro apply**: rode `terraform apply -target=module.eks` antes do apply completo, senão o provider `kubernetes` falha (ver F3-3.3). E reserve os ~20 min que o EKS leva — não é travamento.
+⚠️ **Primeiro apply:** rode `terraform apply -target=module.eks` antes do apply completo, senão o provider `kubernetes` falha. Reserve os ~20 min que o EKS leva — não é travamento.
 
-✅ **Entregável:** `kubectl get nodes` mostra 2 nós `Ready` **da sua máquina** (não só do CI).
+✅ **Entregável:** `kubectl get nodes` mostra 2 nós `Ready` **da sua máquina**, não só do CI.
 
-> **2 nós `t3.small` bastam?** Sim, e a conta é simples: 2 × 2 GB ≈ 3,2 GB alocáveis. O HPA no teto (6 pods × 128 Mi) pede 768 Mi; DaemonSet do New Relic ~400 Mi; `kube-system` ~400 Mi. Sobra folga. Em CPU: 6 × 100m = 600m contra ~3,8 vCPU alocáveis. E 3 × `t3.small` (US$ 13,48) sairia mais caro que 2 × `t3.medium` seria útil — o HPA escala **pods**, não nós, então nó extra não melhora a demonstração.
+> **2 nós bastam?** 2 × 2 GB ≈ 3,2 GB alocáveis. O HPA no teto (6 pods × 128 Mi) pede 768 Mi; New Relic ~400 Mi; `kube-system` ~400 Mi. Sobra folga. O HPA escala **pods**, não nós — um terceiro nó custaria US$ 4,50 e não melhoraria a demonstração.
 
----
-
-### 🔴 Qui 03/09 — 3 h — Aplicação rodando na nuvem
+### 🔴 Qui 03/09 — 3 h — Aplicação na nuvem
 
 - [F3-5.1](backlog.md#f3-51--revisão-do-modelo-relacional) — migration de modelagem (índices, `status`, `cpf_cnpj_digitos`, `timestamptz`)
 - [F3-5.3](backlog.md#f3-53--seeds-e-credenciais-em-ambiente-de-nuvem) — seed com cliente **ativo** e **inativo** (CPFs válidos!)
 - Overlay `prod` + `Service type: LoadBalancer` + deploy manual (`kubectl apply -k`)
 
-✅ **Entregável:** `curl http://<nlb>/health/ready` responde `UP`, e a primeira OS é criada. **A partir de hoje o gráfico de volume diário começa a existir.**
+✅ **Entregável:** `curl http://<nlb>/health/ready` responde `UP` e a primeira OS é criada. **A partir de hoje o gráfico de volume diário começa a existir.**
 
-> Antes de dormir, deixe rodando um gerador simples de tráfego — os dashboards precisam de dados acumulados:
+> Deixe rodando um gerador simples de tráfego — os dashboards precisam de dados acumulados:
 > ```bash
 > while true; do curl -s http://<nlb>/health/ready > /dev/null; sleep 60; done
 > ```
 
----
+### 🟡 Sex 04/09 — 3 h — Lambda de autenticação
 
-### 🟡 Sex 04/09 — 3 h — Lambda de autenticação (código)
-
-- [F3-2.1](backlog.md#f3-21--lambda-auth-token-validar-cpf-consultar-cliente-e-emitir-jwt) — `auth-token`: validação de CPF, consulta ao cliente, emissão do JWT
+- [F3-2.1](backlog.md#f3-21--lambda-auth-token-validar-cpf-consultar-cliente-e-emitir-jwt) — `auth-token`
 - [F3-2.2](backlog.md#f3-22--lambda-auth-authorizer-validação-do-token-na-borda) — `auth-authorizer`
-- Testes de tabela do pacote `cpf` (é a única coisa que vale testar aqui)
+- Testes de tabela do pacote `cpf` — a única coisa que vale testar aqui
 
 ✅ **Entregável:** `go test ./...` verde nos dois handlers.
 
----
-
-### 🟢 Sáb 05/09 — 7 h — **O dia mais importante**: fluxo ponta a ponta
+### 🟢 Sáb 05/09 — 7 h — **O dia crítico**: fluxo ponta a ponta
 
 - [F3-2.3](backlog.md#f3-23--terraform-das-funções-e-das-rotas-no-api-gateway) — Terraform das Lambdas, IAM, VPC config
 - [F3-3.4](backlog.md#f3-34--api-gateway-http-api-por-ambiente) — API Gateway + rota `/auth/token` + authorizer
-- Integração `HTTP_PROXY` para o NLB (corte nº 1) + rotas `/v1/*` protegidas
-- [F3-2.4](backlog.md#f3-24--adequar-a-aplicação-ao-novo-contrato-de-token) + [F3-2.5](backlog.md#f3-25--segredo-compartilhado-e-remoção-do-fallback-inseguro) — claims `tipo`/`iss`/`aud` na app, segredo compartilhado
+- Integração `HTTP_PROXY` para o NLB (corte 1) + rotas `/v1/*` protegidas
+- [F3-2.4](backlog.md#f3-24--adequar-a-aplicação-ao-novo-contrato-de-token) + [F3-2.5](backlog.md#f3-25--segredo-compartilhado-e-remoção-do-fallback-inseguro) — claims `tipo`/`iss`/`aud`, segredo compartilhado
 
-✅ **Entregável — este é o marco crítico da fase:**
+✅ **Entregável:**
 ```bash
 TOKEN=$(curl -s -X POST $GW/auth/token -d '{"cpf":"529.982.247-25"}' | jq -r .access_token)
-curl -s -o /dev/null -w '%{http_code}' $GW/v1/work-orders                       # 401
+curl -s -o /dev/null -w '%{http_code}' $GW/v1/work-orders                                   # 401
 curl -s -o /dev/null -w '%{http_code}' $GW/v1/work-orders -H "Authorization: Bearer $TOKEN"  # 200
 ```
-**Se sábado terminar sem isso funcionando, pare e releia a [ordem de sacrifício](#ordem-de-sacrifício-se-atrasar) antes de continuar.**
-
----
+**Se sábado terminar sem isso, pare e releia a ordem de sacrifício antes de continuar.**
 
 ### 🟢 Dom 06/09 — 7 h — Observabilidade
 
 - [F3-4.1](backlog.md#f3-41--logs-estruturados-json-com-correlação-de-requisições) — logs JSON + correlação
-- [F3-4.2](backlog.md#f3-42--apm-da-aplicação-go) — agente New Relic + `nrpq` no banco
+- [F3-4.2](backlog.md#f3-42--apm-da-aplicação-go) — agente New Relic (sem `nrpq`)
 - [F3-4.5](backlog.md#f3-45--eventos-de-negócio-para-os-dashboards) — eventos `OrdemServicoEvent` e `IntegracaoEvent`
-- [F3-4.3](backlog.md#f3-43--monitoramento-do-cluster-kubernetes) — `nri-bundle` via Helm (1 h, é só um `helm_release`)
+- [F3-4.3](backlog.md#f3-43--monitoramento-do-cluster-kubernetes) — `nri-bundle` via Helm
 - Deploy e geração de OS reais
 
-✅ **Entregável:** APM recebendo dados, logs JSON com `trace.id` no New Relic, CPU/memória dos pods visíveis.
-
----
+✅ **Entregável:** APM recebendo dados, logs JSON com `trace.id`, CPU/memória dos pods visíveis.
 
 ### 🟢 Seg 07/09 (feriado) — 7 h — CI/CD e dashboards
 
-- [F3-1.5](backlog.md#f3-15--cd-da-aplicação-build--registry--eks) — CD da aplicação (**só `main` → prod**; `homolog` roda apenas CI)
+- [F3-1.5](backlog.md#f3-15--cd-da-aplicação-build--registry--eks) — CD da aplicação
 - [F3-1.6](backlog.md#f3-16--cicd-do-repositório-da-lambda) — CI/CD da Lambda
-- [F3-1.4](backlog.md#f3-14--cicd-dos-repositórios-de-infraestrutura) — workflow de Terraform (plan em PR, apply em merge)
-- [F3-1.7](backlog.md#f3-17--suíte-de-segurança-nos-quatro-repositórios) — apenas `gitleaks` nos 4 + `tfsec` nos de infra
-- [F3-4.6](backlog.md#f3-46--dashboards) — dashboard (**pela UI do New Relic, não por Terraform** — economiza 2 h e o resultado visual é o mesmo)
-- [F3-4.7](backlog.md#f3-47--alertas) — 1 alerta: falha no processamento de OS, **e dispare-o de verdade**
+- [F3-1.4](backlog.md#f3-14--cicd-dos-repositórios-de-infraestrutura) — workflow de Terraform (plan em PR, apply no merge)
+- [F3-4.6](backlog.md#f3-46--dashboards) — dashboard **pela UI**
+- [F3-4.7](backlog.md#f3-47--alertas) — 1 alerta, **disparado de verdade**
 - [F3-4.8](backlog.md#f3-48--teste-de-carga-e-validação-do-autoescalonamento) — carga simples, provar HPA 2→4+
 
-✅ **Entregável:** merge em `homolog` implanta sozinho; dashboard com dados; alerta disparado e e-mail recebido.
-
----
+✅ **Entregável:** merge na `main` implanta sozinho; dashboard com dados; alerta disparado e e-mail recebido.
 
 ### 🔵 Ter 08/09 — 3 h — Documentação
 
-Este é o dia de **melhor retorno por hora do projeto inteiro**: a argumentação já está escrita em [README.md](README.md), [arquitetura.md](arquitetura.md) e [backlog.md](backlog.md). Você está transcrevendo e ajustando, não pensando do zero.
+Melhor retorno por hora do plano: a argumentação já está escrita em [README.md](README.md), [arquitetura.md](arquitetura.md) e [backlog.md](backlog.md). É transcrição, não invenção.
 
-- [F3-6.2](backlog.md#f3-62--rfcs) — 4 RFCs (nuvem, banco, autenticação, repositórios) — ~40 min cada
-- [F3-6.3](backlog.md#f3-63--adrs) — 8 ADRs, **incluindo as dos cortes deste plano** (VPC Link, NAT, autoscaler, SES)
-- [F3-6.1](backlog.md#f3-61--diagramas-de-componentes-e-de-sequência) — diagramas revisados contra o que você **realmente** construiu
+- [F3-6.2](backlog.md#f3-62--rfcs) — 4 RFCs (~40 min cada)
+- [F3-6.3](backlog.md#f3-63--adrs) — 8 ADRs, **incluindo as dos cortes deste plano**
+- [F3-6.1](backlog.md#f3-61--diagramas-de-componentes-e-de-sequência) — diagramas revisados contra o que foi construído
 - [F3-5.2](backlog.md#f3-52--documentar-o-modelo-e-justificar-a-escolha-do-banco) — RFC-002 com ER e os dois `EXPLAIN ANALYZE`
-
-✅ **Entregável:** `docs/rfcs/` com 4 arquivos, ADRs estendidas, diagramas fiéis.
-
----
 
 ### 🔵 Qua 09/09 — 3 h — READMEs e ensaio
 
-- [F3-6.4](backlog.md#f3-64--readmes-dos-quatro-repositórios) — 4 READMEs (o da aplicação já existe e é bom — só atualize)
-- [F3-2.6](backlog.md#f3-26--atualizar-openapi-postman-e-a-documentação-de-autenticação) — Postman com a pasta de auth por CPF apontando para o Gateway
+- [F3-6.4](backlog.md#f3-64--readmes-dos-quatro-repositórios) — atualizar o do `oficina-app`; os outros 3 já existem
+- [F3-2.6](backlog.md#f3-26--atualizar-openapi-postman-e-a-documentação-de-autenticação) — Postman apontando para o Gateway
 - **Ensaio cronometrado do vídeo**, com o [roteiro](entrega.md#roteiro-do-vídeo) aberto
 
-✅ **Entregável:** ensaio completo em ≤ 15 min, e a lista do que travou nele.
-
-> Não pule o ensaio. Ele é o que impede a gravação de virar 6 tomadas na quinta-feira.
-
----
+> Não pule o ensaio. É o que impede a gravação de virar 6 tomadas na quinta.
 
 ### 🏁 Qui 10/09 — 3 h — Gravação e entrega
 
-- Gravar por blocos (nunca tomada única) e editar
-- [F3-7.2](backlog.md#f3-72--pdf-do-portal-e-compartilhamento-dos-repositórios) — PDF + `soat-architecture` nos 4 repos
+- Gravar por blocos e editar
+- [F3-7.2](backlog.md#f3-72--pdf-do-portal-e-compartilhamento-dos-repositórios) — PDF + `soat-architecture`
 - Submeter
-- **Só depois de submeter:** [F3-7.3](backlog.md#f3-73--controle-de-custo-e-teardown) — `terraform destroy` e checagem de recursos órfãos
+- **Só depois de submeter:** [F3-7.3](backlog.md#f3-73--controle-de-custo-e-teardown) — `terraform destroy` e checagem de órfãos
 
 ---
 
 ## Ordem de sacrifício (se atrasar)
 
-Quando um dia terminar sem o entregável, corte **de cima para baixo** — nesta ordem, o dano à nota é crescente:
+Corte **de cima para baixo** — o dano é crescente.
 
-> O antigo item nº 1 desta lista era "sacrificar o ambiente de homologação". Ele **já foi executado** (corte nº 10) — a primeira alavanca de emergência foi gasta antes de começar. O que sobrou é mais caro.
+> O antigo item nº 1 era o ambiente de homologação. Já foi gasto (corte 10) antes de começar: a primeira alavanca de emergência não existe mais.
 
-| # | Sacrifique | Impacto | O que dizer na entrega |
-|---|---|---|---|
-| 1 | Painéis extras do dashboard (mantenha os 3 nomeados no enunciado) | Baixo | — |
-| 2 | Alertas 2 e 3 (mantenha o de falha de OS) | Baixo | O enunciado nomeia só esse |
-| 3 | Instrumentação do banco com `nrpq` (mantém o APM da aplicação) | Baixo | Perde-se o span de query dentro do trace — some o "o gargalo é o app ou o banco?", que não é requisito nomeado |
-| 4 | READMEs dos repos de infra reduzidos ao mínimo | Médio | Mantenha propósito, execução, diagrama e links — é o que o enunciado lista |
-| 5 | Profundidade das RFCs: 4 curtas em vez de 4 completas | Médio | Contexto + opções + decisão + consequências, uma página cada. Melhor quatro enxutas que duas boas e duas ausentes |
-| 6 | Lambda authorizer (Gateway sem autorização na borda; app valida o JWT) | **Alto** | Ver explicação abaixo — evite até o limite |
+| # | Sacrifique | Impacto |
+|---|---|---|
+| 1 | Painéis extras do dashboard (mantendo os 3 nomeados) | Baixo |
+| 2 | Alertas 2 e 3 (mantendo o de falha de OS) | Baixo |
+| 3 | Instrumentação `nrpq` do banco | Baixo |
+| 4 | READMEs de infra reduzidos ao mínimo | Médio |
+| 5 | RFCs curtas em vez de completas | Médio |
+| 6 | Lambda authorizer | **Alto** — ver [o que não cortar](#o-que-não-cortar) |
 
-**Sobre o item 6 — o que exatamente se perde.** São duas Lambdas: `auth-token` (emite o JWT) e `auth-authorizer` (valida no Gateway). A primeira é intocável, é o que o enunciado descreve como Function Serverless. Cortar a segunda faz o Gateway virar só roteador, e quem valida o token passa a ser o middleware JWT da aplicação — que já existe desde a Fase 1. **A autenticação por CPF continua funcionando inteira.**
-
-O custo: requisição sem token entra no cluster e gasta CPU antes de levar 401; some a cena de *"esse 401 veio do Gateway, nem chegou no pod"*; e enfraquece a seção do enunciado chamada "Autenticação e API Gateway" — o Gateway roteia, mas não protege. É o único item da lista que arranha um requisito com nome próprio, por isso é o último.
-
-> **Os diagramas de sequência saíram desta lista.** Eles **já estão escritos** em [arquitetura.md](arquitetura.md#2-diagramas-de-sequência) — o trabalho de 08/09 é revisá-los contra o que foi construído, não desenhá-los. Sacrificar economizaria ~30 min e custaria um requisito explícito (*"Diagrama de Sequência para o fluxo de autenticação **e** abertura de ordens de serviço"*). Troca ruim: entregue os dois.
-
-**Nunca sacrifique**, em nenhuma hipótese — sem estes a entrega não é avaliável:
+**Nunca sacrifique** — sem isto a entrega não é avaliável:
 
 - 4 repositórios com `main` protegida e CI/CD rodando
-- Autenticação por CPF funcionando ponta a ponta pelo API Gateway (incluindo o caso do **cliente inativo → 403**)
+- Autenticação por CPF ponta a ponta pelo Gateway, incluindo **cliente inativo → 403**
 - Aplicação no EKS com HPA
 - RDS gerenciado provisionado por Terraform
-- New Relic com APM, logs JSON e ao menos 1 dashboard e 1 alerta
+- New Relic com APM, logs JSON, 1 dashboard e 1 alerta
 - RFCs, ADRs, ER e diagramas
 - **Vídeo e PDF**
 
-> Se na quarta-feira 09/09 faltar tempo, **corte funcionalidade, nunca o vídeo**. Uma solução 80% pronta com vídeo e documentação boa é avaliável; uma solução 100% pronta sem vídeo não é entrega.
+> Se na quarta faltar tempo, **corte funcionalidade, nunca o vídeo**. Solução 80% pronta com vídeo e documentação boa é avaliável; solução 100% pronta sem vídeo não é entrega.
 
 ---
 
-## Três regras para os 10 dias
+## Três regras
 
-1. **Time-box de 45 minutos por bug de infraestrutura.** Estourou? Aplique o corte correspondente e documente como ADR. O sábado inteiro pode evaporar em uma regra de security group.
-2. **Commit e push todo dia**, mesmo incompleto. O histórico de commits diários é evidência de processo, e protege contra perder trabalho.
-3. **Anote as decisões enquanto decide**, em um `docs/rfcs/rascunho.md`. Terça 08/09 você vai transcrever, não relembrar — e é a diferença entre 3 h e 6 h de documentação.
+1. **Time-box de 45 minutos por bug de infraestrutura.** Estourou? Aplique o corte correspondente e documente como ADR. O sábado inteiro evapora em uma regra de security group.
+2. **Commit e push todo dia**, mesmo incompleto. É evidência de processo e protege contra perder trabalho.
+3. **Anote as decisões enquanto decide**, num `docs/rfcs/rascunho.md`. Terça você transcreve, não relembra — é a diferença entre 3 h e 6 h de documentação.
