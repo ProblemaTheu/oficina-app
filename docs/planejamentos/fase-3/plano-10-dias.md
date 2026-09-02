@@ -69,6 +69,57 @@ Alternativa: se `ProblemaTheu` for um segundo perfil seu, `gh auth login` com el
 
 **Total economizado: ~27 h.** Escopo restante: **~36 h** em ~42 h disponíveis — **~6 h de folga**, a primeira que este plano tem.
 
+### Modo mínimo — cortes 11 a 16
+
+> **Decisão do time (02/09): entregar literalmente o que foi pedido, da forma mais simples.** Os cortes abaixo removem o que está no plano por boa prática, mas **nenhum requisito do enunciado**. Ao contrário dos cortes 1–9, estes não assumem risco técnico: retiram trabalho que ninguém vai avaliar.
+
+| # | Corte | Economia | Por que sai |
+|---|---|---|---|
+| 11 | **Instrumentação `nrpq` do banco** | ~1 h | Perde o span de query no trace. O enunciado pede latência das APIs, não breakdown por camada |
+| 12 | **Dashboards e alertas pela UI, não por Terraform** | ~2 h | "Expor dashboards" é o requisito; como foram criados, não. IaC de dashboard é elegância |
+| 13 | **Só o alerta de falha de OS** (cortar latência e pods) | ~0,5 h | O enunciado nomeia exatamente um: *"alertas para falhas no processamento de ordens de serviço"* |
+| 14 | **Sem `for_each` de ambientes** — recursos diretos | ~1 h | Com um ambiente só, `for_each` é indireção pura. Menos código e menos erro de `each.key` |
+| 15 | **Segurança: só `gitleaks`** (sem `tfsec`, `checkov`, Sonar nos repos novos) | ~1,5 h | O enunciado **não menciona** análise de segurança. `gitleaks` fica porque custa 5 min e protege você |
+| 16 | **Sem `ResourceQuota` e sem Synthetics extra** | ~0,5 h | Quota não faz sentido com um namespace. Uptime sai do healthcheck que já existe |
+
+**Economia: ~6,5 h.** Escopo restante: **~29 h em ~42 h** — folga de ~13 h.
+
+### ⚠️ O que eu NÃO cortaria, mesmo no modo mínimo
+
+**O Lambda authorizer.** É a tentação óbvia (~3 h) e eu entendo o raciocínio: o middleware JWT da aplicação já valida o token desde a Fase 1, então tecnicamente as rotas ficam protegidas.
+
+Mas a seção do enunciado se chama **"Autenticação e API Gateway"** e lista os dois juntos. Sem o authorizer, o Gateway roteia mas não protege — e essa é a parte mais visível da fase. Com ~13 h de folga, 3 h no item mais avaliado é o melhor uso do tempo que existe neste plano.
+
+Ele continua no **último lugar** da [ordem de sacrifício](#ordem-de-sacrifício-se-atrasar): se atrasar de verdade, corte. Antes disso, não.
+
+### Requisito → implementação mínima
+
+Confira contra esta tabela antes de acrescentar qualquer coisa ao escopo:
+
+| O enunciado pede | Mínimo que atende |
+|---|---|
+| API Gateway | `aws_apigatewayv2_api` + rotas + integração HTTP_PROXY |
+| Rotas protegidas por CPF | `auth-token` emite JWT; `auth-authorizer` valida no Gateway |
+| Function: valida CPF, consulta existência **e status**, gera JWT | `auth-token` (~150 linhas de Go) |
+| 4 repos com CI/CD e deploy automático | 1 workflow por repo |
+| `main` protegida, PR obrigatório | Ruleset (**bloqueado por admin**) |
+| Banco gerenciado | 1 RDS `db.t4g.micro` |
+| Cluster K8s com escalabilidade | EKS + HPA por CPU (já existe em `k8s/base/hpa.yaml`) |
+| Terraform | os 3 repos de infra |
+| Latência das APIs | agente APM do New Relic |
+| CPU/memória do K8s | `nri-bundle` via Helm |
+| Healthchecks e uptime | `/health/ready` (já existe) + 1 monitor Synthetic |
+| Alertas de falha de OS | 1 NRQL alert condition |
+| Logs JSON com correlação | handler `slog` JSON + middleware de correlation id |
+| Volume diário de OS · tempo médio por status · erros de integração | 2 custom events (`OrdemServicoEvent`, `IntegracaoEvent`) + 3 painéis NRQL |
+| Diagrama de componentes · 2 de sequência | **já escritos** em [arquitetura.md](arquitetura.md) — só revisar |
+| RFCs · ADRs | 4 RFCs de 1 página + 8 ADRs curtas — argumentação já existe no [README](README.md) |
+| Justificativa do banco + ER | RFC-002 + o ER de [arquitetura.md](arquitetura.md#3-modelo-entidade-relacionamento-alvo) |
+| 4 READMEs | **3 já escritos**; falta atualizar o do `oficina-app` |
+| Vídeo ≤ 15 min · PDF | [entrega.md](entrega.md) |
+
+---
+
 ### Corte nº 10 em detalhe — como fazer
 
 O fórum da disciplina liberou dispensar o ambiente de homologação. É o único corte que **reduz escopo sem assumir risco técnico**: os outros nove trocam robustez por tempo; este simplesmente remove trabalho.
