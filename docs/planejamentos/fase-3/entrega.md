@@ -138,13 +138,13 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 
 - **Entrada:** API Gateway HTTP API (uma API por ambiente), access logs em JSON e throttling por ambiente
 - **Autenticação:** duas AWS Lambda em Go (`provided.al2023`, arm64) — emissão de JWT por CPF e authorizer de borda no Gateway
-- **Computação:** Amazon EKS 1.31, node group gerenciado (3 × `t3.small`), HPA por CPU a 50% (2–6 réplicas) *(desenho completo: 2–4 × `t3.medium` + Cluster Autoscaler)*
+- **Computação:** Amazon EKS **1.36** (standard support até 08/2027), node group gerenciado (2 × `t3.small`), HPA por CPU a 50% (2–6 réplicas) *(desenho completo: 2–4 × `t3.medium` + Cluster Autoscaler)*
 - **Rede:** VPC com 2 AZs; nós em subnet pública; exposição via `Service type: LoadBalancer` (NLB) com header compartilhado exigido pelo API Gateway *(desenho completo: NAT Gateway + VPC Link + ALB interno com `TargetGroupBinding`)*
 - **Dados:** Amazon RDS PostgreSQL 15.7 (`db.t4g.micro`), criptografado, em subnet privada, com Performance Insights
 - **Segredos:** AWS Secrets Manager, com o `Secret` do Kubernetes criado pelo Terraform *(desenho completo: External Secrets Operator)*; SSM Parameter Store como contrato entre os repositórios
-- **Observabilidade:** New Relic — APM Go, `nri-bundle` no cluster, logs JSON correlacionados por `trace.id`, dashboard e alerta de falha no processamento de OS
+- **Observabilidade:** New Relic — APM Go, `nri-bundle` no cluster, logs JSON correlacionados por `trace.id`, monitor Synthetic de uptime, dashboard de negócio e alerta de falha no processamento de OS
 - **Notificações:** porta `Notifier` com implementações SMTP e log; e-mail demonstrado no ambiente local (Mailpit) *(desenho completo: Amazon SES em produção)*
-- **IaC:** Terraform 1.9 com backend S3 + lock em DynamoDB; ambientes por `for_each` sobre infraestrutura compartilhada
+- **IaC:** Terraform 1.15 com backend S3 e lock nativo (`use_lockfile`, sem DynamoDB); state remoto compartilhado entre os três repositórios de infraestrutura
 - **CI/CD:** GitHub Actions com autenticação OIDC (sem chaves de longa duração), `plan` em PR e `apply` em merge, deploy automático da `main` para produção
 - **Ambientes:** apenas produção. O ambiente de homologação foi dispensado conforme orientação no fórum da disciplina em `[DATA]` (`[LINK DO POST]`); a branch `homolog` permanece no fluxo com PR obrigatório e CI bloqueante
 

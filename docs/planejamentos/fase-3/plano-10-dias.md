@@ -67,7 +67,7 @@ Alternativa: se `ProblemaTheu` for um segundo perfil seu, `gh auth login` com el
 | 9 | **k6 com estágios** → loop `curl`/`hey` de 3 minutos | ~1 h | Só precisa provar que o HPA reage |
 | 10 | **Ambiente de homologação** → apenas `prod` (autorizado no fórum da disciplina) | **~3 h** + US$ 4 | Cite o fórum no README; a branch `homolog` continua existindo com CI completo |
 
-**Total economizado: ~27 h.** Escopo restante: **~36 h** em ~42 h disponíveis — **~6 h de folga**, a primeira que este plano tem.
+**Total economizado: ~27 h.** Escopo restante: ~36 h — e os cortes do [modo mínimo](#modo-mínimo--cortes-11-a-16) logo abaixo derrubam mais 6,5 h.
 
 ### Modo mínimo — cortes 11 a 16
 
@@ -126,11 +126,20 @@ O fórum da disciplina liberou dispensar o ambiente de homologação. É o únic
 
 **No Terraform** (`infra-k8s` e `infra-db`), uma linha:
 
+Isso elimina: a segunda instância RDS (e sua espera de provisionamento), o segundo API Gateway com rotas e authorizer, o segundo namespace, o segundo overlay, o segundo conjunto de segredos e o segundo listener.
+
+**Não use `for_each` com um elemento** (ver [corte 14](#modo-mínimo--cortes-11-a-16)). Escreva os recursos direto, com `prod` no nome:
+
 ```hcl
-locals { ambientes = toset(["prod"]) }   # era ["homolog", "prod"]
+# em vez de: module.rds[each.key].db_instance_endpoint
+module "rds" {
+  identifier = "oficina-prod"
+  db_name    = "oficina_prod"
+  # ...
+}
 ```
 
-Mantenha o `for_each` em vez de remover — custa nada, e voltar atrás é trocar uma linha. Isso elimina: a segunda instância RDS (e sua espera de provisionamento), o segundo API Gateway com rotas e authorizer, o segundo namespace, o segundo overlay, o segundo conjunto de segredos e o segundo listener.
+`for_each` sobre uma lista de um item obriga a indexar tudo com `["prod"]` e a lembrar de `each.key` em cada referência — é indireção que só paga quando existem dois ambientes de verdade.
 
 **Nos workflows**, `homolog` deixa de implantar e passa a ser branch de integração com CI completo:
 

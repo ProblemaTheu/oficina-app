@@ -22,7 +22,7 @@ Sequência de execução, dependências, riscos e controle de custo. As tarefas 
 Objetivo: destravar o trabalho paralelo dos quatro repositórios.
 
 - **F3-0.5 — Contas, quota de vCPU e ferramentas** ← *faça no dia 1: tem prazo de terceiros*
-- F3-0.1 — Backend remoto (S3 + DynamoDB) e limpeza dos `.tfstate` versionados
+- F3-0.1 — Backend remoto (S3 com lock nativo) e limpeza dos `.tfstate` versionados
 - F3-0.4 — OIDC GitHub ↔ AWS
 - F3-0.2 — Contrato do JWT
 - F3-0.3 — Convenções de tags e contrato SSM

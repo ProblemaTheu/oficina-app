@@ -89,7 +89,7 @@ flowchart TB
 
         subgraph vpc["VPC — subnets públicas"]
             nlb["NLB<br/>(Service type: LoadBalancer)<br/>exige header compartilhado"]
-            subgraph eks["EKS — 3 × t3.small"]
+            subgraph eks["EKS 1.36 — 2 × t3.small"]
                 pods["Deployment api<br/>HPA 2–6 pods (CPU 50%)"]
                 nr8s["New Relic nri-bundle"]
                 ms["metrics-server"]
@@ -123,7 +123,7 @@ flowchart TB
 |---|---|---|
 | NLB público + header no lugar de VPC Link | o NLB é alcançável pela internet; a proteção é o header, não a rede | ALB interno + VPC Link |
 | Nós em subnet pública, sem NAT | IP público nos nós; SG é a única barreira | subnets privadas + NAT |
-| HPA sem Cluster Autoscaler | pods ficam `Pending` se os 3 nós lotarem | Cluster Autoscaler ou Karpenter |
+| HPA sem Cluster Autoscaler | pods ficam `Pending` se os 2 nós lotarem | Cluster Autoscaler ou Karpenter |
 | `Secret` do Terraform no lugar do ESO | rotação do segredo exige novo `apply` | External Secrets Operator |
 | E-mail demonstrado local | SES não exercitado em produção | SES fora do sandbox |
 

@@ -972,6 +972,8 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
 ### F3-1.7 — Suíte de segurança nos quatro repositórios
 
+> ⏱️ **Modo mínimo (corte 15):** o enunciado **não pede** análise de segurança. Faça só o `gitleaks` (5 min, e protege você de commitar segredo) e a varredura histórica. Pule `tfsec`, `checkov`, Sonar no repo da Lambda e o `security.yml` nos repos novos — o `oficina-app` já tem o dele, herdado da Fase 2, e continua rodando.
+
 - **Descrição:** O repositório atual tem `.github/workflows/security.yml` com govulncheck, gosec, Trivy e Sonar — resultado da Fase 2. Ao dividir em quatro repos, **três nascem sem nenhuma verificação de segurança**, justo os que passam a manipular IAM, security groups e segredos. Além disso, dois riscos novos aparecem: segredo commitado (quatro repos, quatro chances) e má configuração de infraestrutura.
 
 - **Como fazer:**
@@ -1819,7 +1821,9 @@ Backlog detalhado por épico. Cada tarefa segue o formato:
 
 ### Estratégia de ambientes (leia antes de escrever HCL)
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#corte-nº-10-em-detalhe--como-fazer) há apenas o ambiente `prod`** (dispensa de homologação autorizada no fórum da disciplina): `locals { ambientes = toset(["prod"]) }`. Todo o restante desta seção continua valendo — o `for_each` é o mesmo, só com um elemento. Leia mesmo assim: o raciocínio de compartilhado × por-ambiente é o conteúdo da ADR-016.
+> ⏱️ **No [plano de 10 dias](plano-10-dias.md#corte-nº-10-em-detalhe--como-fazer) há apenas o ambiente `prod`** (dispensa de homologação autorizada no fórum) **e sem `for_each`** (corte 14): escreva os recursos direto, com `prod` no nome. Todo o HCL desta seção e das seguintes usa `for_each` porque descreve o desenho de dois ambientes — traduza mentalmente `module.rds[each.key]` para `module.rds`, e `${each.key}` para `prod`.
+>
+> Leia a seção mesmo assim: o raciocínio de compartilhado × por-ambiente é o conteúdo da **ADR-016**, e a banca avalia a decisão, não o `for_each`.
 
 O enunciado exige "deploy automático das branches de homologação e produção". A leitura ingênua — um workspace do Terraform por ambiente — **duplica a infraestrutura inteira**: duas VPCs, dois clusters EKS, dois NAT Gateways. São ~US$ 195/mês virando ~US$ 390/mês, sem nenhum ganho na avaliação.
 
@@ -2071,7 +2075,7 @@ locals { ambientes = toset(["homolog", "prod"]) }
 ### F3-3.3 — Cluster EKS com escalabilidade e addons
 
 
-> ⏱️ **No [plano de 10 dias](plano-10-dias.md#os-9-cortes): **sem Cluster Autoscaler** (corte nº 3) — 3 nós `t3.small` fixos e HPA de 2 a 6 pods. Os `access_entries` e o `apply -target=module.eks` continuam **obrigatórios**.**
+> ⏱️ **No [plano de 10 dias](plano-10-dias.md#os-9-cortes): **sem Cluster Autoscaler** (corte nº 3) — 2 nós `t3.small` fixos e HPA de 2 a 6 pods. Os `access_entries` e o `apply -target=module.eks` continuam **obrigatórios**.**
 
 - **Descrição:** Cluster gerenciado com node group escalável, `metrics-server` (para o HPA), AWS Load Balancer Controller (para o `TargetGroupBinding`), External Secrets Operator e o agente do New Relic.
 
@@ -2269,6 +2273,9 @@ locals { ambientes = toset(["homolog", "prod"]) }
     }
   }
 
+  # ⏱️ Modo mínimo (corte 16): PULE a ResourceQuota. Ela existe para um
+  # ambiente não engolir o outro — com um namespace só, não protege de nada.
+  #
   # Quota por ambiente: impede que homologação consuma o cluster inteiro
   # e deixe produção sem recurso para escalar.
   resource "kubernetes_resource_quota" "app" {
@@ -2838,6 +2845,8 @@ locals { ambientes = toset(["homolog", "prod"]) }
 
 ### F3-4.2 — APM da aplicação Go
 
+> ⏱️ **Modo mínimo (corte 11):** pule a troca do driver por `nrpq`. O APM cobre a latência das APIs, que é o requisito; o span de query no trace é diagnóstico extra que ninguém avalia.
+
 - **Descrição:** Instrumentar a aplicação para reportar transações, latência, throughput, erros e traces distribuídos.
 
 - **Como fazer:**
@@ -3115,6 +3124,8 @@ locals { ambientes = toset(["homolog", "prod"]) }
 
 ### F3-4.6 — Dashboards
 
+> ⏱️ **Modo mínimo (corte 12):** monte o dashboard **pela UI do New Relic**, não por Terraform. O enunciado pede "expor dashboards", não versioná-los. As consultas NRQL abaixo são as mesmas — só cole cada uma num widget. Mantenha **um** monitor Synthetic (para o requisito de uptime) e ignore o resto do bloco de IaC.
+
 - **Descrição:** Montar o painel que o enunciado descreve. Construa **como código** (Terraform, provider `newrelic`) no repo `infra-k8s` — assim o dashboard não se perde e demonstra maturidade.
 
 - **Como fazer:**
@@ -3209,6 +3220,8 @@ locals { ambientes = toset(["homolog", "prod"]) }
 ---
 
 ### F3-4.7 — Alertas
+
+> ⏱️ **Modo mínimo (corte 13):** apenas a condição **"Falhas no processamento de ordens de serviço"** — é a única que o enunciado nomeia. Crie pela UI, com destino de e-mail, e **dispare de verdade** antes de gravar. As outras duas condições são opcionais.
 
 - **Descrição:** Requisito explícito: "alertas para falhas no processamento de ordens de serviço". Um alerta que nunca disparou não vale nada — teste antes da entrega.
 
