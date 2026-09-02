@@ -227,7 +227,24 @@ Depois:
 - [ ] ⛔ Environment `prod` com reviewer obrigatório — mesma pendência
 - [x] Workflow de smoke test do OIDC executado com sucesso — zero credenciais armazenadas
 - [x] Trust policy corrigida para os *immutable subject claims* (o `sub` traz IDs numéricos; a policy clássica falhava)
-- [ ] **Conta New Relic** — ⚠️ ainda não criada; é pré-requisito do dia 6 (observabilidade)
+- [x] Conta New Relic criada (id **8465573**); license key e user key **validadas contra a API** — envio de evento + consulta NRQL de volta, provando o pipeline do dia 6
+- [x] `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_API_KEY` e `NEW_RELIC_ACCOUNT_ID` gravados nos repositórios
+
+> 💡 **Confira o formato antes de gastar tempo depurando.** License key tem 40 caracteres e termina em `NRAL`; user key começa com `NRAK-`. Chave no formato errado dá `authentication required` e parece problema de configuração. Valide em 10 segundos:
+>
+> ```bash
+> # user key
+> curl -s https://api.newrelic.com/graphql -H "Api-Key: $USER_KEY" \
+>   -H 'Content-Type: application/json' \
+>   -d '{"query":"{ actor { accounts { id name } } }"}'
+>
+> # license key — envia um evento de verdade
+> curl -s -X POST "https://insights-collector.newrelic.com/v1/accounts/8465573/events" \
+>   -H "Api-Key: $LICENSE_KEY" -H 'Content-Type: application/json' \
+>   -d '[{"eventType":"SetupFase3","etapa":"teste"}]'
+> ```
+>
+> Grave os segredos sem passar por chat ou histórico de shell: `gh secret set NOME --repo dono/repo < arquivo`. E use `echo -n` se for por pipe — a quebra de linha no fim é um erro que só aparece como "invalid license key" muito depois.
 
 #### Renomear `tech-challenge-1` → `oficina-app`
 
