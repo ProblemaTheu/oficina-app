@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
 
 // UsuarioRepository implementa o acesso ao banco de dados para usuários.

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
 	"github.com/google/uuid"
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 )
 
 // Este arquivo cobre os ramos de erro dos casos de uso de OS que dependem de

@@ -63,8 +63,8 @@ jobs:
           # aumenta bastante o tempo de build (emulação via QEMU).
           platforms: linux/amd64
           tags: |
-            docker.io/problematheu/tech-challenge-api:${{ steps.meta.outputs.sha_tag }}
-            docker.io/problematheu/tech-challenge-api:latest
+            docker.io/problematheu/oficina-api:${{ steps.meta.outputs.sha_tag }}
+            docker.io/problematheu/oficina-api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -73,7 +73,7 @@ jobs:
           {
             echo "# 🐳 CD — Build e push da imagem"
             echo
-            echo "Publicada em \`docker.io/problematheu/tech-challenge-api\`:"
+            echo "Publicada em \`docker.io/problematheu/oficina-api\`:"
             echo "- \`${{ steps.meta.outputs.sha_tag }}\`"
             echo "- \`latest\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -103,7 +103,7 @@ jobs:
       - name: Atualizar kubeconfig do EKS
         run: |
           aws eks update-kubeconfig \
-            --name "${{ vars.EKS_CLUSTER_NAME || 'tech-challenge-eks' }}" \
+            --name "${{ vars.EKS_CLUSTER_NAME || 'oficina' }}" \
             --region "${{ vars.AWS_REGION || 'us-east-1' }}"
 
       - name: Aplicar manifestos (kustomize overlay aws)
@@ -112,7 +112,7 @@ jobs:
       - name: Atualizar tag da imagem
         run: |
           kubectl -n oficina set image deployment/api \
-            api=docker.io/problematheu/tech-challenge-api:${{ needs.build-and-push.outputs.image_tag }}
+            api=docker.io/problematheu/oficina-api:${{ needs.build-and-push.outputs.image_tag }}
 
       - name: Aguardar rollout
         run: kubectl -n oficina rollout status deployment/api --timeout=180s

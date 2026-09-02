@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/valueobject"
 )
 
 func TestTratarErroResposta_MapeamentoCompleto(t *testing.T) {

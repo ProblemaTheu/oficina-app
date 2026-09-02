@@ -123,8 +123,8 @@ flowchart LR
 ## Quickstart
 
 ```bash
-git clone https://github.com/problematheu/tech-challenge-1.git
-cd tech-challenge-1
+git clone https://github.com/ProblemaTheu/oficina-app.git
+cd oficina-app
 cp .env.example .env      # segredos e configurações locais
 docker compose up -d --build
 ```
@@ -233,8 +233,8 @@ HTTP Request
 ### 1. Clone o repositório
 
 ```bash
-git clone https://github.com/problematheu/tech-challenge-1.git
-cd tech-challenge-1
+git clone https://github.com/ProblemaTheu/oficina-app.git
+cd oficina-app
 ```
 
 ### 2. Configure o ambiente e suba todos os serviços

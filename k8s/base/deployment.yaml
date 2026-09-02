@@ -24,7 +24,7 @@ spec:
       containers:
         - name: api
           # Tag substituída pelo kustomize (overlays) e pelo CI/CD
-          image: docker.io/problematheu/tech-challenge-api:latest
+          image: docker.io/problematheu/oficina-api:latest
           ports:
             - name: http
               containerPort: 8080

@@ -3,10 +3,10 @@ package usecase
 import (
 	"log/slog"
 
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/valueobject"
 	"github.com/google/uuid"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
 )
 
 // ClientUseCase centraliza todos os casos de uso relacionados a cliente.

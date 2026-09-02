@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/valueobject"
 )
 
 func TestNewPlate_FormatoAntigo(t *testing.T) {

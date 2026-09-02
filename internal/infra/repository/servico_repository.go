@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
 
 type ServicoRepository struct {

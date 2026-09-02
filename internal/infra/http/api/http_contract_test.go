@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"golang.org/x/crypto/bcrypt"
 )
 

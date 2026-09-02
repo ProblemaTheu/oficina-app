@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/infra/database"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/http/api"
+	apimiddleware "github.com/ProblemaTheu/oficina-app/internal/infra/http/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/problematheu/tech-challenge-1/internal/infra/database"
-	"github.com/problematheu/tech-challenge-1/internal/infra/http/api"
-	apimiddleware "github.com/problematheu/tech-challenge-1/internal/infra/http/middleware"
 )
 
 func main() {

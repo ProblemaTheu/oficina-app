@@ -1,0 +1,17 @@
+# Configuração do gitleaks — usada localmente e no CI (F3-1.7).
+#
+# Mantém TODAS as regras padrão e suprime apenas falsos positivos verificados.
+# Nunca use allowlist para calar um segredo real: segredo commitado precisa ser
+# rotacionado, não silenciado — remover o arquivo não basta, o commit antigo
+# continua acessível pelo SHA.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Spec OpenAPI embutida pelo oapi-codegen (base64 + gzip do JSON público)"
+paths = ['''internal/infra/http/api/api\.gen\.go''']
+
+[[allowlists]]
+description = "Exemplos de JWT truncados na documentação — header HS256 (público) + reticências"
+regexes = ['''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.\.\.''']

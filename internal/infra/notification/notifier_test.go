@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
 )
 
 func notificacaoExemplo(motivo *string) usecase.NotificacaoStatus {

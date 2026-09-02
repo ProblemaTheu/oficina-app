@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
 )
 
 // Notifier é o contrato satisfeito pelas implementações deste pacote,

@@ -11,9 +11,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"golang.org/x/crypto/bcrypt"
 )
 

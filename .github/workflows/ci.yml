@@ -107,7 +107,7 @@ jobs:
               lines.append("|--------|-----------|--------|")
               for pkg in sorted(pacotes, key=lambda p: (pacotes[p] != "fail", p)):
                   qtd = sum(1 for t in testes.values() if t["pkg"] == pkg)
-                  nome_curto = pkg.replace("github.com/problematheu/tech-challenge-1/", "")
+                  nome_curto = pkg.split("/", 3)[-1]  # descarta host/org/repo
                   lines.append(f"| `{nome_curto}` | {ICONES.get(pacotes[pkg], '⚪')} `{pacotes[pkg]}` | {qtd} |")
               lines.append("")
 

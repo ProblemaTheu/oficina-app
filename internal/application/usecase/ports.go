@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
 	"github.com/google/uuid"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
 )
 
 // ListarOSParams contém os filtros para listagem de OSs.

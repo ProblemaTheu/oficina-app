@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
 )
 
 // SMTPNotifier envia e-mails de notificação via SMTP. Compatível com

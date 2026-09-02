@@ -64,7 +64,7 @@ terraform plan     # revise antes!
 terraform apply
 
 # conectar o kubectl ao EKS:
-aws eks update-kubeconfig --name tech-challenge-eks --region us-east-1
+aws eks update-kubeconfig --name oficina --region us-east-1
 
 # obter o endpoint do RDS e a senha gerada:
 terraform output rds_endpoint

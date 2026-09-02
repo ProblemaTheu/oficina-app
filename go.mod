@@ -1,4 +1,4 @@
-module github.com/problematheu/tech-challenge-1
+module github.com/ProblemaTheu/oficina-app
 
 go 1.26.2
 

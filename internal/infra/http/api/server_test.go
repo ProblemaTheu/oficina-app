@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"golang.org/x/crypto/bcrypt"
 )
 
