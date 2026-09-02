@@ -21,28 +21,29 @@ Não existe reorganização de cronograma que resolva 88 horas. O que existe é 
 
 ## 🚧 Pendência bloqueante — acesso aos repositórios
 
-> **Status em 02/09.** Não depende de você: depende do `ProblemaTheu` conceder permissão.
+> **Status em 02/09, após concessão parcial.** `push` liberado nos 4 repositórios; **`admin` continua negado**. O que resta bloqueado depende do `ProblemaTheu`.
 
 `ProblemaTheu` é uma **conta de usuário** (não organização) e é a dona dos quatro repositórios. Sua conta é `Mendeszx`, e hoje tem:
 
 | Repo | pull | push | **admin** |
 |---|---|---|---|
 | `oficina-app` | ✅ | ✅ | ❌ |
-| `oficina-lambda-auth` | ✅ | ❌ | ❌ |
-| `oficina-infra-k8s` | ✅ | ❌ | ❌ |
-| `oficina-infra-db` | ✅ | ❌ | ❌ |
+| `oficina-lambda-auth` | ✅ | ✅ | ❌ |
+| `oficina-infra-k8s` | ✅ | ✅ | ❌ |
+| `oficina-infra-db` | ✅ | ✅ | ❌ |
 
-**O que isso bloqueia:**
+**Já destravado:** os 4 repositórios têm `main` e `homolog` com conteúdo publicado.
+
+**O que continua bloqueado:**
 
 | Bloqueado | Impacto |
 |---|---|
-| `git push` nos 3 repos novos | Alto — o conteúdo está commitado localmente em `~/git/`, esperando |
-| **Branch protection nos 4** ([F3-1.2](backlog.md#f3-12--proteção-de-branch-nos-4-repositórios)) | **Alto — requisito explícito do enunciado**: *"Branch main/master protegida"* e *"Uso obrigatório de Pull Requests"*. Ruleset exige `admin`, que você não tem nem no `oficina-app` |
+| **Branch protection nos 4** ([F3-1.2](backlog.md#f3-12--proteção-de-branch-nos-4-repositórios)) | **Alto — requisito explícito do enunciado**: *"Branch main/master protegida"* e *"Uso obrigatório de Pull Requests"*. `POST /repos/.../rulesets` responde **404** — é assim que a API sinaliza falta de permissão |
 | *Environments* `prod` com reviewer ([F3-1.3](backlog.md#f3-13--ambientes-do-github-e-segredos)) | Médio — sem isso não há a cena de aprovação de deploy no vídeo |
 | Secrets e variables dos repos | Médio — o CD não autentica sem `AWS_ROLE_ARN` |
 | Adicionar `soat-architecture` ([F3-7.2](backlog.md#f3-72--pdf-do-portal-e-compartilhamento-dos-repositórios)) | **Alto — exigência de entrega**, também precisa de `admin` |
 
-**O que resolve:** o `ProblemaTheu` acessa, em cada um dos 4 repositórios, *Settings → Collaborators* e define a role de `Mendeszx` como **Admin** (nos 3 novos, adicionar como colaborador direto).
+**O que resolve:** o `ProblemaTheu` acessa, em cada um dos 4 repositórios, *Settings → Collaborators* e muda a role de `Mendeszx` de **Write** para **Admin**. É a mesma tela onde o `Write` já foi concedido — só trocar o valor do seletor.
 
 Alternativa: se `ProblemaTheu` for um segundo perfil seu, `gh auth login` com ele resolve na hora.
 
@@ -219,9 +220,11 @@ Depois:
 - [x] Rename `tech-challenge-1` → `oficina-app` (8 pontos), build/vet/test/lint verdes
 - [x] `gitleaks` sobre os 58 commits do histórico: 3 achados, **todos falso positivo**, suprimidos em `.gitleaks.toml`
 - [x] Os 3 repos novos preparados e commitados localmente (`~/git/`), com README no formato do enunciado
-- [ ] ⛔ `git push` dos 3 repos — **bloqueado**, ver [pendência](#pendência-bloqueante--acesso-aos-repositórios)
-- [ ] ⛔ Branch protection e branch `homolog` — **bloqueado**, mesma pendência
-- [ ] ⛔ Workflow de teste com OIDC — depende do push
+- [x] Os 3 repos publicados no GitHub, com README no formato do enunciado
+- [x] Branch `homolog` criada nos 4 repositórios
+- [ ] ⛔ Branch protection nos 4 — **bloqueado por falta de `admin`**, ver [pendência](#pendência-bloqueante--acesso-aos-repositórios)
+- [ ] ⛔ Environments, secrets e variables — mesma pendência
+- [ ] Workflow de teste com OIDC — **desbloqueado**, pode ser feito a qualquer momento
 
 #### Renomear `tech-challenge-1` → `oficina-app`
 
