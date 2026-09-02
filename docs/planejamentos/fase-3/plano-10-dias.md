@@ -32,16 +32,15 @@ Não existe reorganização de cronograma que resolva 88 horas. O que existe é 
 | `oficina-infra-k8s` | ✅ | ✅ | ❌ |
 | `oficina-infra-db` | ✅ | ✅ | ❌ |
 
-**Já destravado:** os 4 repositórios têm `main` e `homolog` com conteúdo publicado.
+**Já destravado com `Write`:** os 4 repositórios têm `main` e `homolog` publicadas, e **secrets e variables de repositório funcionam** — `AWS_ROLE_ARN`, `AWS_REGION` e `TF_BUCKET` já estão configurados nos 4. Testado na prática: só *ruleset* e *environment* exigem `admin`.
 
 **O que continua bloqueado:**
 
-| Bloqueado | Impacto |
-|---|---|
-| **Branch protection nos 4** ([F3-1.2](backlog.md#f3-12--proteção-de-branch-nos-4-repositórios)) | **Alto — requisito explícito do enunciado**: *"Branch main/master protegida"* e *"Uso obrigatório de Pull Requests"*. `POST /repos/.../rulesets` responde **404** — é assim que a API sinaliza falta de permissão |
-| *Environments* `prod` com reviewer ([F3-1.3](backlog.md#f3-13--ambientes-do-github-e-segredos)) | Médio — sem isso não há a cena de aprovação de deploy no vídeo |
-| Secrets e variables dos repos | Médio — o CD não autentica sem `AWS_ROLE_ARN` |
-| Adicionar `soat-architecture` ([F3-7.2](backlog.md#f3-72--pdf-do-portal-e-compartilhamento-dos-repositórios)) | **Alto — exigência de entrega**, também precisa de `admin` |
+| Bloqueado | Resposta da API | Impacto |
+|---|---|---|
+| **Branch protection nos 4** ([F3-1.2](backlog.md#f3-12--proteção-de-branch-nos-4-repositórios)) | `404 Not Found` — a API esconde o recurso em vez de dizer 403 | **Alto — requisito explícito do enunciado**: *"Branch main/master protegida"* e *"Uso obrigatório de Pull Requests"* |
+| *Environments* `prod` com reviewer ([F3-1.3](backlog.md#f3-13--ambientes-do-github-e-segredos)) | `403 Must have admin rights to Repository` | Médio — o workflow **roda** (o GitHub cria o environment sozinho no primeiro uso), mas sem o gate de aprovação. Perde-se a cena de aprovação de deploy no vídeo |
+| Adicionar `soat-architecture` ([F3-7.2](backlog.md#f3-72--pdf-do-portal-e-compartilhamento-dos-repositórios)) | — | **Alto — exigência de entrega** |
 
 **O que resolve:** o `ProblemaTheu` acessa, em cada um dos 4 repositórios, *Settings → Collaborators* e muda a role de `Mendeszx` de **Write** para **Admin**. É a mesma tela onde o `Write` já foi concedido — só trocar o valor do seletor.
 
@@ -222,8 +221,10 @@ Depois:
 - [x] Os 3 repos novos preparados e commitados localmente (`~/git/`), com README no formato do enunciado
 - [x] Os 3 repos publicados no GitHub, com README no formato do enunciado
 - [x] Branch `homolog` criada nos 4 repositórios
+- [x] Variables `AWS_ROLE_ARN`, `AWS_REGION` e `TF_BUCKET` configuradas nos 4 (secrets/variables **não** exigem admin)
+- [ ] `SONAR_PROJECT_KEY` ainda é `ProblemaTheu_tech-challenge-1` — resíduo do rename; precisa de *Update key* no SonarCloud **e** da troca da variable, senão a análise cria um projeto novo e perde o histórico
 - [ ] ⛔ Branch protection nos 4 — **bloqueado por falta de `admin`**, ver [pendência](#pendência-bloqueante--acesso-aos-repositórios)
-- [ ] ⛔ Environments, secrets e variables — mesma pendência
+- [ ] ⛔ Environment `prod` com reviewer obrigatório — mesma pendência
 - [ ] Workflow de teste com OIDC — **desbloqueado**, pode ser feito a qualquer momento
 
 #### Renomear `tech-challenge-1` → `oficina-app`
