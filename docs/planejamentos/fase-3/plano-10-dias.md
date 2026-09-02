@@ -426,9 +426,16 @@ Quando um dia terminar sem o entregável, corte **de cima para baixo** — nesta
 |---|---|---|---|
 | 1 | Painéis extras do dashboard (mantenha os 3 nomeados no enunciado) | Baixo | — |
 | 2 | Alertas 2 e 3 (mantenha o de falha de OS) | Baixo | O enunciado nomeia só esse |
-| 3 | READMEs dos repos de infra reduzidos ao mínimo | Médio | — |
-| 4 | Segundo diagrama de sequência | Médio | O enunciado pede dois — entregue ao menos o da autenticação |
-| 5 | Lambda authorizer (Gateway sem autorização na borda; app valida o JWT) | **Alto** | Perde "proteger rotas sensíveis **no gateway**" — evite até o limite |
+| 3 | Instrumentação do banco com `nrpq` (mantém o APM da aplicação) | Baixo | Perde-se o span de query dentro do trace — some o "o gargalo é o app ou o banco?", que não é requisito nomeado |
+| 4 | READMEs dos repos de infra reduzidos ao mínimo | Médio | Mantenha propósito, execução, diagrama e links — é o que o enunciado lista |
+| 5 | Profundidade das RFCs: 4 curtas em vez de 4 completas | Médio | Contexto + opções + decisão + consequências, uma página cada. Melhor quatro enxutas que duas boas e duas ausentes |
+| 6 | Lambda authorizer (Gateway sem autorização na borda; app valida o JWT) | **Alto** | Ver explicação abaixo — evite até o limite |
+
+**Sobre o item 6 — o que exatamente se perde.** São duas Lambdas: `auth-token` (emite o JWT) e `auth-authorizer` (valida no Gateway). A primeira é intocável, é o que o enunciado descreve como Function Serverless. Cortar a segunda faz o Gateway virar só roteador, e quem valida o token passa a ser o middleware JWT da aplicação — que já existe desde a Fase 1. **A autenticação por CPF continua funcionando inteira.**
+
+O custo: requisição sem token entra no cluster e gasta CPU antes de levar 401; some a cena de *"esse 401 veio do Gateway, nem chegou no pod"*; e enfraquece a seção do enunciado chamada "Autenticação e API Gateway" — o Gateway roteia, mas não protege. É o único item da lista que arranha um requisito com nome próprio, por isso é o último.
+
+> **Os diagramas de sequência saíram desta lista.** Eles **já estão escritos** em [arquitetura.md](arquitetura.md#2-diagramas-de-sequência) — o trabalho de 08/09 é revisá-los contra o que foi construído, não desenhá-los. Sacrificar economizaria ~30 min e custaria um requisito explícito (*"Diagrama de Sequência para o fluxo de autenticação **e** abertura de ordens de serviço"*). Troca ruim: entregue os dois.
 
 **Nunca sacrifique**, em nenhuma hipótese — sem estes a entrega não é avaliável:
 
