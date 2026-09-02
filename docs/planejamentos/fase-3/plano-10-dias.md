@@ -19,6 +19,39 @@ Não existe reorganização de cronograma que resolva 88 horas. O que existe é 
 
 ---
 
+## 🚧 Pendência bloqueante — acesso aos repositórios
+
+> **Status em 02/09.** Não depende de você: depende do `ProblemaTheu` conceder permissão.
+
+`ProblemaTheu` é uma **conta de usuário** (não organização) e é a dona dos quatro repositórios. Sua conta é `Mendeszx`, e hoje tem:
+
+| Repo | pull | push | **admin** |
+|---|---|---|---|
+| `oficina-app` | ✅ | ✅ | ❌ |
+| `oficina-lambda-auth` | ✅ | ❌ | ❌ |
+| `oficina-infra-k8s` | ✅ | ❌ | ❌ |
+| `oficina-infra-db` | ✅ | ❌ | ❌ |
+
+**O que isso bloqueia:**
+
+| Bloqueado | Impacto |
+|---|---|
+| `git push` nos 3 repos novos | Alto — o conteúdo está commitado localmente em `~/git/`, esperando |
+| **Branch protection nos 4** ([F3-1.2](backlog.md#f3-12--proteção-de-branch-nos-4-repositórios)) | **Alto — requisito explícito do enunciado**: *"Branch main/master protegida"* e *"Uso obrigatório de Pull Requests"*. Ruleset exige `admin`, que você não tem nem no `oficina-app` |
+| *Environments* `prod` com reviewer ([F3-1.3](backlog.md#f3-13--ambientes-do-github-e-segredos)) | Médio — sem isso não há a cena de aprovação de deploy no vídeo |
+| Secrets e variables dos repos | Médio — o CD não autentica sem `AWS_ROLE_ARN` |
+| Adicionar `soat-architecture` ([F3-7.2](backlog.md#f3-72--pdf-do-portal-e-compartilhamento-dos-repositórios)) | **Alto — exigência de entrega**, também precisa de `admin` |
+
+**O que resolve:** o `ProblemaTheu` acessa, em cada um dos 4 repositórios, *Settings → Collaborators* e define a role de `Mendeszx` como **Admin** (nos 3 novos, adicionar como colaborador direto).
+
+Alternativa: se `ProblemaTheu` for um segundo perfil seu, `gh auth login` com ele resolve na hora.
+
+**Prazo:** precisa estar resolvido **até 07/09** (feriado), que é quando o plano faz CI/CD, environments e branch protection. Depois disso, começa a comer a folga de 6 h.
+
+> ✅ **Nada disso trava o trabalho técnico.** Infraestrutura AWS, código da Lambda, migrations, observabilidade e documentação seguem normalmente — o bloqueio é só na camada de administração do GitHub, e tudo o que ele impede se aplica em minutos assim que a permissão sair.
+
+---
+
 ## Os 9 cortes
 
 | # | Corte | Economia | Como justificar na entrega |
@@ -175,6 +208,20 @@ Depois:
 - ✅ [F3-0.1](backlog.md#f3-01--backend-remoto-do-terraform-s3-com-lock-nativo) + [F3-0.4](backlog.md#f3-04--oidc-entre-github-actions-e-aws-deploy-sem-segredos-de-longa-duração) — **bootstrap concluído** (S3 + OIDC + 4 roles). Sem DynamoDB: o Terraform 1.15 usa lock nativo do S3
 
 ✅ **Entregável:** `aws sts get-caller-identity` rodando num workflow do GitHub, sem nenhum secret de credencial AWS.
+
+**Executado em 01–02/09:**
+
+- [x] Conta AWS, usuário IAM `admin-cli`, CLI configurada em `us-east-1`
+- [x] Quota de vCPU 5 → 32 solicitada (`PENDING`)
+- [x] AWS Budget US$ 60, alertas em 50% previsto e 90% real
+- [x] Bootstrap aplicado — 13 recursos: bucket `oficina-tfstate-706215605178`, OIDC e 4 roles
+- [x] Ferramentas instaladas; `go`, `helm`, `kustomize`, `gh`, `gitleaks` faltavam
+- [x] Rename `tech-challenge-1` → `oficina-app` (8 pontos), build/vet/test/lint verdes
+- [x] `gitleaks` sobre os 58 commits do histórico: 3 achados, **todos falso positivo**, suprimidos em `.gitleaks.toml`
+- [x] Os 3 repos novos preparados e commitados localmente (`~/git/`), com README no formato do enunciado
+- [ ] ⛔ `git push` dos 3 repos — **bloqueado**, ver [pendência](#pendência-bloqueante--acesso-aos-repositórios)
+- [ ] ⛔ Branch protection e branch `homolog` — **bloqueado**, mesma pendência
+- [ ] ⛔ Workflow de teste com OIDC — depende do push
 
 #### Renomear `tech-challenge-1` → `oficina-app`
 
