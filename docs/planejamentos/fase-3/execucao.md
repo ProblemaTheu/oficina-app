@@ -112,6 +112,44 @@ As duas Lambdas escritas, compiladas e testadas. O `oficina-lambda-auth` saiu de
 
 ---
 
+## 03/09 — Dia 5 concluído (parcialmente)
+
+O fluxo ponta a ponta pelo API Gateway está de pé. **URL pública:** `https://950h33a7r7.execute-api.us-east-1.amazonaws.com`
+
+| Verificação | Resultado |
+|---|---|
+| `POST /auth/token` cliente ativo | 200 + JWT com as claims do contrato |
+| cliente inativo | 403 `cliente_inativo` |
+| CPF inválido | 400 `cpf_invalido` |
+| CPF válido sem cadastro | 404 `cliente_nao_encontrado` |
+| `/v1/work-orders` sem token | 401 — barrado no Gateway, não chega ao cluster |
+| token adulterado | 403 |
+| token da Lambda | 200 — prova que app e Lambda leem o mesmo segredo |
+| `/health/ready`, `/v1/auth/login` | 200, públicas |
+
+### A costura assimétrica foi eliminada
+
+O backlog mandava aplicar o `infra-k8s` **duas vezes** na primeira subida: ele criaria as rotas `/v1/*`, que precisam do `authorizer_id` publicado pelo `lambda-auth`, que por sua vez precisa do Gateway já existir. O próprio backlog chamava isso de *"a única costura assimétrica da arquitetura"*.
+
+A causa é que uma rota protegida depende de **duas** coisas de repositórios diferentes: a integração e o authorizer. Passando as rotas para o repositório que já é dono do authorizer, a dependência vira linear:
+
+`bootstrap → infra-k8s → infra-db → app → lambda-auth`
+
+O `infra-k8s` é aplicado uma vez. O custo é que a integração `HTTP_PROXY` para o balanceador vive no `lambda-auth`, que não é dono do cluster — anotado como trade-off na ADR.
+
+### Ainda falta do dia 5
+
+**F3-2.4 está pela metade.** A aplicação **aceita** o token da Lambda, porque valida assinatura e HS256 e o segredo é o mesmo. Mas não faz o que o contrato F3-0.2 define:
+
+- não valida `aud`, então aceitaria um token de outra audiência assinado com o mesmo segredo;
+- não distingue `tipo`, então um token de cliente alcança `POST /v1/work-orders`, que é operação interna;
+- não filtra por `sub`, então `GET /v1/work-orders` devolve **todas** as OS a um cliente, e não só as dele.
+
+O terceiro é o mais visível: é o que separa "rota autenticada" de "rota protegida por CPF".
+
+
+---
+
 ## Achados que custaram tempo
 
 ### OIDC: o `sub` não é o dos tutoriais
