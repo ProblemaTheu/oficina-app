@@ -47,16 +47,23 @@ patches:
         DB_SSLMODE: require
         NOTIFIER: log
 
-  # Expõe a API pela borda. `aws-load-balancer-type: nlb` é lido pelo
-  # cloud-controller-manager do EKS — não exige o AWS Load Balancer
-  # Controller, que o corte 1 deixou de fora.
+  # Expõe a API pela borda — Classic Load Balancer, de propósito.
+  #
+  # ⚠️ NÃO acrescente `aws-load-balancer-type: nlb`. Esta conta AWS responde
+  # OperationNotPermitted na API ELBv2 ("This AWS account currently does not
+  # support creating load balancers"), restrição de conta nova que também
+  # vale para ALB. A API clássica não é afetada, então o Service sem
+  # anotação de tipo sobe um CLB e funciona. Custa US$ 0,025/h contra
+  # US$ 0,0225/h do NLB — US$ 0,05 a mais por dia.
+  #
+  # O corte 1 (API Gateway com HTTP_PROXY) não muda: o Gateway aponta para o
+  # DNS público do balanceador, seja ele CLB ou NLB.
   - patch: |-
       apiVersion: v1
       kind: Service
       metadata:
         name: api
         annotations:
-          service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
           service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
       spec:
         type: LoadBalancer

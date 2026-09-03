@@ -31,7 +31,7 @@ Nenhum remove requisito do enunciado. Os de 1 a 9 trocam robustez por tempo e vi
 
 | # | Corte | Economia | Como justificar |
 |---|---|---|---|
-| 1 | **VPC Link + ALB interno + `TargetGroupBinding`** → `Service type: LoadBalancer` (NLB) e API Gateway com `HTTP_PROXY` + header compartilhado | **6 h** | ADR: topologia correta para produção; adotamos a integração direta pelo prazo, com o caminho de evolução documentado |
+| 1 | **VPC Link + ALB interno + `TargetGroupBinding`** → `Service type: LoadBalancer` (**CLB**, ver nota) e API Gateway com `HTTP_PROXY` + header compartilhado | **6 h** | ADR: topologia correta para produção; adotamos a integração direta pelo prazo, com o caminho de evolução documentado |
 | 2 | **NAT Gateway** → nós em subnet pública | 2 h + US$ 8 | ADR: SG restritivo; em produção real iriam para subnet privada |
 | 3 | **Cluster Autoscaler** → 2 nós `t3.small` fixos, HPA de 2 a 6 pods | 2 h | O enunciado pede "cluster com escalabilidade" — o HPA entrega. Autoscaler como evolução na ADR-009 |
 | 4 | **External Secrets Operator** → `kubernetes_secret` criado pelo Terraform | 2 h | Mesmo resultado; o ESO agrega rotação automática, que não é requisito |
@@ -167,6 +167,8 @@ Reserve os ~20 min do EKS — não é travamento. E **não interrompa um apply**
 - [F3-5.1](backlog.md#f3-51--revisão-do-modelo-relacional) — migration de modelagem (índices, `status`, `cpf_cnpj_digitos`, `timestamptz`)
 - [F3-5.3](backlog.md#f3-53--seeds-e-credenciais-em-ambiente-de-nuvem) — seed com cliente **ativo** e **inativo** (CPFs válidos!)
 - Overlay `prod` + `Service type: LoadBalancer` + deploy manual (`kubectl apply -k`)
+
+> ⚠️ **Esta conta AWS não cria NLB nem ALB.** A API ELBv2 responde `OperationNotPermitted` — restrição de conta nova, não quota. O `Service` **sem** anotação de tipo sobe um **Classic Load Balancer**, que funciona e custa US$ 0,05/dia a mais. Não muda o corte 1: o `HTTP_PROXY` do Gateway não distingue os dois. Detalhes em [execucao.md](execucao.md#a-conta-não-cria-nlb-nem-alb--só-classic).
 
 ✅ **Entregável:** `curl http://<nlb>/health/ready` responde `UP` e a primeira OS é criada. **A partir de hoje o gráfico de volume diário começa a existir.**
 

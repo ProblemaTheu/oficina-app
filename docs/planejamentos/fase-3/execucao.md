@@ -71,6 +71,25 @@ O script apaga os Services do namespace antes do `terraform destroy`, porque **o
 
 ---
 
+## 03/09 — Dia 3 concluído
+
+Aplicação na nuvem. Migrations 000005 e 000006 aplicadas no RDS pelo boot do pod, overlay `prod` implantado no EKS e API pública.
+
+**Entregável verificado:** `curl http://<lb>/health/ready` responde `{"status":"UP","components":{"db":{"status":"UP"}}}` pela internet, e a **OS-2026-00001** foi criada para a Maria Silva.
+
+| Item | Valor |
+|---|---|
+| Load balancer | `adf501e528a5c4a999da812ef487526f-556148891.us-east-1.elb.amazonaws.com` (Classic, internet-facing) |
+| Imagem | `problematheu/oficina-api:latest` — publicada pelo CD via `workflow_dispatch` |
+| Cliente ativo | Maria Silva · `529.982.247-25` · `770e8400-…-440001` |
+| Cliente inativo | Carlos Pereira · `111.444.777-35` · `770e8400-…-440002` |
+| Segredos da app | `oficina/prod/app` no Secrets Manager (`jwt_secret`, `webhook_secret`) |
+
+O `JWT_SECRET` já nasceu no Secrets Manager em vez de gerado no cluster, porque no dia 5 ele vira segredo **compartilhado** com a Lambda (F3-2.5) — assim não precisa rotacionar depois.
+
+
+---
+
 ## Achados que custaram tempo
 
 ### OIDC: o `sub` não é o dos tutoriais
@@ -171,6 +190,38 @@ aws ec2 describe-route-tables --filters Name=vpc-id,Values=<vpc-id> \
 ```
 
 Sem `0.0.0.0/0` na route table das subnets dos nós, é isso. `apply -target=module.vpc` antes de tudo evita o problema.
+
+### A conta não cria NLB nem ALB — só Classic
+
+`Service type: LoadBalancer` com a anotação `aws-load-balancer-type: nlb` ficou 6 minutos em `<pending>`. O motivo só aparece em `kubectl describe svc`:
+
+```
+OperationNotPermitted: This AWS account currently does not support creating
+load balancers. For more information, please contact AWS Support.
+```
+
+Não é quota (`describe-account-limits` mostra 50) nem configuração: é **restrição de conta nova**, e vale para toda a API **ELBv2** — NLB e ALB. A API clássica **não** é afetada: removida a anotação de tipo, o mesmo Service subiu um CLB em segundos.
+
+Consequência prática: nenhuma. O corte 1 aponta o API Gateway para o DNS público do balanceador, e `HTTP_PROXY` não distingue CLB de NLB. Custa US$ 0,05/dia a mais. Abrir caso no Support só valeria a pena se ALB voltasse ao escopo.
+
+> Se aparecer `<pending>` em Service `LoadBalancer`, **leia `kubectl describe svc` antes de mexer em subnet, tag ou security group** — o controller escreve a causa real nos eventos.
+
+### RDS 15 recusa conexão sem TLS
+
+`rds.force_ssl=1` é o padrão do parameter group do PostgreSQL 15. A aplicação subia em `CrashLoopBackOff` com:
+
+```
+pq: no pg_hba.conf entry for host "10.0.11.26", user "oficina",
+database "oficina", no encryption (28000)
+```
+
+A mensagem cita `pg_hba.conf` e parece problema de permissão ou de security group — e é de criptografia. A DSN tinha `sslmode=disable` fixo no código; virou `DB_SSLMODE`, com `require` em produção e `disable` como default para não mexer no ambiente local.
+
+### A imagem do Docker Hub não existia
+
+O rename do dia 1 trocou o nome para `problematheu/oficina-api` no `cd.yml` e nos manifestos, mas ninguém criou o repositório no Docker Hub — o publicado ainda era `problematheu/tech-challenge-api`. E o Docker local está logado como `nukeer`, não como `problematheu`, então não dava para publicar da máquina.
+
+Saída: `gh workflow run cd.yml --ref feature/fase-3`. O `cd.yml` tem `workflow_dispatch` e o job de deploy só roda com `vars.DEPLOY_ENABLED == 'true'`, que não existe — então o pipeline publica a imagem com as credenciais que já estão nos secrets e não tenta implantar nada.
 
 ---
 
