@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"time"
 
 	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
@@ -32,11 +33,14 @@ func (r *ClienteRepository) Salvar(cliente *entity.Cliente) (*entity.Cliente, er
 	cliente.AtualizadoEm = time.Now()
 
 	query := `
-		INSERT INTO clientes (id, nome, cpf_cnpj, email, telefone, criado_em, atualizado_em)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO clientes (id, nome, cpf_cnpj, status, email, telefone, criado_em, atualizado_em)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`
+	if cliente.Status == "" {
+		cliente.Status = entity.StatusClienteAtivo
+	}
 	_, err := r.db.ExecContext(context.Background(), query,
-		cliente.ID, cliente.Nome, cliente.CpfCnpj,
+		cliente.ID, cliente.Nome, cliente.CpfCnpj, cliente.Status,
 		cliente.Email, cliente.Telefone,
 		cliente.CriadoEm, cliente.AtualizadoEm,
 	)
@@ -56,7 +60,7 @@ func (r *ClienteRepository) BuscarTodos() ([]*entity.Cliente, error) {
 	slog.Info("buscando todos os clientes no banco de dados")
 
 	query := `
-		SELECT id, nome, cpf_cnpj, email, telefone, criado_em, atualizado_em
+		SELECT id, nome, cpf_cnpj, status, email, telefone, criado_em, atualizado_em
 		FROM clientes
 		ORDER BY criado_em DESC
 	`
@@ -69,7 +73,7 @@ func (r *ClienteRepository) BuscarTodos() ([]*entity.Cliente, error) {
 	var clientes []*entity.Cliente
 	for rows.Next() {
 		c := &entity.Cliente{}
-		if err := rows.Scan(&c.ID, &c.Nome, &c.CpfCnpj, &c.Email, &c.Telefone, &c.CriadoEm, &c.AtualizadoEm); err != nil {
+		if err := rows.Scan(&c.ID, &c.Nome, &c.CpfCnpj, &c.Status, &c.Email, &c.Telefone, &c.CriadoEm, &c.AtualizadoEm); err != nil {
 			return nil, fmt.Errorf("ClienteRepository.BuscarTodos scan: %w", err)
 		}
 		clientes = append(clientes, c)
@@ -84,13 +88,14 @@ func (r *ClienteRepository) BuscarPorID(id string) (*entity.Cliente, error) {
 	var cliente entity.Cliente
 
 	err := r.db.QueryRow(`
-		SELECT id, nome, cpf_cnpj, email, telefone
+		SELECT id, nome, cpf_cnpj, status, email, telefone
 		FROM clientes
 		WHERE id = $1
 	`, id).Scan(
 		&cliente.ID,
 		&cliente.Nome,
 		&cliente.CpfCnpj,
+		&cliente.Status,
 		&cliente.Email,
 		&cliente.Telefone,
 	)
@@ -114,7 +119,7 @@ func (r *ClienteRepository) Atualizar(cliente *entity.Cliente) (*entity.Cliente,
 		    email = $3,
 		    telefone = $4
 		WHERE id = $5
-		RETURNING id, nome, cpf_cnpj, email, telefone
+		RETURNING id, nome, cpf_cnpj, status, email, telefone
 	`,
 		cliente.Nome,
 		cliente.CpfCnpj,
@@ -125,6 +130,7 @@ func (r *ClienteRepository) Atualizar(cliente *entity.Cliente) (*entity.Cliente,
 		&cliente.ID,
 		&cliente.Nome,
 		&cliente.CpfCnpj,
+		&cliente.Status,
 		&cliente.Email,
 		&cliente.Telefone,
 	)
@@ -165,15 +171,26 @@ func (r *ClienteRepository) Remover(id string) error {
 	return nil
 }
 
-// BuscarPorDocumento retorna o cliente com o CPF/CNPJ informado (apenas dígitos).
+// naoDigito casa com tudo que não é algarismo — pontos, traços, barras e
+// espaços das máscaras de CPF e CNPJ.
+var naoDigito = regexp.MustCompile(`[^0-9]`)
+
+// apenasDigitos normaliza o documento para o formato da coluna gerada
+// cpf_cnpj_digitos, que é como o banco indexa.
+func apenasDigitos(documento string) string {
+	return naoDigito.ReplaceAllString(documento, "")
+}
+
+// BuscarPorDocumento retorna o cliente com o CPF/CNPJ informado, com ou sem
+// máscara: a consulta usa a coluna gerada cpf_cnpj_digitos.
 func (r *ClienteRepository) BuscarPorDocumento(documento string) (*entity.Cliente, error) {
 	var cliente entity.Cliente
 	err := r.db.QueryRowContext(context.Background(), `
-		SELECT id, nome, cpf_cnpj, email, telefone, criado_em, atualizado_em
+		SELECT id, nome, cpf_cnpj, status, email, telefone, criado_em, atualizado_em
 		FROM clientes
-		WHERE cpf_cnpj = $1
-	`, documento).Scan(
-		&cliente.ID, &cliente.Nome, &cliente.CpfCnpj,
+		WHERE cpf_cnpj_digitos = $1
+	`, apenasDigitos(documento)).Scan(
+		&cliente.ID, &cliente.Nome, &cliente.CpfCnpj, &cliente.Status,
 		&cliente.Email, &cliente.Telefone,
 		&cliente.CriadoEm, &cliente.AtualizadoEm,
 	)
@@ -190,7 +207,7 @@ func (r *ClienteRepository) BuscarPorDocumento(documento string) (*entity.Client
 // do campo, usado para compor a mensagem de ErrConflito.
 func campoDoConstraint(constraint string) string {
 	switch constraint {
-	case "clientes_cpf_cnpj_key":
+	case "clientes_cpf_cnpj_key", "ux_clientes_cpf_digitos":
 		return "cpf_cnpj"
 	case "clientes_email_key":
 		return "email"

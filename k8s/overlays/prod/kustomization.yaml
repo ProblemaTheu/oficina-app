@@ -1,0 +1,58 @@
+# Overlay de produção — EKS + RDS na AWS.
+#
+# Diferenças em relação ao local:
+#   - sem Postgres in-cluster: DB_HOST aponta para o RDS
+#   - sem Mailpit: NOTIFIER=log (corte 5 — SES ficou fora do escopo, e a
+#     integração SMTP é demonstrada no ambiente local)
+#   - Service type LoadBalancer (NLB): corte 1, sem VPC Link nem ALB interno
+#
+# O Secret oficina-secrets NÃO é versionado: criado a partir do Secrets
+# Manager por scripts/prod-secret.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: oficina-prod
+
+resources:
+  - ../../base
+
+images:
+  - name: docker.io/problematheu/oficina-api
+    newTag: latest
+
+patches:
+  # O namespace é criado pelo Terraform do oficina-infra-k8s, que é o dono
+  # dele. Aplicá-lo daqui também colocaria dois donos no mesmo recurso.
+  - target:
+      kind: Namespace
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: oficina
+
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: oficina-config
+      data:
+        DB_HOST: oficina-prod.c6v88i2ao3cy.us-east-1.rds.amazonaws.com
+        DB_PORT: "5432"
+        DB_NAME: oficina
+        NOTIFIER: log
+
+  # Expõe a API pela borda. `aws-load-balancer-type: nlb` é lido pelo
+  # cloud-controller-manager do EKS — não exige o AWS Load Balancer
+  # Controller, que o corte 1 deixou de fora.
+  - patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+          service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+      spec:
+        type: LoadBalancer
