@@ -90,6 +90,28 @@ O `JWT_SECRET` já nasceu no Secrets Manager em vez de gerado no cluster, porque
 
 ---
 
+## 03/09 — Dia 4 concluído
+
+As duas Lambdas escritas, compiladas e testadas. O `oficina-lambda-auth` saiu de "só README" para o repositório completo, menos o Terraform, que é do dia 5.
+
+| Pacote | Conteúdo |
+|---|---|
+| `internal/cpf` | dígitos verificadores sem dependência externa · **95,2%** de cobertura, 14 casos |
+| `internal/token` | contrato de claims (F3-0.2) compartilhado pelos dois handlers |
+| `internal/segredo` | Secrets Manager com cache por container, lendo campo de JSON |
+| `cmd/auth-token` | 400 CPF inválido · 404 sem cadastro · 403 inativo · 200 com JWT |
+| `cmd/auth-authorizer` | assinatura, `exp` e `aud` na borda, com resposta simples |
+| `Makefile` | `dist/*.zip` com binário `bootstrap`, linux/arm64 |
+
+**O segredo já casa com o que existe.** O `scripts/prod-secret.sh` do dia 3 criou `oficina/prod/app` no formato `{"jwt_secret": ..., "webhook_secret": ...}`. As Lambdas leem o campo `jwt_secret` desse mesmo segredo, então o HS256 assina e verifica com a mesma chave dos dois lados sem nenhum passo de sincronização.
+
+**A DSN da Lambda ganha `sslmode=require` se vier sem.** Não é elegância: é a mesma armadilha do RDS que custou meia hora no dia 3, e a mensagem de erro aponta para o lugar errado.
+
+**O que foi testado no authorizer.** A decisão de aceitar ou negar saiu do handler para uma função pura, testada contra token assinado com outro segredo, expirado, de outra audiência, sem audiência, sem o prefixo `Bearer`, e — o ataque clássico — com o header trocado para `alg=none`. Sem `jwt.WithValidMethods`, esse último passa.
+
+
+---
+
 ## Achados que custaram tempo
 
 ### OIDC: o `sub` não é o dos tutoriais
