@@ -5,19 +5,16 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/config"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 )
 
 // webhookSecret retorna o segredo compartilhado usado para assinar os corpos
 // dos webhooks. Configurável via WEBHOOK_SECRET.
 func webhookSecret() []byte {
-	if s := os.Getenv("WEBHOOK_SECRET"); s != "" {
-		return []byte(s)
-	}
-	return []byte("changeme-insecure-webhook-secret")
+	return config.WebhookSecret()
 }
 
 // AssinaturaWebhook retorna um middleware que valida a assinatura HMAC-SHA256

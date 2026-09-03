@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/ProblemaTheu/oficina-app/internal/infra/config"
 )
 
 func tokenValido(t *testing.T) string {
@@ -15,7 +17,7 @@ func tokenValido(t *testing.T) string {
 		"sub": "usuario-teste",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
-	assinado, err := token.SignedString(jwtSecret())
+	assinado, err := token.SignedString(config.JWTSecret())
 	if err != nil {
 		t.Fatalf("falha ao assinar token de teste: %v", err)
 	}
@@ -62,7 +64,7 @@ func TestJWT_TokenExpiradoRetorna401(t *testing.T) {
 		"sub": "usuario-teste",
 		"exp": time.Now().Add(-time.Hour).Unix(),
 	})
-	assinado, _ := token.SignedString(jwtSecret())
+	assinado, _ := token.SignedString(config.JWTSecret())
 
 	rec := requisitar(http.MethodGet, "/v1/clients", "Bearer "+assinado)
 	if rec.Code != http.StatusUnauthorized {

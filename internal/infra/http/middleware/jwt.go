@@ -4,8 +4,8 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/config"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 
@@ -35,20 +35,13 @@ var publicRoutes = []publicRoute{
 	{"POST", regexp.MustCompile(`^/v1/webhooks/budget-response$`)},
 }
 
-func jwtSecret() []byte {
-	if s := os.Getenv("JWT_SECRET"); s != "" {
-		return []byte(s)
-	}
-	return []byte("changeme-insecure-default-secret")
-}
-
 // JWT retorna um middleware chi que valida o Bearer token JWT em todas as
 // rotas, exceto aquelas listadas em publicRoutes.
 //
 // Em caso de sucesso, os claims são armazenados no contexto via ClaimsContextKey.
 // Em caso de falha, responde imediatamente com 401 JSON e interrompe a cadeia.
 func JWT() func(http.Handler) http.Handler {
-	secret := jwtSecret()
+	secret := config.JWTSecret()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

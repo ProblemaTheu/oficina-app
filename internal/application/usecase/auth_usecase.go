@@ -7,8 +7,8 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/config"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
@@ -18,13 +18,6 @@ import (
 )
 
 const jwtExpiresIn = 8 * time.Hour
-
-func jwtSecret() []byte {
-	if s := os.Getenv("JWT_SECRET"); s != "" {
-		return []byte(s)
-	}
-	return []byte("changeme-insecure-default-secret")
-}
 
 type AuthUseCase struct {
 	usuarioRepo usuarioRepo
@@ -193,7 +186,7 @@ func (uc *AuthUseCase) Login(ctx context.Context, input LoginInput) (*LoginOutpu
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString(jwtSecret())
+	signed, err := token.SignedString(config.JWTSecret())
 	if err != nil {
 		slog.ErrorContext(ctx, "login: falha ao assinar token JWT", "usuario_id", usuario.ID, "error", err)
 		return nil, fmt.Errorf("auth: gerar token: %w", err)
