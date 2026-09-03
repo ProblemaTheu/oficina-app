@@ -112,7 +112,7 @@ As duas Lambdas escritas, compiladas e testadas. O `oficina-lambda-auth` saiu de
 
 ---
 
-## 03/09 — Dia 5 concluído (parcialmente)
+## 03/09 — Dia 5 concluído
 
 O fluxo ponta a ponta pelo API Gateway está de pé. **URL pública:** `https://950h33a7r7.execute-api.us-east-1.amazonaws.com`
 
@@ -137,15 +137,30 @@ A causa é que uma rota protegida depende de **duas** coisas de repositórios di
 
 O `infra-k8s` é aplicado uma vez. O custo é que a integração `HTTP_PROXY` para o balanceador vive no `lambda-auth`, que não é dono do cluster — anotado como trade-off na ADR.
 
-### Ainda falta do dia 5
+### F3-2.4 — o contrato fechado
 
-**F3-2.4 está pela metade.** A aplicação **aceita** o token da Lambda, porque valida assinatura e HS256 e o segredo é o mesmo. Mas não faz o que o contrato F3-0.2 define:
+A aplicação já **aceitava** o token da Lambda (mesmo segredo, mesma assinatura), mas tratava cliente e funcionário como a mesma coisa. Três lacunas, da menos para a mais grave, todas fechadas:
 
-- não valida `aud`, então aceitaria um token de outra audiência assinado com o mesmo segredo;
-- não distingue `tipo`, então um token de cliente alcança `POST /v1/work-orders`, que é operação interna;
-- não filtra por `sub`, então `GET /v1/work-orders` devolve **todas** as OS a um cliente, e não só as dele.
+| Antes | Agora |
+|---|---|
+| `aud` não validado — token assinado para outro sistema com a mesma chave valeria aqui | middleware exige `aud=oficina-api`; o login passou a emitir `papel`, `tipo`, `iss` e `aud` |
+| token de **cliente** alcançava `POST /v1/work-orders` e todas as operações internas | 27 handlers exigem `tipo=usuario` |
+| `GET /v1/work-orders` devolvia **todas** as OS a qualquer cliente | filtro imposto a partir do `sub`, e OS alheia por ID responde 404 |
 
-O terceiro é o mais visível: é o que separa "rota autenticada" de "rota protegida por CPF".
+O segundo merece nota: **o authorizer do API Gateway não impede isso.** Ele valida a assinatura e para por aí — e o token do cliente é perfeitamente assinado. A autorização por tipo é trabalho da aplicação, não da borda.
+
+Provado em produção, com uma OS para cada cliente:
+
+| Quem pede | O que vê |
+|---|---|
+| funcionário | 2 OS |
+| cliente Maria | 1 OS — só a dela |
+| Maria forçando `cliente_id` do Carlos no parâmetro | 1 OS — o filtro é imposto, não aceito |
+| Maria lendo a OS do Carlos por ID | 404 |
+
+O 404 é deliberado: um 403 confirmaria que aquela OS existe.
+
+> ⚠️ **Efeito colateral aceito:** tokens emitidos antes deste deploy não têm `aud` e passam a receber 401. Validade de 8 h, então o efeito se esgota sozinho. Token sem o claim `tipo` continua sendo tratado como funcionário justamente para não deslogar todo mundo no instante do deploy.
 
 
 ---
