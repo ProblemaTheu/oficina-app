@@ -33,10 +33,14 @@ func Connect() *sql.DB {
 	user := getEnv("DB_USER", "postgres")
 	password := getEnv("DB_PASSWORD", "postgres")
 	dbname := getEnv("DB_NAME", "tech_challenge_db")
+	// O RDS PostgreSQL 15 vem com rds.force_ssl=1: conexão sem TLS é recusada
+	// com "no pg_hba.conf entry ... no encryption", que parece erro de
+	// permissão e não é. Local (docker compose e kind) segue em disable.
+	sslmode := getEnv("DB_SSLMODE", "disable")
 
 	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname,
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		host, port, user, password, dbname, sslmode,
 	)
 
 	slog.Info("conectando ao banco de dados", "host", host, "port", port, "dbname", dbname)

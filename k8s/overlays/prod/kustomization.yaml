@@ -41,6 +41,10 @@ patches:
         DB_HOST: oficina-prod.c6v88i2ao3cy.us-east-1.rds.amazonaws.com
         DB_PORT: "5432"
         DB_NAME: oficina
+        # O RDS recusa conexão sem TLS (rds.force_ssl=1). "require" cifra o
+        # tráfego sem exigir o bundle de CA da AWS no container; verify-full
+        # seria o passo seguinte, e depende de montar o certificado.
+        DB_SSLMODE: require
         NOTIFIER: log
 
   # Expõe a API pela borda. `aws-load-balancer-type: nlb` é lido pelo
