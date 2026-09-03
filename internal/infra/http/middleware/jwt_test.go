@@ -15,6 +15,7 @@ func tokenValido(t *testing.T) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": "usuario-teste",
+		"aud": "oficina-api",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 	assinado, err := token.SignedString(config.JWTSecret())
@@ -75,6 +76,7 @@ func TestJWT_TokenExpiradoRetorna401(t *testing.T) {
 func TestJWT_AssinaturaDeOutroSegredoRetorna401(t *testing.T) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": "usuario-teste",
+		"aud": "oficina-api",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 	assinado, _ := token.SignedString([]byte("segredo-errado"))
@@ -107,5 +109,41 @@ func TestJWT_MetodoErradoEmRotaPublicaExigeToken(t *testing.T) {
 	rec := requisitar(http.MethodGet, "/v1/webhooks/budget-response", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("esperava 401 para método fora da rota pública, obteve %d", rec.Code)
+	}
+}
+
+// A audiência é o que impede um token assinado para OUTRO sistema com a mesma
+// chave de valer aqui. Como os dois emissores compartilham o segredo, ela é a
+// única barreira entre eles e um terceiro consumidor.
+func TestJWT_TokenSemAudienciaEhRejeitado(t *testing.T) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "usuario-teste",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	assinado, err := token.SignedString(config.JWTSecret())
+	if err != nil {
+		t.Fatalf("falha ao assinar token de teste: %v", err)
+	}
+
+	rec := requisitar("GET", "/v1/clients", "Bearer "+assinado)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("esperava 401 para token sem aud, obteve %d", rec.Code)
+	}
+}
+
+func TestJWT_AudienciaDeOutroSistemaEhRejeitada(t *testing.T) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "usuario-teste",
+		"aud": "outro-sistema",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	assinado, err := token.SignedString(config.JWTSecret())
+	if err != nil {
+		t.Fatalf("falha ao assinar token de teste: %v", err)
+	}
+
+	rec := requisitar("GET", "/v1/clients", "Bearer "+assinado)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("esperava 401 para audiência de outro sistema, obteve %d", rec.Code)
 	}
 }

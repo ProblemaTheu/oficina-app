@@ -46,3 +46,15 @@ type ErrNaoProcessavel struct {
 func (e *ErrNaoProcessavel) Error() string {
 	return e.Mensagem
 }
+
+// ErrProibido é retornado quando o solicitante está autenticado mas não tem
+// permissão para a operação (HTTP 403). Distingue-se do 401: ali o problema é
+// não sabermos quem é; aqui sabemos, e a resposta é não.
+type ErrProibido struct {
+	Codigo   string
+	Mensagem string
+}
+
+func (e *ErrProibido) Error() string {
+	return e.Mensagem
+}

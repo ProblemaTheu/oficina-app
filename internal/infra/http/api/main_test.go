@@ -10,7 +10,7 @@ import (
 // config.JWTSecret entra em pânico de propósito. Ver
 // internal/infra/config/segredos.go.
 func TestMain(m *testing.M) {
-	os.Setenv("JWT_SECRET", strings.Repeat("x", 32))
-	os.Setenv("WEBHOOK_SECRET", strings.Repeat("y", 32))
+	_ = os.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+	_ = os.Setenv("WEBHOOK_SECRET", strings.Repeat("y", 32))
 	os.Exit(m.Run())
 }

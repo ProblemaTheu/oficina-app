@@ -8,6 +8,6 @@ import (
 
 // Ver comentário em internal/infra/http/middleware/main_test.go.
 func TestMain(m *testing.M) {
-	os.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+	_ = os.Setenv("JWT_SECRET", strings.Repeat("x", 32))
 	os.Exit(m.Run())
 }

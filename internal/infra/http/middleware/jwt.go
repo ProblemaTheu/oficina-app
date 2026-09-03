@@ -18,6 +18,10 @@ type ctxKey string
 
 const ClaimsContextKey ctxKey = "jwt_claims"
 
+// audienciaEsperada é o "aud" do contrato F3-0.2, comum aos dois emissores:
+// quem consome o token é sempre esta API.
+const audienciaEsperada = "oficina-api"
+
 // publicRoute define um endpoint isento de autenticação JWT.
 type publicRoute struct {
 	method  string
@@ -67,7 +71,14 @@ func JWT() func(http.Handler) http.Handler {
 					return nil, jwt.ErrSignatureInvalid
 				}
 				return secret, nil
-			}, jwt.WithValidMethods([]string{"HS256"}))
+			},
+				jwt.WithValidMethods([]string{"HS256"}),
+				// Aceita os dois emissores — a Lambda e esta aplicação —, que
+				// compartilham o segredo. O que a audiência garante é que um
+				// token assinado para OUTRO sistema com a mesma chave não
+				// valha aqui.
+				jwt.WithAudience(audienciaEsperada),
+			)
 
 			if err != nil || !token.Valid {
 				writeUnauthorized(w, "token inválido ou expirado")

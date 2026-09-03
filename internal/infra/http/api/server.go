@@ -15,6 +15,7 @@ import (
 	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
 	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
 	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/http/middleware"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/notification"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/repository"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -107,7 +108,11 @@ func (s *Server) PostAuthLogin(ctx context.Context, request PostAuthLoginRequest
 // Respostas:
 //   - 200: ClienteListResponse com data[] e meta de paginação.
 //   - 401: token ausente ou inválido.
-func (s *Server) GetClients(_ context.Context, request GetClientsRequestObject) (GetClientsResponseObject, error) {
+func (s *Server) GetClients(ctx context.Context, request GetClientsRequestObject) (GetClientsResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	// Filtro por documento: retorna lista com um único elemento ou vazia.
 	if request.Params.Documento != nil && *request.Params.Documento != "" {
 		cliente, err := s.clientUseCase.FindByDocumento(*request.Params.Documento)
@@ -165,7 +170,11 @@ func (s *Server) GetClients(_ context.Context, request GetClientsRequestObject) 
 //   - 400: payload inválido ou regra de negócio violada (ex: CPF inválido).
 //   - 401: token ausente ou inválido.
 //   - 409: CPF/CNPJ ou e-mail já cadastrado.
-func (s *Server) PostClients(_ context.Context, request PostClientsRequestObject) (PostClientsResponseObject, error) {
+func (s *Server) PostClients(ctx context.Context, request PostClientsRequestObject) (PostClientsResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	cliente, err := s.clientUseCase.Create(
@@ -199,7 +208,11 @@ func (s *Server) PostClients(_ context.Context, request PostClientsRequestObject
 //   - 200: ClienteResponse com os dados do cliente.
 //   - 401: token ausente ou inválido.
 //   - 404: cliente não encontrado.
-func (s *Server) GetClientsId(_ context.Context, request GetClientsIdRequestObject) (GetClientsIdResponseObject, error) {
+func (s *Server) GetClientsId(ctx context.Context, request GetClientsIdRequestObject) (GetClientsIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	cliente, err := s.clientUseCase.FindByID(request.Id.String())
 	if err != nil {
 		return nil, err
@@ -229,7 +242,11 @@ func (s *Server) GetClientsId(_ context.Context, request GetClientsIdRequestObje
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 404: cliente não encontrado.
-func (s *Server) PutClientsId(_ context.Context, request PutClientsIdRequestObject) (PutClientsIdResponseObject, error) {
+func (s *Server) PutClientsId(ctx context.Context, request PutClientsIdRequestObject) (PutClientsIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	var email *string
@@ -265,7 +282,11 @@ func (s *Server) PutClientsId(_ context.Context, request PutClientsIdRequestObje
 //   - 401: token ausente ou inválido.
 //   - 404: cliente não encontrado.
 //   - 409: cliente possui veículos ou ordens de serviço associados.
-func (s *Server) DeleteClientsId(_ context.Context, request DeleteClientsIdRequestObject) (DeleteClientsIdResponseObject, error) {
+func (s *Server) DeleteClientsId(ctx context.Context, request DeleteClientsIdRequestObject) (DeleteClientsIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	err := s.clientUseCase.Delete(request.Id.String())
 	if err != nil {
 		return nil, err
@@ -293,6 +314,9 @@ func (s *Server) GetClientsIdVehicles(
 	ctx context.Context,
 	request GetClientsIdVehiclesRequestObject,
 ) (GetClientsIdVehiclesResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
 
 	veiculos, err := s.vehicleUseCase.ListByCliente(request.Id.String())
 	if err != nil {
@@ -330,7 +354,11 @@ func (s *Server) GetClientsIdVehicles(
 // Respostas:
 //   - 200: VeiculoListResponse.
 //   - 401: token ausente ou inválido.
-func (s *Server) GetVehicles(_ context.Context, request GetVehiclesRequestObject) (GetVehiclesResponseObject, error) {
+func (s *Server) GetVehicles(ctx context.Context, request GetVehiclesRequestObject) (GetVehiclesResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	veiculos, err := s.vehicleUseCase.List()
 	if err != nil {
 		return nil, err
@@ -369,7 +397,11 @@ func (s *Server) GetVehicles(_ context.Context, request GetVehiclesRequestObject
 //   - 401: token ausente ou inválido.
 //   - 404: cliente informado não encontrado.
 //   - 409: placa já cadastrada.
-func (s *Server) PostVehicles(_ context.Context, request PostVehiclesRequestObject) (PostVehiclesResponseObject, error) {
+func (s *Server) PostVehicles(ctx context.Context, request PostVehiclesRequestObject) (PostVehiclesResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	veiculo, err := s.vehicleUseCase.Create(
@@ -402,7 +434,11 @@ func (s *Server) PostVehicles(_ context.Context, request PostVehiclesRequestObje
 //   - 200: VeiculoResponse.
 //   - 401: token ausente ou inválido.
 //   - 404: veículo não encontrado.
-func (s *Server) GetVehiclesId(_ context.Context, request GetVehiclesIdRequestObject) (GetVehiclesIdResponseObject, error) {
+func (s *Server) GetVehiclesId(ctx context.Context, request GetVehiclesIdRequestObject) (GetVehiclesIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	veiculo, err := s.vehicleUseCase.FindByID(request.Id.String())
 	if err != nil {
 		return nil, err
@@ -429,7 +465,11 @@ func (s *Server) GetVehiclesId(_ context.Context, request GetVehiclesIdRequestOb
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 404: veículo não encontrado.
-func (s *Server) PutVehiclesId(_ context.Context, request PutVehiclesIdRequestObject) (PutVehiclesIdResponseObject, error) {
+func (s *Server) PutVehiclesId(ctx context.Context, request PutVehiclesIdRequestObject) (PutVehiclesIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	veiculo, err := s.vehicleUseCase.Update(
@@ -456,7 +496,11 @@ func (s *Server) PutVehiclesId(_ context.Context, request PutVehiclesIdRequestOb
 //   - 401: token ausente ou inválido.
 //   - 404: veículo não encontrado.
 //   - 409: veículo possui ordens de serviço associadas.
-func (s *Server) DeleteVehiclesId(_ context.Context, request DeleteVehiclesIdRequestObject) (DeleteVehiclesIdResponseObject, error) {
+func (s *Server) DeleteVehiclesId(ctx context.Context, request DeleteVehiclesIdRequestObject) (DeleteVehiclesIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	err := s.vehicleUseCase.Delete(request.Id.String())
 	if err != nil {
 		return nil, err
@@ -479,7 +523,11 @@ func (s *Server) DeleteVehiclesId(_ context.Context, request DeleteVehiclesIdReq
 // Respostas:
 //   - 200: ServicoListResponse.
 //   - 401: token ausente ou inválido.
-func (s *Server) GetServices(_ context.Context, request GetServicesRequestObject) (GetServicesResponseObject, error) {
+func (s *Server) GetServices(ctx context.Context, request GetServicesRequestObject) (GetServicesResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	servicos, err := s.serviceUseCase.List()
 	if err != nil {
 		return nil, err
@@ -515,7 +563,11 @@ func (s *Server) GetServices(_ context.Context, request GetServicesRequestObject
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 409: já existe um serviço com este nome.
-func (s *Server) PostServices(_ context.Context, request PostServicesRequestObject) (PostServicesResponseObject, error) {
+func (s *Server) PostServices(ctx context.Context, request PostServicesRequestObject) (PostServicesResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	servico, err := s.serviceUseCase.Create(
@@ -546,7 +598,11 @@ func (s *Server) PostServices(_ context.Context, request PostServicesRequestObje
 //   - 200: ServicoResponse.
 //   - 401: token ausente ou inválido.
 //   - 404: serviço não encontrado.
-func (s *Server) GetServicesId(_ context.Context, request GetServicesIdRequestObject) (GetServicesIdResponseObject, error) {
+func (s *Server) GetServicesId(ctx context.Context, request GetServicesIdRequestObject) (GetServicesIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	servico, err := s.serviceUseCase.FindByID(request.Id.String())
 	if err != nil {
 		return nil, err
@@ -572,7 +628,11 @@ func (s *Server) GetServicesId(_ context.Context, request GetServicesIdRequestOb
 //   - 401: token ausente ou inválido.
 //   - 404: serviço não encontrado.
 //   - 409: já existe outro serviço com este nome.
-func (s *Server) PutServicesId(_ context.Context, request PutServicesIdRequestObject) (PutServicesIdResponseObject, error) {
+func (s *Server) PutServicesId(ctx context.Context, request PutServicesIdRequestObject) (PutServicesIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	servico, err := s.serviceUseCase.Update(
@@ -599,7 +659,11 @@ func (s *Server) PutServicesId(_ context.Context, request PutServicesIdRequestOb
 //   - 401: token ausente ou inválido.
 //   - 404: serviço não encontrado.
 //   - 409: serviço referenciado em ordens de serviço existentes.
-func (s *Server) DeleteServicesId(_ context.Context, request DeleteServicesIdRequestObject) (DeleteServicesIdResponseObject, error) {
+func (s *Server) DeleteServicesId(ctx context.Context, request DeleteServicesIdRequestObject) (DeleteServicesIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	err := s.serviceUseCase.Delete(request.Id.String())
 	if err != nil {
 		return nil, err
@@ -624,7 +688,11 @@ func (s *Server) DeleteServicesId(_ context.Context, request DeleteServicesIdReq
 // Respostas:
 //   - 200: PecaListResponse.
 //   - 401: token ausente ou inválido.
-func (s *Server) GetParts(_ context.Context, request GetPartsRequestObject) (GetPartsResponseObject, error) {
+func (s *Server) GetParts(ctx context.Context, request GetPartsRequestObject) (GetPartsResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	pecas, err := s.partUseCase.List()
 	if err != nil {
 		return nil, err
@@ -661,7 +729,11 @@ func (s *Server) GetParts(_ context.Context, request GetPartsRequestObject) (Get
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 409: já existe uma peça com este código.
-func (s *Server) PostParts(_ context.Context, request PostPartsRequestObject) (PostPartsResponseObject, error) {
+func (s *Server) PostParts(ctx context.Context, request PostPartsRequestObject) (PostPartsResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	peca, err := s.partUseCase.Create(
@@ -693,7 +765,11 @@ func (s *Server) PostParts(_ context.Context, request PostPartsRequestObject) (P
 //   - 200: PecaResponse (inclui campo calculado estoque_baixo).
 //   - 401: token ausente ou inválido.
 //   - 404: peça não encontrada.
-func (s *Server) GetPartsId(_ context.Context, request GetPartsIdRequestObject) (GetPartsIdResponseObject, error) {
+func (s *Server) GetPartsId(ctx context.Context, request GetPartsIdRequestObject) (GetPartsIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	peca, err := s.partUseCase.FindByID(request.Id.String())
 	if err != nil {
 		return nil, err
@@ -719,7 +795,11 @@ func (s *Server) GetPartsId(_ context.Context, request GetPartsIdRequestObject) 
 //   - 400: payload inválido.
 //   - 401: token ausente ou inválido.
 //   - 404: peça não encontrada.
-func (s *Server) PutPartsId(_ context.Context, request PutPartsIdRequestObject) (PutPartsIdResponseObject, error) {
+func (s *Server) PutPartsId(ctx context.Context, request PutPartsIdRequestObject) (PutPartsIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	peca, err := s.partUseCase.Update(
@@ -745,7 +825,11 @@ func (s *Server) PutPartsId(_ context.Context, request PutPartsIdRequestObject) 
 //   - 401: token ausente ou inválido.
 //   - 404: peça não encontrada.
 //   - 409: peça referenciada em ordens de serviço existentes.
-func (s *Server) DeletePartsId(_ context.Context, request DeletePartsIdRequestObject) (DeletePartsIdResponseObject, error) {
+func (s *Server) DeletePartsId(ctx context.Context, request DeletePartsIdRequestObject) (DeletePartsIdResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	err := s.partUseCase.Delete(request.Id.String())
 	if err != nil {
 		return nil, err
@@ -772,7 +856,11 @@ func (s *Server) DeletePartsId(_ context.Context, request DeletePartsIdRequestOb
 //   - 401: token ausente ou inválido.
 //   - 404: peça não encontrada.
 //   - 422: estoque insuficiente para realizar saída.
-func (s *Server) PatchPartsIdStock(_ context.Context, request PatchPartsIdStockRequestObject) (PatchPartsIdStockResponseObject, error) {
+func (s *Server) PatchPartsIdStock(ctx context.Context, request PatchPartsIdStockRequestObject) (PatchPartsIdStockResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	peca, err := s.partUseCase.AdjustStock(
@@ -943,6 +1031,15 @@ func (s *Server) GetWorkOrders(ctx context.Context, request GetWorkOrdersRequest
 		s := request.Params.ClienteId.String()
 		input.ClienteID = &s
 	}
+
+	// Um token de cliente enxerga apenas as próprias OS, e o filtro é imposto
+	// aqui — não aceito do parâmetro. É a diferença entre uma rota
+	// autenticada e uma rota protegida por CPF: sem isto, qualquer cliente
+	// autenticado listaria as ordens de serviço de todos os outros.
+	if middleware.TipoDoContexto(ctx) == middleware.TipoCliente {
+		sub := middleware.SubDoContexto(ctx)
+		input.ClienteID = &sub
+	}
 	if request.Params.VeiculoId != nil {
 		s := request.Params.VeiculoId.String()
 		input.VeiculoID = &s
@@ -987,6 +1084,10 @@ func (s *Server) GetWorkOrders(ctx context.Context, request GetWorkOrdersRequest
 //   - 404: cliente, veículo, serviço ou peça não encontrados.
 //   - 422: veículo não pertence ao cliente, ou estoque insuficiente.
 func (s *Server) PostWorkOrders(ctx context.Context, request PostWorkOrdersRequestObject) (PostWorkOrdersResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	servicos := []usecase.ItemServicoOSInput{}
@@ -1045,6 +1146,15 @@ func (s *Server) GetWorkOrdersId(ctx context.Context, request GetWorkOrdersIdReq
 	if err != nil {
 		return nil, err
 	}
+
+	// OS de outro cliente responde 404, e não 403, de propósito: um 403
+	// confirmaria que a OS existe, o que já é informação demais para quem não
+	// deveria vê-la.
+	if middleware.TipoDoContexto(ctx) == middleware.TipoCliente &&
+		osCompleta.ClienteID.String() != middleware.SubDoContexto(ctx) {
+		return nil, &domainerros.ErrNaoEncontrado{Recurso: "ordem de serviço"}
+	}
+
 	return GetWorkOrdersId200JSONResponse(osCompletaParaResponse(osCompleta)), nil
 }
 
@@ -1102,6 +1212,10 @@ func (s *Server) GetWorkOrdersIdStatus(ctx context.Context, request GetWorkOrder
 //   - 404: OS não encontrada.
 //   - 422: transição de status não permitida pela máquina de estados.
 func (s *Server) PatchWorkOrdersIdStatus(ctx context.Context, request PatchWorkOrdersIdStatusRequestObject) (PatchWorkOrdersIdStatusResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 	input := usecase.AvancarStatusInput{
 		OsID:        request.Id.String(),
@@ -1133,6 +1247,10 @@ func (s *Server) PatchWorkOrdersIdStatus(ctx context.Context, request PatchWorkO
 //   - 404: OS não encontrada.
 //   - 422: OS não está em status "aguardando_aprovacao".
 func (s *Server) PostWorkOrdersIdApprove(ctx context.Context, request PostWorkOrdersIdApproveRequestObject) (PostWorkOrdersIdApproveResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	osCompleta, err := s.osUseCase.AprovarOrcamento(ctx, request.Id.String())
 	if err != nil {
 		return nil, err
@@ -1158,6 +1276,10 @@ func (s *Server) PostWorkOrdersIdApprove(ctx context.Context, request PostWorkOr
 //   - 404: OS não encontrada.
 //   - 422: OS não está em status "aguardando_aprovacao".
 func (s *Server) PostWorkOrdersIdReject(ctx context.Context, request PostWorkOrdersIdRejectRequestObject) (PostWorkOrdersIdRejectResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	var motivo *string
 	if request.Body != nil {
 		motivo = request.Body.Motivo
@@ -1216,6 +1338,10 @@ func (s *Server) PostWebhooksBudgetResponse(ctx context.Context, request PostWeb
 //     total_execucoes e tempo_medio_minutos.
 //   - 401: token ausente ou inválido.
 func (s *Server) GetReportsAvgExecutionTime(ctx context.Context, request GetReportsAvgExecutionTimeRequestObject) (GetReportsAvgExecutionTimeResponseObject, error) {
+	if err := middleware.ExigirUsuario(ctx); err != nil {
+		return nil, err
+	}
+
 	input := usecase.RelatorioTempoMedioInput{}
 
 	if request.Params.ServicoId != nil {

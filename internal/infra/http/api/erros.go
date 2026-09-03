@@ -27,6 +27,7 @@ func escreverErro(w http.ResponseWriter, status int, code, message string) {
 //
 //   - ErrValidacao              → 400 VALIDATION_ERROR
 //   - ErrNaoEncontrado          → 404 NOT_FOUND
+//   - ErrProibido               → 403 (código da regra violada)
 //   - ErrConflito               → 409 CONFLICT
 //   - ErrNaoProcessavel         → 422 (código da regra violada)
 //   - ErrEstoqueInsuficiente    → 422 INSUFFICIENT_STOCK
@@ -39,6 +40,7 @@ func TratarErroResposta(w http.ResponseWriter, r *http.Request, err error) {
 		errNaoEncontrado  *domainerros.ErrNaoEncontrado
 		errConflito       *domainerros.ErrConflito
 		errNaoProcessavel *domainerros.ErrNaoProcessavel
+		errProibido       *domainerros.ErrProibido
 	)
 
 	switch {
@@ -47,6 +49,9 @@ func TratarErroResposta(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &errNaoEncontrado):
 		escreverErro(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+
+	case errors.As(err, &errProibido):
+		escreverErro(w, http.StatusForbidden, errProibido.Codigo, errProibido.Mensagem)
 
 	case errors.As(err, &errConflito):
 		escreverErro(w, http.StatusConflict, "CONFLICT", err.Error())

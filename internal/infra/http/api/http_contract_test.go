@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/http/middleware"
+	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,7 +29,23 @@ func novaAPIHTTP(f fixtures, usrR *stubUsuarioRepo, cliR *stubClienteRepo) http.
 		RequestErrorHandlerFunc:  TratarErroRequisicao,
 		ResponseErrorHandlerFunc: TratarErroResposta,
 	})
-	return HandlerFromMuxWithBaseURL(strict, chi.NewRouter(), "/v1")
+	r := chi.NewRouter()
+	// Estes testes exercitam o CONTRATO, não a autenticação: montam o router
+	// sem o middleware JWT. Como a autorização por tipo (F3-2.4) lê os claims
+	// do contexto, sem eles todo handler interno responderia 403. Este
+	// middleware injeta o que o JWT injetaria para um funcionário.
+	r.Use(claimsDeFuncionario)
+	return HandlerFromMuxWithBaseURL(strict, r, "/v1")
+}
+
+func claimsDeFuncionario(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ctx := context.WithValue(req.Context(), middleware.ClaimsContextKey, jwt.MapClaims{
+			"sub":  "func-1",
+			"tipo": middleware.TipoUsuario,
+		})
+		next.ServeHTTP(w, req.WithContext(ctx))
+	})
 }
 
 func requisitar(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
