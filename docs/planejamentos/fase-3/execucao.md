@@ -165,6 +165,36 @@ O 404 é deliberado: um 403 confirmaria que aquela OS existe.
 
 ---
 
+## 03/09 — Coleção do Postman e um achado de segurança
+
+A coleção foi apontada para o API Gateway (`gatewayUrl`), ganhou a pasta de **autenticação por CPF** com os quatro desfechos da Lambda, uma pasta de **proteção da borda** (401 sem token, 403 com token adulterado) e scripts que capturam `token`, `osId`, `servicoId` e `pecaId` sozinhos — não é mais preciso colar UUID à mão.
+
+Simulando as 30 requisições contra o ambiente, uma divergiu: `POST /v1/auth/register` devolvia 401 pelo Gateway. Investigando, o problema era o contrário do que parecia.
+
+### Registro anônimo criava administrador
+
+A rota estava na lista de públicas da aplicação desde a Fase 1 e aceita o papel desejado no corpo. Com o cluster local isso era discutível; com o `Service type: LoadBalancer` da Fase 3, o balanceador é alcançável pela internet e a rota virou escalonamento de privilégio anônimo. Confirmado no ambiente, sem token nenhum:
+
+```
+POST http://<lb>/v1/auth/register  {"papel":"administrador"}
+201 {"papel":"administrador", ...}
+```
+
+A conta foi removida do banco. A rota saiu das públicas e passou a exigir **papel de administrador** — só `tipo=usuario` não bastaria, porque qualquer funcionário poderia se promover.
+
+### O buraco maior continua aberto
+
+Fechar a rota não fecha o problema de fundo: **o balanceador é público, e quem o alcança direto pula o API Gateway e o authorizer inteiro.** Toda a proteção da borda vale apenas para quem entra pela porta da frente.
+
+É exatamente o que o *header compartilhado* do corte 1 resolve — o Gateway injeta um header secreto na integração e a aplicação recusa requisição sem ele. Falta implementar:
+
+1. `gateway_secret` no segredo `oficina/prod/app`;
+2. `request_parameters` nas integrações do `lambda-auth` injetando o header;
+3. middleware na aplicação recusando quem não o traz, com `/health/*` isento (o kubelet sonda o pod direto, sem passar pelo balanceador).
+
+
+---
+
 ## Achados que custaram tempo
 
 ### OIDC: o `sub` não é o dos tutoriais
