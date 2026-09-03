@@ -36,6 +36,41 @@ Oito pontos que o redirect do GitHub **não** cobre: module path (36 arquivos Go
 
 ---
 
+## 02/09 — Dia 2 concluído
+
+Nuvem de pé. VPC sem NAT, EKS 1.36 com 2 nós `t3.small` em subnet pública, 5 addons, namespace `oficina-prod` e RDS `db.t4g.micro`.
+
+**Entregável verificado:** `kubectl get nodes` responde da máquina local com 2 nós `Ready`, e `kubectl top nodes` funciona — o `metrics-server` está de pé, que é do que o HPA depende.
+
+### Ajustes em relação ao backlog
+
+| Escrito no backlog | O que foi feito | Por quê |
+|---|---|---|
+| `vpc ~> 5.8`, `eks ~> 20.24`, `rds ~> 6.7`, `security-group ~> 5.1` | `vpc ~> 6.7`, `eks ~> 21.25`, recursos diretos no banco | Os módulos antigos não aceitam o AWS provider 6.x, que o bootstrap já usa |
+| `module "rds"` | `aws_db_instance` e mais 5 recursos diretos | O módulo v7 trocou `password` por `password_wo`; são ~90 linhas todas usadas, mais barato escrever que estudar |
+| `enable_cluster_creator_admin_permissions = true` | `false`, com 3 `access_entries` explícitas | O "creator" no CI é a role OIDC, não você — `kubectl` local responderia `Unauthorized` |
+| versão do node group herdada do cluster | `kubernetes_version` explícito no node group | Herdada, ela deixa um `count` do submódulo desconhecido em plan e **quebra qualquer `terraform import`** |
+| Performance Insights, parameter group e export de log no RDS | só Performance Insights | O log group fica órfão no destroy; o PI já entrega a leitura de gargalo que o enunciado pede |
+
+### Valores novos do ambiente
+
+| Item | Valor |
+|---|---|
+| VPC | `vpc-0856fe2ed483471b4` — 2 AZs, sem NAT |
+| Cluster | `oficina` · EKS 1.36 · 2× `t3.small` em subnet pública |
+| SG dos nós | `sg-0e310511548743205` |
+| SG das Lambdas | `sg-053ea581fe5097f3a` |
+| Namespace | `oficina-prod` |
+| Quota de vCPU | 8 (o pedido de 32 segue `CASE_OPENED` — não bloqueou: 2× `t3.small` = 4 vCPUs) |
+
+### Runbook de destruição
+
+`destroy.sh` nos dois repos de infra, escrito **antes** do primeiro apply. Ordem obrigatória: `infra-db` primeiro, `infra-k8s` depois — o SG do RDS referencia o SG dos nós.
+
+O script apaga os Services do namespace antes do `terraform destroy`, porque **o NLB é criado pelo Kubernetes, não pelo Terraform**: deixá-lo de pé faz o destroy da VPC falhar com `DependencyViolation` e rende um load balancer órfão de US$ 0,54/dia. No fim ele lista VPCs, RDS, load balancers e chaves KMS em `PendingDeletion`.
+
+---
+
 ## Achados que custaram tempo
 
 ### OIDC: o `sub` não é o dos tutoriais
@@ -103,6 +138,39 @@ Trocar `problematheu` por `ProblemaTheu` desordena todos os blocos de import: ma
 ### Falso alarme registrado
 
 Suspeitei que o `.golangci.yml` estivesse no formato v1 e quebraria com o golangci-lint 2.x. Já estava em `version: "2"` e roda com 0 issues. Verificar custou 30 segundos; supor teria custado uma tarefa inventada.
+
+### Apply interrompido deixa recurso órfão
+
+Um `terraform apply` morto no meio (Ctrl-C, prompt recusado) **não desfaz o que já criou**. O state só é gravado ao fim de cada operação, então o cluster EKS ficou `ACTIVE` na AWS e ausente do state — cobrando, invisível para o `destroy`. Junto ficou um lock preso no S3.
+
+A recuperação, na ordem:
+
+```bash
+terraform force-unlock -force <ID-do-lock>   # o ID vem na mensagem de erro
+terraform state list                          # compare com o que existe na AWS
+terraform import 'module.eks.aws_eks_cluster.this[0]' oficina
+terraform plan                                # exija "0 to change, 0 to destroy"
+```
+
+O `import` só passou depois de fixar `kubernetes_version` no node group (ver tabela do dia 2). E antes de importar, confira o que o recurso vivo tem que a config não pede: o cluster nasceu com criptografia KMS de secrets e **a AWS não permite desligá-la depois** — a config voltou a pedir a chave, porque recriar custaria 25 min para economizar US$ 0,23.
+
+### `-target` não arrasta o que ninguém referencia
+
+`terraform apply -target=module.eks` criou VPC e subnets, mas **não** o Internet Gateway nem as route tables — nenhum recurso do EKS aponta para eles. Os nós subiram com IP público e sem rota para fora, não baixaram imagem nenhuma, e o node group morreu em:
+
+```
+NodeCreationFailure: Instances failed to join the kubernetes cluster
+```
+
+Essa mensagem tem meia dúzia de causas possíveis e não indica nenhuma. O diagnóstico que resolve em 2 min:
+
+```bash
+aws ec2 describe-internet-gateways --filters Name=attachment.vpc-id,Values=<vpc-id>
+aws ec2 describe-route-tables --filters Name=vpc-id,Values=<vpc-id> \
+  --query 'RouteTables[].Routes[].DestinationCidrBlock'
+```
+
+Sem `0.0.0.0/0` na route table das subnets dos nós, é isso. `apply -target=module.vpc` antes de tudo evita o problema.
 
 ---
 

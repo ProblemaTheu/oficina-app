@@ -148,7 +148,15 @@ Resta apenas o que depende de `admin` — ver [bloqueio ativo](#bloqueio-ativo).
 - [F3-3.3](backlog.md#f3-33--cluster-eks-com-escalabilidade-e-addons) — EKS **1.36**, 2 nós `t3.small`, addon `metrics-server`, **`access_entries` com seu usuário IAM** (senão você não usa `kubectl`), namespace
 - [F3-3.1](backlog.md#f3-31--repositório-oficina-infra-db-rds-postgresql-gerenciado) — RDS, uma instância
 
-⚠️ **Primeiro apply:** rode `terraform apply -target=module.eks` antes do apply completo, senão o provider `kubernetes` falha. Reserve os ~20 min que o EKS leva — não é travamento.
+⚠️ **Primeiro apply, em três etapas — não duas.** O provider `kubernetes` não resolve antes do cluster existir, então o apply completo não pode ser o primeiro. Mas `-target=module.eks` sozinho **não basta**: o `-target` arrasta só o que o alvo referencia. VPC e subnets entram; **IGW e route tables não**, porque nenhum recurso do EKS aponta para eles. Os nós sobem com IP público, sem rota para a internet, não baixam imagem nenhuma e o node group morre em `NodeCreationFailure: Instances failed to join the kubernetes cluster` — mensagem que não diz nada sobre a causa.
+
+```bash
+terraform apply -target=module.vpc   # rede completa: IGW e route tables
+terraform apply -target=module.eks   # cluster, addons e nós (~15 min)
+terraform apply                      # parâmetros SSM e namespace
+```
+
+Reserve os ~20 min do EKS — não é travamento. E **não interrompa um apply**: o state só é gravado ao fim de cada operação, então um Ctrl-C no meio deixa recurso vivo na AWS e fora do Terraform (ver [execucao.md](execucao.md#apply-interrompido-deixa-recurso-órfão)).
 
 ✅ **Entregável:** `kubectl get nodes` mostra 2 nós `Ready` **da sua máquina**, não só do CI.
 
