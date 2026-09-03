@@ -31,7 +31,9 @@ type publicRoute struct {
 // publicRoutes lista as rotas que NÃO exigem Bearer token.
 var publicRoutes = []publicRoute{
 	{"POST", regexp.MustCompile(`^/v1/auth/login$`)},
-	{"POST", regexp.MustCompile(`^/v1/auth/register$`)},
+	// /v1/auth/register NÃO é pública. Ela aceita o papel desejado no corpo,
+	// então, aberta, deixava qualquer pessoa criar um administrador — e o
+	// balanceador do cluster é alcançável pela internet.
 	// Consulta pública de status de OS (cliente final, sem conta)
 	{"GET", regexp.MustCompile(`^/v1/work-orders/[^/]+/status$`)},
 	// Webhook de resposta de orçamento — autenticado por assinatura HMAC

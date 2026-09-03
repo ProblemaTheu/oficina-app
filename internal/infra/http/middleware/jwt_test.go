@@ -93,7 +93,6 @@ func TestJWT_RotasPublicasNaoExigemToken(t *testing.T) {
 		path   string
 	}{
 		{http.MethodPost, "/v1/auth/login"},
-		{http.MethodPost, "/v1/auth/register"},
 		{http.MethodGet, "/v1/work-orders/123e4567-e89b-12d3-a456-426614174000/status"},
 		{http.MethodPost, "/v1/webhooks/budget-response"},
 	}
@@ -145,5 +144,15 @@ func TestJWT_AudienciaDeOutroSistemaEhRejeitada(t *testing.T) {
 	rec := requisitar("GET", "/v1/clients", "Bearer "+assinado)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("esperava 401 para audiência de outro sistema, obteve %d", rec.Code)
+	}
+}
+
+// Criar usuário aceita o papel desejado no corpo. Aberta, a rota deixava
+// qualquer um da internet virar administrador — e o balanceador do cluster é
+// público.
+func TestJWT_RegistroExigeToken(t *testing.T) {
+	rec := requisitar(http.MethodPost, "/v1/auth/register", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("esperava 401 em /v1/auth/register sem token, obteve %d", rec.Code)
 	}
 }

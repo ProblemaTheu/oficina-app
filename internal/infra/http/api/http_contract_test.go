@@ -41,8 +41,9 @@ func novaAPIHTTP(f fixtures, usrR *stubUsuarioRepo, cliR *stubClienteRepo) http.
 func claimsDeFuncionario(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		ctx := context.WithValue(req.Context(), middleware.ClaimsContextKey, jwt.MapClaims{
-			"sub":  "func-1",
-			"tipo": middleware.TipoUsuario,
+			"sub":   "func-1",
+			"tipo":  middleware.TipoUsuario,
+			"papel": "administrador",
 		})
 		next.ServeHTTP(w, req.WithContext(ctx))
 	})

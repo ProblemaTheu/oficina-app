@@ -1400,6 +1400,10 @@ func (s *Server) GetReportsAvgExecutionTime(ctx context.Context, request GetRepo
 //   - 400: payload inválido ou papel inexistente.
 //   - 409: e-mail já cadastrado.
 func (s *Server) PostAuthRegister(ctx context.Context, request PostAuthRegisterRequestObject) (PostAuthRegisterResponseObject, error) {
+	if err := middleware.ExigirPapel(ctx, "administrador"); err != nil {
+		return nil, err
+	}
+
 	body := request.Body
 
 	papel := ""

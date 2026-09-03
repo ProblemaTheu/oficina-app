@@ -323,10 +323,13 @@ func ctxCliente(sub string) context.Context {
 }
 
 func ctxComTipo(tipo, sub string) context.Context {
-	return context.WithValue(context.Background(), middleware.ClaimsContextKey, jwt.MapClaims{
-		"sub":  sub,
-		"tipo": tipo,
-	})
+	claims := jwt.MapClaims{"sub": sub, "tipo": tipo}
+	if tipo == middleware.TipoUsuario {
+		// Papel de administrador: é o que as rotas restritas exigem, e os
+		// testes destes handlers sempre assumiram o acesso mais amplo.
+		claims["papel"] = "administrador"
+	}
+	return context.WithValue(context.Background(), middleware.ClaimsContextKey, claims)
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

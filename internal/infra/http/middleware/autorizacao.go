@@ -51,6 +51,36 @@ func SubDoContexto(ctx context.Context) string {
 	return sub
 }
 
+// PapelDoContexto devolve o claim "papel" do token.
+func PapelDoContexto(ctx context.Context) string {
+	claims, ok := ClaimsDoContexto(ctx)
+	if !ok {
+		return ""
+	}
+	papel, _ := claims["papel"].(string)
+	return papel
+}
+
+// ExigirPapel restringe a operação a papéis específicos.
+//
+// Usado onde `tipo=usuario` não basta: criar usuário aceita o papel desejado
+// no corpo, então qualquer funcionário poderia se promover a administrador.
+func ExigirPapel(ctx context.Context, permitidos ...string) error {
+	if err := ExigirUsuario(ctx); err != nil {
+		return err
+	}
+	papel := PapelDoContexto(ctx)
+	for _, p := range permitidos {
+		if papel == p {
+			return nil
+		}
+	}
+	return &domainerros.ErrProibido{
+		Codigo:   "ACCESS_DENIED",
+		Mensagem: "esta operação é restrita a administradores",
+	}
+}
+
 // ExigirUsuario bloqueia tokens de cliente em operações internas.
 //
 // Autenticar é saber quem é; autorizar é saber o que pode. O authorizer do

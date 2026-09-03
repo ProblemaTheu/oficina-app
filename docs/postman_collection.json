@@ -1,13 +1,28 @@
 {
   "info": {
     "name": "Tech Challenge — Oficina Mecânica API",
-    "description": "Collection completa da API de oficina mecânica.\n\n**Como usar:**\n1. Importe este arquivo no Postman.\n2. Selecione o environment \"Local\" (ou ajuste a variável `baseUrl`).\n3. Execute **Auth / Login** — o token JWT será salvo automaticamente na variável `token`.\n4. Todos os demais endpoints usam `{{token}}` no header Authorization.\n\n**Variáveis de coleção:**\n- `baseUrl` — URL base da API (padrão: `http://localhost:8080/v1`)\n- `token` — JWT preenchido automaticamente após login\n- `clienteId` — UUID de cliente, preenchido automaticamente após criar cliente\n- `veiculoId` — UUID de veículo, preenchido automaticamente após criar veículo\n- `servicoId` — UUID de serviço, preenchido automaticamente após criar serviço\n- `pecaId` — UUID de peça, preenchida automaticamente após criar peça",
+    "description": "API da oficina mecânica — **Fase 3**, publicada atrás do AWS API Gateway.\n\n## Como usar\n\n**Como cliente final:** rode *Autenticação por CPF → Token — cliente ativo*. O token vai para a variável `token`. A partir daí, `GET /work-orders` devolve **apenas as OS daquele cliente**, e qualquer operação interna responde 403.\n\n**Como funcionário:** rode *Auth → Login* (`admin@oficina.com` / `Admin@123`). O token substitui o anterior e libera tudo.\n\n## Variáveis\n\n| Variável | Para quê |\n|---|---|\n| `gatewayUrl` | URL do API Gateway. Para rodar contra o ambiente local, troque por `http://localhost:8080` |\n| `baseUrl` | `{{gatewayUrl}}/v1` — derivada, não mexa |\n| `token` | Preenchida automaticamente pelo login ou pela emissão por CPF |\n| `cpfAtivo` / `cpfInativo` | CPFs do seed, com dígitos verificadores válidos |\n\n> As credenciais de exemplo valem para o ambiente de demonstração desta fase. Não são segredo, e não devem existir num ambiente real.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
+      "key": "gatewayUrl",
+      "value": "https://950h33a7r7.execute-api.us-east-1.amazonaws.com",
+      "type": "string"
+    },
+    {
       "key": "baseUrl",
-      "value": "http://localhost:8080/v1",
+      "value": "{{gatewayUrl}}/v1",
+      "type": "string"
+    },
+    {
+      "key": "cpfAtivo",
+      "value": "529.982.247-25",
+      "type": "string"
+    },
+    {
+      "key": "cpfInativo",
+      "value": "111.444.777-35",
       "type": "string"
     },
     {
@@ -17,12 +32,12 @@
     },
     {
       "key": "clienteId",
-      "value": "",
+      "value": "770e8400-e29b-41d4-a716-446655440001",
       "type": "string"
     },
     {
       "key": "veiculoId",
-      "value": "",
+      "value": "880e8400-e29b-41d4-a716-446655440001",
       "type": "string"
     },
     {
@@ -63,6 +78,224 @@
   },
   "item": [
     {
+      "name": "Autenticação por CPF (Lambda)",
+      "description": "Emissão de token pela AWS Lambda `auth-token`, na borda — **não** passa pela aplicação no cluster.\n\nA função valida os dígitos verificadores do CPF, consulta a existência **e o status** do cliente no RDS e assina um JWT HS256 de 1 hora.\n\nOs quatro desfechos abaixo são o requisito da Fase 3. O primeiro salva o token na variável `token` — depois dele, as requisições de Ordens de Serviço rodam como CLIENTE.",
+      "item": [
+        {
+          "name": "Token — cliente ativo (200)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"{{cpfAtivo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/auth/token",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Maria Silva, cadastro ativo. Devolve 200 com o JWT e salva em `token`.\n\nRepare nas claims: `tipo: cliente`, `iss: oficina-auth-lambda`, `aud: oficina-api`. É o `tipo` que impede este token de criar OS."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('token', body.access_token);",
+                  "    console.log('Token de CLIENTE salvo em: token');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token — cliente inativo (403)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"{{cpfInativo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/auth/token",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Carlos Pereira, cadastro inativo. Devolve **403** `cliente_inativo`.\n\nÉ a prova do requisito \"consultar a existência **e o status**\": o cliente existe, e mesmo assim não recebe token."
+          },
+          "response": []
+        },
+        {
+          "name": "Token — CPF inválido (400)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"111.111.111-11\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/auth/token",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Dígitos verificadores inválidos. Devolve **400** `cpf_invalido`.\n\nA Lambda rejeita antes de consultar o banco."
+          },
+          "response": []
+        },
+        {
+          "name": "Token — CPF sem cadastro (404)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"123.456.789-09\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/auth/token",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "auth",
+                "token"
+              ]
+            },
+            "description": "CPF válido, sem cliente correspondente. Devolve **404** `cliente_nao_encontrado`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Proteção da borda",
+      "description": "O que o **API Gateway** barra antes de a requisição chegar ao cluster. Estas duas nem consomem CPU dos pods.",
+      "item": [
+        {
+          "name": "Rota protegida sem token (401)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/work-orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders"
+              ]
+            },
+            "description": "Sem `Authorization`, o authorizer nega e o Gateway devolve **401**. Nenhum log aparece no pod."
+          },
+          "response": []
+        },
+        {
+          "name": "Token adulterado (403)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}xxx"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work-orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work-orders"
+              ]
+            },
+            "description": "Assinatura não confere. O authorizer nega e o Gateway devolve **403**."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Health",
       "description": "Endpoints de saúde da aplicação no estilo Spring Actuator.",
       "item": [
@@ -74,10 +307,10 @@
             },
             "method": "GET",
             "url": {
-              "raw": "http://localhost:8080/health/live",
+              "raw": "{{gatewayUrl}}/health/live",
               "protocol": "http",
               "host": [
-                "localhost"
+                "{{gatewayUrl}}"
               ],
               "port": "8080",
               "path": [
@@ -97,10 +330,10 @@
             },
             "method": "GET",
             "url": {
-              "raw": "http://localhost:8080/health/ready",
+              "raw": "{{gatewayUrl}}/health/ready",
               "protocol": "http",
               "host": [
-                "localhost"
+                "{{gatewayUrl}}"
               ],
               "port": "8080",
               "path": [
@@ -120,10 +353,10 @@
             },
             "method": "GET",
             "url": {
-              "raw": "http://localhost:8080/health",
+              "raw": "{{gatewayUrl}}/health",
               "protocol": "http",
               "host": [
-                "localhost"
+                "{{gatewayUrl}}"
               ],
               "port": "8080",
               "path": [
@@ -194,9 +427,6 @@
         {
           "name": "Register",
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
             "header": [
               {
@@ -223,7 +453,7 @@
                 "register"
               ]
             },
-            "description": "Cria uma nova conta de usuário. A senha é armazenada como bcrypt hash e **nunca** retornada.\n\nValores válidos para `papel`: `administrador`, `mecanico`, `atendente`.\n\nEndpoint público — não requer token."
+            "description": "Cria um usuário da oficina.\n\n⚠️ **Exige token de administrador.** A rota aceita o papel desejado no corpo — aberta, permitiria a qualquer pessoa criar um administrador. Rode *Auth → Login* antes."
           },
           "response": []
         }
@@ -647,7 +877,25 @@
             },
             "description": "Retorna o catálogo de serviços paginado.\n\nFiltro opcional: `nome` — busca parcial case-insensitive pelo nome do serviço."
           },
-          "response": []
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const lista = body.data || [];",
+                  "    if (lista.length > 0) {",
+                  "        pm.collectionVariables.set('servicoId', lista[0].id);",
+                  "        console.log('servicoId =', lista[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Cadastrar serviço",
@@ -843,7 +1091,25 @@
             },
             "description": "Retorna o catálogo de peças e insumos paginado.\n\nFiltros opcionais (desabilitados por padrão):\n- `nome` — busca parcial pelo nome\n- `codigo` — busca pelo código interno\n- `estoque_baixo=true` — retorna apenas peças com estoque abaixo do mínimo"
           },
-          "response": []
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const lista = body.data || [];",
+                  "    if (lista.length > 0) {",
+                  "        pm.collectionVariables.set('pecaId', lista[0].id);",
+                  "        console.log('pecaId =', lista[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Cadastrar peça",
@@ -1153,7 +1419,25 @@
             },
             "description": "Retorna lista paginada de ordens de serviço ordenada por prioridade de status (em_execucao > aguardando_aprovacao > em_diagnostico > recebida) e, dentro de cada grupo, mais antigas primeiro. OSs `finalizada`/`entregue` são excluídas por padrão; use `incluir_encerradas=true` ou o filtro `status` para consultá-las. Suporta filtros por `status`, `cliente_id` e `veiculo_id`."
           },
-          "response": []
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const lista = body.data || [];",
+                  "    if (lista.length > 0) {",
+                  "        pm.collectionVariables.set('osId', lista[0].id);",
+                  "        console.log('osId =', lista[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Criar OS",
