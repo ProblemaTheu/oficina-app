@@ -6,7 +6,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: oficina
+namespace: oficina-prod
 
 resources:
   - ../../base
@@ -18,9 +18,12 @@ patches:
       metadata:
         name: oficina-config
       data:
-        # Substituir pelo endpoint do RDS gerado pelo Terraform (output)
-        DB_HOST: SUBSTITUIR_PELO_ENDPOINT_RDS
-        NOTIFIER: smtp
-        # Substituir pelo provedor SMTP real
-        SMTP_HOST: SUBSTITUIR_PELO_SMTP_REAL
-        SMTP_PORT: "587"
+        DB_HOST: oficina-prod.c6v88i2ao3cy.us-east-1.rds.amazonaws.com
+        DB_NAME: oficina
+        DB_PORT: "5432"
+        DB_SSLMODE: require
+        NOTIFIER: log
+        SMTP_HOST: mailpit
+        SMTP_PORT: "1025"
+        NEW_RELIC_APP_NAME: oficina-api-prod
+        LOG_LEVEL: info

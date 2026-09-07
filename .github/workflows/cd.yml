@@ -111,18 +111,18 @@ jobs:
 
       - name: Atualizar tag da imagem
         run: |
-          kubectl -n oficina set image deployment/api \
+          kubectl -n oficina-prod set image deployment/api \
             api=docker.io/problematheu/oficina-api:${{ needs.build-and-push.outputs.image_tag }}
 
       - name: Aguardar rollout
-        run: kubectl -n oficina rollout status deployment/api --timeout=180s
+        run: kubectl -n oficina-prod rollout status deployment/api --timeout=180s
 
       - name: Job Summary
         run: |
           {
             echo "# 🚀 CD — Deploy no cluster"
             echo
-            echo "Imagem \`${{ needs.build-and-push.outputs.image_tag }}\` implantada em \`oficina/api\`."
+            echo "Imagem \`${{ needs.build-and-push.outputs.image_tag }}\` implantada em \`oficina-prod/api\`."
             echo
             echo "> Migrations rodam no boot da aplicação (advisory lock do Postgres via golang-migrate — ver k8s/README.md)."
           } >> "$GITHUB_STEP_SUMMARY"
