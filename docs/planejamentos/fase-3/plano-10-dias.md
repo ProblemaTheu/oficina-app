@@ -221,6 +221,8 @@ curl -s -o /dev/null -w '%{http_code}' $GW/v1/work-orders -H "Authorization: Bea
 
 ✅ **Entregável:** merge na `main` implanta sozinho; dashboard com dados; alerta disparado e e-mail recebido.
 
+> **Status em 07/09:** APM, logs, `nri-bundle`, dashboard, alertas e HPA foram validados no EKS `oficina`. O CD ainda exige validação de execução automática na branch `feature/fase-3`; os eventos `OrdemServicoEvent` e `IntegracaoEvent` permanecem pendentes.
+
 ### 🔵 Ter 08/09 — 3 h — Documentação
 
 Melhor retorno por hora do plano: a argumentação já está escrita em [README.md](README.md), [arquitetura.md](arquitetura.md) e [backlog.md](backlog.md). É transcrição, não invenção.

@@ -330,6 +330,20 @@ Saída: `gh workflow run cd.yml --ref feature/fase-3`. O `cd.yml` tem `workflow_
 
 ---
 
+## 06–07/09 — Observabilidade, dashboards e HPA
+
+**Aplicação:** integrada ao agente Go do New Relic com APM, distributed tracing e `nrslog`. O middleware HTTP passou a registrar um access log JSON por requisição, contendo `correlation_id`, rota, status e duração. A imagem `38847b2` foi implantada no EKS.
+
+**New Relic:** a API iniciou com `oficina-api-prod`; o dashboard foi criado pela UI com visualizações de transações, latência, CPU e memória. O `nri-bundle` foi instalado no namespace `newrelic` com coleta de logs, métricas de kubelet e kube-state-metrics. O coletor de logs respondeu `HTTP status=202` ao endpoint de ingestão.
+
+**Alertas:** foram criadas condições NRQL dentro do contexto do serviço `oficina-api-prod`. A condição HTTP foi validada com requisições `401` e issue aberta após separar a condição de falha das demais condições.
+
+**HPA:** o HPA `api` foi validado com alvo de CPU em 50%, mínimo de 2 e máximo de 5 réplicas. A carga interna elevou o uso para aproximadamente `115%/50%`, escalando a API de 2 para 5 pods. Após a remoção dos workers temporários, o deployment estabilizou novamente em 2 réplicas.
+
+**Limitações registradas:** os eventos `OrdemServicoEvent` e `IntegracaoEvent` ainda não foram implementados; portanto, os painéis de negócio e o alerta baseado nesses eventos permanecem sem dados reais. O CD construiu a imagem com sucesso, mas o job de deploy foi `skipped` por `DEPLOY_ENABLED`; a imagem foi aplicada manualmente no EKS. O workflow foi ajustado para acompanhar `feature/fase-3` e ainda precisa ser validado em uma execução automática.
+
+---
+
 ## Pendências
 
 | Pendência | Depende de | Prazo |
@@ -339,6 +353,7 @@ Saída: `gh workflow run cd.yml --ref feature/fase-3`. O `cd.yml` tem `workflow_
 | **`soat-architecture` nos 3 repos novos** | idem | antes da entrega |
 | Quota de vCPU aprovada | AWS (solicitado, `PENDING`) | antes do dia 2 |
 | `SONAR_PROJECT_KEY` aponta para `tech-challenge-1` | *Update key* no SonarCloud **antes** de trocar a variable | 07/09 |
+| Validar CD automático na `feature/fase-3` | `DEPLOY_ENABLED` e execução do workflow | 07/09 |
 | Rotacionar as chaves do New Relic | passaram pelo chat | depois da entrega |
 
 **O que `Write` já permite** (testado): push, branches, secrets e variables de repositório. **Só ruleset e environment exigem `admin`** — ruleset responde `404`, environment responde `403 Must have admin rights`.
