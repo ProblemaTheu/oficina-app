@@ -485,6 +485,8 @@ No ambiente local elas vêm do arquivo `.env` (copie de [`.env.example`](.env.ex
 | `DB_NAME` | `tech_challenge_db` | Nome do banco de dados |
 | `JWT_SECRET` | *(inseguro — altere em produção)* | Chave de assinatura dos tokens JWT |
 | `WEBHOOK_SECRET` | *(inseguro — altere em produção)* | Segredo do HMAC que assina os webhooks inbound |
+| `NEW_RELIC_APP_NAME` | `oficina-api-local` | Nome da aplicação no New Relic |
+| `NEW_RELIC_LICENSE_KEY` | *(vazio)* | License key do APM/Logs do New Relic. Sem ela, a app roda sem o agente |
 | `NOTIFIER` | `log` | Notificação de status: `log` (console) ou `smtp` (e-mail real/Mailpit) |
 | `SMTP_HOST` | `localhost` | Host do servidor SMTP |
 | `SMTP_PORT` | `1025` | Porta do servidor SMTP |
