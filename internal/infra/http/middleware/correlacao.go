@@ -3,6 +3,7 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/ProblemaTheu/oficina-app/internal/application/logging"
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ const HeaderCorrelacao = "X-Correlation-Id"
 func Correlacao() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			inicio := time.Now()
 			id := r.Header.Get(HeaderCorrelacao)
 			if id == "" {
 				id = uuid.NewString()
@@ -32,7 +34,29 @@ func Correlacao() func(http.Handler) http.Handler {
 				"http.route", r.URL.Path,
 			)
 			ctx := logging.ComLogger(r.Context(), logger)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			response := &statusRecorder{ResponseWriter: w}
+			next.ServeHTTP(response, r.WithContext(ctx))
+			logging.Log(ctx).Info("http request completed",
+				"http.status_code", response.statusCode,
+				"http.duration_ms", time.Since(inicio).Milliseconds(),
+			)
 		})
 	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (r *statusRecorder) WriteHeader(statusCode int) {
+	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *statusRecorder) Write(body []byte) (int, error) {
+	if r.statusCode == 0 {
+		r.statusCode = http.StatusOK
+	}
+	return r.ResponseWriter.Write(body)
 }
