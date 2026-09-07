@@ -136,10 +136,11 @@ func configurarLog(nrApp *newrelic.Application) {
 			return a
 		},
 	})
+	var handler slog.Handler = h
 	if nrApp != nil {
-		h = nrslog.WrapHandler(nrApp, h)
+		handler = nrslog.WrapHandler(nrApp, h)
 	}
-	slog.SetDefault(slog.New(h).With(
+	slog.SetDefault(slog.New(handler).With(
 		"service.name", os.Getenv("NEW_RELIC_APP_NAME"),
 		"hostname", os.Getenv("HOSTNAME"), // K8s injeta o nome do pod
 	))
