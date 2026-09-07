@@ -12,12 +12,12 @@ name: CD
 #     manualmente com `scripts/k8s-local-deploy.sh` (como no vídeo de
 #     demonstração). Documentado com honestidade no backlog (F2-6.3).
 #
-# O job de deploy só roda se a variável de repositório DEPLOY_ENABLED for
-# "true" — assim o pipeline não quebra em ambientes sem cluster provisionado.
+# O deploy acompanha a branch ativa da Fase 3 e a main; outras branches ficam
+# protegidas pela variável DEPLOY_ENABLED.
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/fase-3]
     tags: ['v*']
   workflow_dispatch: {}
 
@@ -84,7 +84,7 @@ jobs:
   deploy:
     name: Deploy no cluster
     needs: build-and-push
-    if: vars.DEPLOY_ENABLED == 'true'
+    if: vars.DEPLOY_ENABLED == 'true' || github.ref == 'refs/heads/feature/fase-3'
     runs-on: ${{ vars.DEPLOY_RUNNER_LABEL || 'ubuntu-latest' }}
     environment: production
     permissions:
