@@ -115,7 +115,10 @@ jobs:
       - name: Instalar kustomize
         run: |
           if ! command -v kustomize >/dev/null; then
-            curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz" \
+            # --proto '=https': o -L segue redirects, e sem isto poderia
+            # seguir para http.
+            curl -sSL --proto '=https' --tlsv1.2 \
+              "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz" \
               | sudo tar -xz -C /usr/local/bin kustomize
           fi
           kustomize version
@@ -147,14 +150,21 @@ jobs:
       # Marcador de deploy no New Relic — a linha vertical no gráfico que
       # responde "a latência subiu depois de qual deploy?". Opcional: só roda
       # se o ID da aplicação APM estiver configurado como variable.
+      # Segredo e valores do contexto entram por `env`, não expandidos no
+      # script: expansão inline vira injeção de shell se o valor tiver aspas.
       - name: Registrar deploy no New Relic
         if: success() && vars.NEW_RELIC_APP_ID != ''
+        env:
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NEW_RELIC_APP_ID: ${{ vars.NEW_RELIC_APP_ID }}
+          ATOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
         run: |
           curl -sS -o /dev/null -w 'New Relic: HTTP %{http_code}\n' -X POST \
-            "https://api.newrelic.com/v2/applications/${{ vars.NEW_RELIC_APP_ID }}/deployments.json" \
-            -H "Api-Key: ${{ secrets.NEW_RELIC_API_KEY }}" \
+            "https://api.newrelic.com/v2/applications/${NEW_RELIC_APP_ID}/deployments.json" \
+            -H "Api-Key: ${NEW_RELIC_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d "{\"deployment\":{\"revision\":\"${TAG}\",\"user\":\"${{ github.actor }}\",\"changelog\":\"${{ github.ref_name }}\"}}"
+            -d "{\"deployment\":{\"revision\":\"${TAG}\",\"user\":\"${ATOR}\",\"changelog\":\"${REF}\"}}"
 
       - name: Job Summary
         if: always()
