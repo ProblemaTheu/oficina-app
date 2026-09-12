@@ -1,11 +1,13 @@
 name: CI
 
-# Roda somente quando uma Pull Request é aberta/atualizada contra a main.
-# Falhas aqui devem bloquear o merge (configurar branch protection com
-# required checks: "Build e testes" e "Lint").
+# Roda quando uma Pull Request é aberta/atualizada contra as branches
+# protegidas. `homolog` é só integração (o ambiente de homologação foi
+# dispensado — corte 10 da Fase 3): tem CI completo, mas nunca implanta.
+# Falhas aqui devem bloquear o merge (branch protection com required checks:
+# "Build e testes", "Lint" e "gitleaks").
 on:
   pull_request:
-    branches: [main]
+    branches: [homolog, main]
 
 jobs:
   # ─────────────────────────────────────────────
@@ -16,10 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -107,7 +109,7 @@ jobs:
               lines.append("|--------|-----------|--------|")
               for pkg in sorted(pacotes, key=lambda p: (pacotes[p] != "fail", p)):
                   qtd = sum(1 for t in testes.values() if t["pkg"] == pkg)
-                  nome_curto = pkg.replace("github.com/problematheu/tech-challenge-1/", "")
+                  nome_curto = pkg.split("/", 3)[-1]  # descarta host/org/repo
                   lines.append(f"| `{nome_curto}` | {ICONES.get(pacotes[pkg], '⚪')} `{pacotes[pkg]}` | {qtd} |")
               lines.append("")
 
@@ -148,7 +150,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ci-reports
           path: |
@@ -165,16 +167,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
           args: --build-tags integration
@@ -191,3 +193,24 @@ jobs:
               echo "**🔴 golangci-lint encontrou problemas** — ver o log do step acima."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────
+  # 3. Segredo commitado (F3-1.7 — corte 8: só o gitleaks nos 4 repos)
+  # ─────────────────────────────────────────────
+  segredos:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # o gitleaks olha os commits, não só a árvore
+
+      # Falsos positivos conhecidos ficam suprimidos em .gitleaks.toml
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A versão embutida na action (8.24.x) não interpreta a allowlist
+          # no formato atual do .gitleaks.toml; fixar evita divergir do local.
+          GITLEAKS_VERSION: '8.30.1'

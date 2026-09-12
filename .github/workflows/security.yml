@@ -22,10 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload govulncheck report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: govulncheck-report
           path: govulncheck-report.json
@@ -95,10 +95,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -173,7 +173,7 @@ jobs:
 
       - name: Upload gosec artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gosec-reports
           path: |
@@ -191,33 +191,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build Docker image
-        run: docker build -t tech-challenge-1:${{ github.sha }} .
+        run: docker build -t oficina-app:${{ github.sha }} .
 
       - name: Run Trivy — image scan (SARIF)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         continue-on-error: true
         with:
-          image-ref: tech-challenge-1:${{ github.sha }}
+          image-ref: oficina-app:${{ github.sha }}
           format: sarif
           output: trivy-image.sarif
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: "0"
 
       - name: Run Trivy — image scan (JSON)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         continue-on-error: true
         with:
-          image-ref: tech-challenge-1:${{ github.sha }}
+          image-ref: oficina-app:${{ github.sha }}
           format: json
           output: trivy-image.json
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: "0"
 
       - name: Run Trivy — filesystem scan (SARIF)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         continue-on-error: true
         with:
           scan-type: fs
@@ -228,7 +228,7 @@ jobs:
           exit-code: "0"
 
       - name: Run Trivy — filesystem scan (JSON)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         continue-on-error: true
         with:
           scan-type: fs
@@ -328,7 +328,7 @@ jobs:
 
       - name: Upload Trivy artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-reports
           path: |
@@ -348,12 +348,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -374,8 +374,10 @@ jobs:
           fi
           echo "Linhas no coverage.out: $(wc -l < coverage.out)"
 
+      # sonarcloud-github-action foi arquivada; a sucessora aceita os mesmos
+      # args e o mesmo SONAR_TOKEN.
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -408,7 +410,7 @@ jobs:
     if: always()
     steps:
       - name: Download all reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: reports/
 

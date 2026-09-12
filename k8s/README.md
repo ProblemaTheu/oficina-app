@@ -35,8 +35,8 @@ kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/late
 kubectl -n kube-system patch deploy metrics-server --type=json \
   -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
 
-docker build -t tech-challenge-api:local .
-kind load docker-image tech-challenge-api:local --name oficina
+docker build -t oficina-api:local .
+kind load docker-image oficina-api:local --name oficina
 
 kubectl apply -f k8s/base/namespace.yaml
 kubectl -n oficina create secret generic oficina-secrets \

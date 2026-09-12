@@ -4,8 +4,8 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/config"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 
@@ -18,6 +18,10 @@ type ctxKey string
 
 const ClaimsContextKey ctxKey = "jwt_claims"
 
+// audienciaEsperada é o "aud" do contrato F3-0.2, comum aos dois emissores:
+// quem consome o token é sempre esta API.
+const audienciaEsperada = "oficina-api"
+
 // publicRoute define um endpoint isento de autenticação JWT.
 type publicRoute struct {
 	method  string
@@ -27,19 +31,14 @@ type publicRoute struct {
 // publicRoutes lista as rotas que NÃO exigem Bearer token.
 var publicRoutes = []publicRoute{
 	{"POST", regexp.MustCompile(`^/v1/auth/login$`)},
-	{"POST", regexp.MustCompile(`^/v1/auth/register$`)},
+	// /v1/auth/register NÃO é pública. Ela aceita o papel desejado no corpo,
+	// então, aberta, deixava qualquer pessoa criar um administrador — e o
+	// balanceador do cluster é alcançável pela internet.
 	// Consulta pública de status de OS (cliente final, sem conta)
 	{"GET", regexp.MustCompile(`^/v1/work-orders/[^/]+/status$`)},
 	// Webhook de resposta de orçamento — autenticado por assinatura HMAC
 	// (ver AssinaturaWebhook), não por JWT
 	{"POST", regexp.MustCompile(`^/v1/webhooks/budget-response$`)},
-}
-
-func jwtSecret() []byte {
-	if s := os.Getenv("JWT_SECRET"); s != "" {
-		return []byte(s)
-	}
-	return []byte("changeme-insecure-default-secret")
 }
 
 // JWT retorna um middleware chi que valida o Bearer token JWT em todas as
@@ -48,7 +47,7 @@ func jwtSecret() []byte {
 // Em caso de sucesso, os claims são armazenados no contexto via ClaimsContextKey.
 // Em caso de falha, responde imediatamente com 401 JSON e interrompe a cadeia.
 func JWT() func(http.Handler) http.Handler {
-	secret := jwtSecret()
+	secret := config.JWTSecret()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +73,14 @@ func JWT() func(http.Handler) http.Handler {
 					return nil, jwt.ErrSignatureInvalid
 				}
 				return secret, nil
-			}, jwt.WithValidMethods([]string{"HS256"}))
+			},
+				jwt.WithValidMethods([]string{"HS256"}),
+				// Aceita os dois emissores — a Lambda e esta aplicação —, que
+				// compartilham o segredo. O que a audiência garante é que um
+				// token assinado para OUTRO sistema com a mesma chave não
+				// valha aqui.
+				jwt.WithAudience(audienciaEsperada),
+			)
 
 			if err != nil || !token.Valid {
 				writeUnauthorized(w, "token inválido ou expirado")

@@ -6,11 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/http/middleware"
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -153,6 +156,10 @@ type stubOsRepo struct {
 	total      int
 	relatorio  []usecase.ItemTempoMedio
 	err        error
+
+	// paramsListar guarda o que o handler pediu, para os testes conferirem o
+	// filtro imposto a tokens de cliente.
+	paramsListar usecase.ListarOSParams
 }
 
 func (r *stubOsRepo) BuscarStatusID(_ context.Context, _ entity.Status) (uuid.UUID, error) {
@@ -168,7 +175,8 @@ func (r *stubOsRepo) Criar(_ context.Context, os *entity.OrdemServico, _ []entit
 	os.ID = uuid.New()
 	return os, nil
 }
-func (r *stubOsRepo) Listar(_ context.Context, _ usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
+func (r *stubOsRepo) Listar(_ context.Context, p usecase.ListarOSParams) ([]*entity.OrdemServico, int, error) {
+	r.paramsListar = p
 	return r.lista, r.total, r.err
 }
 func (r *stubOsRepo) BuscarPorID(_ context.Context, _ string) (*entity.OrdemServicoCompleta, error) {
@@ -301,7 +309,28 @@ func novoServerDeTeste(f fixtures, cliR *stubClienteRepo, veicR *stubVeiculoRepo
 	}
 }
 
-func ctx() context.Context { return context.Background() }
+// ctx devolve um contexto com claims de FUNCIONÁRIO. Os testes destes
+// handlers sempre assumiram isso implicitamente; desde que a autorização por
+// tipo passou a existir (F3-2.4), a suposição precisa ser explícita.
+//
+// Para exercitar o caminho do cliente, use ctxCliente.
+func ctx() context.Context { return ctxComTipo(middleware.TipoUsuario, "func-1") }
+
+// ctxCliente devolve um contexto com claims de CLIENTE, cujo "sub" é o UUID
+// do cliente dono das OS.
+func ctxCliente(sub string) context.Context {
+	return ctxComTipo(middleware.TipoCliente, sub)
+}
+
+func ctxComTipo(tipo, sub string) context.Context {
+	claims := jwt.MapClaims{"sub": sub, "tipo": tipo}
+	if tipo == middleware.TipoUsuario {
+		// Papel de administrador: é o que as rotas restritas exigem, e os
+		// testes destes handlers sempre assumiram o acesso mais amplo.
+		claims["papel"] = "administrador"
+	}
+	return context.WithValue(context.Background(), middleware.ClaimsContextKey, claims)
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 

@@ -11,10 +11,10 @@ import (
 )
 
 func TestWebhookSecret_ViaAmbiente(t *testing.T) {
-	t.Setenv("WEBHOOK_SECRET", "segredo-do-teste")
+	t.Setenv("WEBHOOK_SECRET", "segredo-do-teste-com-32-ou-mais-caracteres")
 
 	body := `{"decisao":"aprovado"}`
-	mac := hmac.New(sha256.New, []byte("segredo-do-teste"))
+	mac := hmac.New(sha256.New, []byte("segredo-do-teste-com-32-ou-mais-caracteres"))
 	mac.Write([]byte(body))
 	assinatura := hex.EncodeToString(mac.Sum(nil))
 

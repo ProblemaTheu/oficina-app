@@ -11,6 +11,10 @@ data:
   DB_PORT: "5432"
   DB_NAME: tech_challenge_db
 
+  # Observabilidade: New Relic APM + logs em contexto
+  NEW_RELIC_APP_NAME: oficina-api-prod
+  LOG_LEVEL: info
+
   # Notificação de mudança de status ("log" ou "smtp")
   NOTIFIER: log
   SMTP_HOST: mailpit

@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/domain/valueobject"
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/valueobject"
 )
 
 // escreverErro serializa o modelo Error padrão do contrato OpenAPI.
@@ -27,6 +27,7 @@ func escreverErro(w http.ResponseWriter, status int, code, message string) {
 //
 //   - ErrValidacao              → 400 VALIDATION_ERROR
 //   - ErrNaoEncontrado          → 404 NOT_FOUND
+//   - ErrProibido               → 403 (código da regra violada)
 //   - ErrConflito               → 409 CONFLICT
 //   - ErrNaoProcessavel         → 422 (código da regra violada)
 //   - ErrEstoqueInsuficiente    → 422 INSUFFICIENT_STOCK
@@ -39,6 +40,7 @@ func TratarErroResposta(w http.ResponseWriter, r *http.Request, err error) {
 		errNaoEncontrado  *domainerros.ErrNaoEncontrado
 		errConflito       *domainerros.ErrConflito
 		errNaoProcessavel *domainerros.ErrNaoProcessavel
+		errProibido       *domainerros.ErrProibido
 	)
 
 	switch {
@@ -47,6 +49,9 @@ func TratarErroResposta(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &errNaoEncontrado):
 		escreverErro(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+
+	case errors.As(err, &errProibido):
+		escreverErro(w, http.StatusForbidden, errProibido.Codigo, errProibido.Mensagem)
 
 	case errors.As(err, &errConflito):
 		escreverErro(w, http.StatusConflict, "CONFLICT", err.Error())

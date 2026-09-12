@@ -11,8 +11,8 @@ resources:
 # Imagem construída localmente e carregada no kind (kind load docker-image);
 # imagePullPolicy Never impede o cluster de tentar buscar no registry.
 images:
-  - name: docker.io/problematheu/tech-challenge-api
-    newName: tech-challenge-api
+  - name: docker.io/problematheu/oficina-api
+    newName: oficina-api
     newTag: local
 
 patches:

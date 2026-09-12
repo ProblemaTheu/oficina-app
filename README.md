@@ -83,7 +83,7 @@ flowchart TB
     hpa -- escala --> deploy
 ```
 
-Em produção (AWS, preparado no épico de IaC): o Postgres in-cluster dá lugar ao **RDS**, o Mailpit a um provedor SMTP real, e o cluster passa a ser o **EKS** — tudo já esboçado em `k8s/overlays/aws` e `infra/environments/aws`.
+Em produção (AWS, preparado no épico de IaC): o Postgres in-cluster dá lugar ao **RDS**, o Mailpit a um provedor SMTP real, e o cluster passa a ser o **EKS** — o overlay real é `k8s/overlays/prod`, e a infraestrutura vive nos repositórios `oficina-infra-k8s` e `oficina-infra-db`.
 
 ### Fluxo de deploy
 
@@ -105,7 +105,7 @@ flowchart LR
     tf["Terraform<br/>infra/environments"] -- provisiona --> k8s
 ```
 
-> O job de push da imagem (F2-6.2) roda a cada push na `main`. O job de deploy (F2-6.3) fica pronto para um EKS real (autenticação via OIDC) mas só é executado quando a variável de repositório `DEPLOY_ENABLED=true` está setada — um runner hospedado do GitHub não alcança um cluster local (kind/minikube), então na demonstração em vídeo o deploy local é feito manualmente com `scripts/k8s-local-deploy.sh` sobre o cluster provisionado pelo Terraform.
+> Desde a Fase 3 o `cd.yml` implanta de verdade: push na `main` publica a imagem no Docker Hub e faz o rollout no **EKS** (overlay `k8s/overlays/prod`), autenticando na AWS por OIDC. O ambiente local (kind) continua sendo implantado manualmente com `scripts/k8s-local-deploy.sh` — um runner hospedado do GitHub não alcança um cluster na sua máquina.
 
 ### Onde está cada coisa
 
@@ -123,8 +123,8 @@ flowchart LR
 ## Quickstart
 
 ```bash
-git clone https://github.com/problematheu/tech-challenge-1.git
-cd tech-challenge-1
+git clone https://github.com/ProblemaTheu/oficina-app.git
+cd oficina-app
 cp .env.example .env      # segredos e configurações locais
 docker compose up -d --build
 ```
@@ -233,8 +233,8 @@ HTTP Request
 ### 1. Clone o repositório
 
 ```bash
-git clone https://github.com/problematheu/tech-challenge-1.git
-cd tech-challenge-1
+git clone https://github.com/ProblemaTheu/oficina-app.git
+cd oficina-app
 ```
 
 ### 2. Configure o ambiente e suba todos os serviços
@@ -345,7 +345,7 @@ migrate -path internal/infra/database/migrations \
 
 ## Deploy em Kubernetes
 
-Os manifestos ficam em [`/k8s`](k8s/) (Kustomize: `base` + `overlays/local` + `overlays/aws`). O caminho rápido para o ambiente local completo — cluster kind, metrics-server, Secret a partir do `.env`, API, Postgres e Mailpit:
+Os manifestos ficam em [`/k8s`](k8s/) (Kustomize: `base` + `overlays/local` + `overlays/prod`). O caminho rápido para o ambiente local completo — cluster kind, metrics-server, Secret a partir do `.env`, API, Postgres e Mailpit:
 
 ```bash
 cp .env.example .env              # se ainda não existir
@@ -485,6 +485,8 @@ No ambiente local elas vêm do arquivo `.env` (copie de [`.env.example`](.env.ex
 | `DB_NAME` | `tech_challenge_db` | Nome do banco de dados |
 | `JWT_SECRET` | *(inseguro — altere em produção)* | Chave de assinatura dos tokens JWT |
 | `WEBHOOK_SECRET` | *(inseguro — altere em produção)* | Segredo do HMAC que assina os webhooks inbound |
+| `NEW_RELIC_APP_NAME` | `oficina-api-local` | Nome da aplicação no New Relic |
+| `NEW_RELIC_LICENSE_KEY` | *(vazio)* | License key do APM/Logs do New Relic. Sem ela, a app roda sem o agente |
 | `NOTIFIER` | `log` | Notificação de status: `log` (console) ou `smtp` (e-mail real/Mailpit) |
 | `SMTP_HOST` | `localhost` | Host do servidor SMTP |
 | `SMTP_PORT` | `1025` | Porta do servidor SMTP |
@@ -706,22 +708,23 @@ Quatro workflows em `.github/workflows/`, todos com Job Summary detalhado (placa
 
 | Workflow | Gatilho | O que faz |
 |---|---|---|
-| [`ci.yml`](.github/workflows/ci.yml) | PR → `main` | `go vet` + build + testes unitários com `-race` e cobertura + `golangci-lint` |
+| [`ci.yml`](.github/workflows/ci.yml) | PR → `homolog`/`main` | `go vet` + build + testes unitários com `-race` e cobertura + `golangci-lint` + `gitleaks` |
 | [`integration.yml`](.github/workflows/integration.yml) | push `main`, PRs | Testes de integração do repositório contra Postgres real (service container) |
 | [`security.yml`](.github/workflows/security.yml) | push/PR `main`, manual | Scanners de segurança (tabela abaixo) |
-| [`cd.yml`](.github/workflows/cd.yml) | push `main`/tag `v*`, manual | Build + push da imagem no Docker Hub (F2-6.2) e deploy no cluster (F2-6.3) |
+| [`cd.yml`](.github/workflows/cd.yml) | push `main`/tag `v*`, manual | Build + push da imagem no Docker Hub (F2-6.2) e deploy no EKS com rollback automático se o rollout não convergir (F3-1.5) |
 
 ### Segredos e variáveis do CI/CD (F2-6.4)
 
-O job de deploy roda sob o [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) `production`, que pode exigir *required reviewers* antes de liberar a execução. Nenhum segredo fica em texto plano no repositório — tudo é referenciado via `secrets`/`vars`:
+O job de deploy roda sob o [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) `prod` — é o `sub` que a trust policy da role OIDC exige (ver `oficina-infra-k8s/bootstrap`) e onde o *required reviewer* será ligado quando houver permissão de admin no repositório. `homolog` é branch de integração com CI completo, mas não implanta: o ambiente de homologação foi dispensado (corte 10 da Fase 3). Nenhum segredo fica em texto plano no repositório — tudo é referenciado via `secrets`/`vars`:
 
 | Nome | Tipo | Onde é usado |
 |---|---|---|
 | `DOCKERHUB_USERNAME` | Secret (repo) | Login no Docker Hub (`cd.yml` → build-and-push) |
 | `DOCKERHUB_TOKEN` | Secret (repo) | Login no Docker Hub (`cd.yml` → build-and-push) |
-| `AWS_DEPLOY_ROLE_ARN` | Secret (environment `production`) | `aws-actions/configure-aws-credentials` via OIDC — sem chave de longa duração |
-| `EKS_CLUSTER_NAME`, `AWS_REGION` | Variable (environment `production`) | `aws eks update-kubeconfig` |
-| `DEPLOY_ENABLED` | Variable (repo) | Liga/desliga o job de deploy — evita falha em ambientes sem cluster acessível |
+| `AWS_ROLE_ARN` | Variable (repo) | Role `gha-oficina-app`, assumida via OIDC — sem chave de longa duração. Só descreve o cluster e lê a SSM; dentro do cluster tem Edit restrito ao namespace `oficina-prod` |
+| `AWS_REGION` | Variable (repo) | `aws eks update-kubeconfig`; o nome do cluster vem da SSM (`/oficina/shared/eks/cluster_name`) |
+| `NEW_RELIC_APP_ID` | Variable (repo, opcional) | Marcador de deploy no New Relic — o step só roda se estiver definida |
+| `NEW_RELIC_API_KEY` | Secret (repo) | idem |
 | `SONAR_TOKEN` | Secret (repo, já existente) | `security.yml` → análise SonarCloud |
 
 ### Scanners de segurança
