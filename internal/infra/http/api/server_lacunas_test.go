@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/google/uuid"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 )
 
 // TestNovoServer_ConstroiTodasAsDependencias garante que a montagem do grafo

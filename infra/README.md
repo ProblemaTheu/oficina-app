@@ -64,7 +64,7 @@ terraform plan     # revise antes!
 terraform apply
 
 # conectar o kubectl ao EKS:
-aws eks update-kubeconfig --name tech-challenge-eks --region us-east-1
+aws eks update-kubeconfig --name oficina --region us-east-1
 
 # obter o endpoint do RDS e a senha gerada:
 terraform output rds_endpoint
@@ -74,7 +74,7 @@ terraform output -raw db_password
 terraform destroy
 ```
 
-Depois do apply, ajustar `k8s/overlays/aws/kustomization.yaml` com o
+Depois do apply, ajustar `k8s/overlays/prod/kustomization.yaml` com o
 `rds_endpoint` e criar o Secret `oficina-secrets` com a senha gerada.
 
 ### Recursos criados (aws)

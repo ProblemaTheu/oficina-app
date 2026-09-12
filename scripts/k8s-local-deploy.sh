@@ -10,7 +10,7 @@
 set -euo pipefail
 
 CLUSTER=oficina
-IMAGE=tech-challenge-api:local
+IMAGE=oficina-api:local
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO_DIR"
 

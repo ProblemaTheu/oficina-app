@@ -20,13 +20,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/database"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/repository"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/problematheu/tech-challenge-1/internal/application/usecase"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
-	"github.com/problematheu/tech-challenge-1/internal/infra/database"
-	"github.com/problematheu/tech-challenge-1/internal/infra/repository"
 )
 
 var db *sql.DB

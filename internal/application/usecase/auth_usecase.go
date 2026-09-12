@@ -7,24 +7,17 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/config"
 	"log/slog"
-	"os"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
+	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/problematheu/tech-challenge-1/internal/domain/entity"
-	domainerros "github.com/problematheu/tech-challenge-1/internal/domain/erros"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const jwtExpiresIn = 8 * time.Hour
-
-func jwtSecret() []byte {
-	if s := os.Getenv("JWT_SECRET"); s != "" {
-		return []byte(s)
-	}
-	return []byte("changeme-insecure-default-secret")
-}
 
 type AuthUseCase struct {
 	usuarioRepo usuarioRepo
@@ -159,6 +152,10 @@ type LoginOutput struct {
 //   - sub:   UUID do usuário (string).
 //   - email: endereço de e-mail do usuário.
 //   - nome:  nome completo do usuário.
+//   - papel: nome do papel (administrador, atendente, mecanico).
+//   - tipo:  "usuario" — discriminador do contrato F3-0.2.
+//   - iss:   "oficina-api" — quem emitiu.
+//   - aud:   "oficina-api" — para quem vale.
 //   - iat:   timestamp de emissão (Unix).
 //   - exp:   timestamp de expiração (Unix, iat + 8h).
 //
@@ -183,17 +180,33 @@ func (uc *AuthUseCase) Login(ctx context.Context, input LoginInput) (*LoginOutpu
 		return nil, &domainerros.ErrNaoProcessavel{Codigo: "credenciais_invalidas", Mensagem: "e-mail ou senha inválidos"}
 	}
 
+	// O papel entra no token para a autorização não precisar consultar o
+	// banco a cada requisição. Falha aqui não impede o login: sem o claim, o
+	// portador continua sendo um funcionário válido.
+	papel, err := uc.usuarioRepo.BuscarNomePapel(ctx, usuario.PapelID)
+	if err != nil {
+		slog.WarnContext(ctx, "login: papel não resolvido, token seguirá sem o claim",
+			"usuario_id", usuario.ID, "error", err)
+	}
+
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"sub":   usuario.ID.String(),
 		"email": usuario.Email,
 		"nome":  usuario.Nome,
-		"iat":   now.Unix(),
-		"exp":   now.Add(jwtExpiresIn).Unix(),
+		"papel": papel,
+		// Contrato F3-0.2: dois emissores assinam com o mesmo segredo, e sem
+		// estes três claims a aplicação não distinguiria um token de cliente
+		// de um de funcionário.
+		"tipo": "usuario",
+		"iss":  "oficina-api",
+		"aud":  "oficina-api",
+		"iat":  now.Unix(),
+		"exp":  now.Add(jwtExpiresIn).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString(jwtSecret())
+	signed, err := token.SignedString(config.JWTSecret())
 	if err != nil {
 		slog.ErrorContext(ctx, "login: falha ao assinar token JWT", "usuario_id", usuario.ID, "error", err)
 		return nil, fmt.Errorf("auth: gerar token: %w", err)

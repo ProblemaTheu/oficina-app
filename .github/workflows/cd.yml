@@ -1,19 +1,18 @@
 name: CD
 
-# Publica a imagem no Docker Hub a cada push na main (ou tag v*) e, na
-# sequência, aplica os manifestos no cluster Kubernetes alvo.
+# Build → Docker Hub → EKS. Dispara em push na `main` (ou tag v*) e sob
+# demanda; `homolog` é só integração (o ambiente de homologação foi
+# dispensado — corte 10 da Fase 3), então não implanta.
 #
-# O job de deploy assume um runner com alcance de rede até o cluster:
-#   - Em EKS real, a autenticação é via OIDC (sem segredo de longa duração)
-#     e um runner hospedado do GitHub já alcança a API pública do cluster.
-#   - Contra um cluster local (kind/minikube) o runner hospedado do GitHub
-#     NÃO enxerga a rede local — nesse caso é necessário um runner
-#     self-hosted (troque `vars.DEPLOY_RUNNER_LABEL`) ou faça o deploy
-#     manualmente com `scripts/k8s-local-deploy.sh` (como no vídeo de
-#     demonstração). Documentado com honestidade no backlog (F2-6.3).
+# Autenticação na AWS por OIDC, sem segredo de longa duração. A trust policy
+# da role (oficina-infra-k8s/bootstrap) só aceita `main` ou `environment: prod`
+# — o `environment` no job de deploy é o que faz o disparo manual a partir
+# de outra branch funcionar, e é onde o reviewer obrigatório será ligado
+# quando houver permissão de admin no repositório.
 #
-# O job de deploy só roda se a variável de repositório DEPLOY_ENABLED for
-# "true" — assim o pipeline não quebra em ambientes sem cluster provisionado.
+# A role só pode descrever o cluster e ler parâmetros; dentro do cluster ela
+# tem Edit restrito ao namespace `oficina-prod` (access entry no Terraform do
+# infra-k8s). Um pipeline comprometido não apaga o cluster.
 
 on:
   push:
@@ -28,6 +27,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  IMAGEM: docker.io/problematheu/oficina-api
+  NAMESPACE: oficina-prod
+
 jobs:
   # ─────────────────────────────────────────────
   # F2-6.2 — Build + push da imagem no Docker Hub
@@ -39,23 +42,23 @@ jobs:
       image_tag: ${{ steps.meta.outputs.sha_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Definir tags da imagem
         id: meta
         run: echo "sha_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Login no Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setup Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Build e push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: true
@@ -63,8 +66,8 @@ jobs:
           # aumenta bastante o tempo de build (emulação via QEMU).
           platforms: linux/amd64
           tags: |
-            docker.io/problematheu/tech-challenge-api:${{ steps.meta.outputs.sha_tag }}
-            docker.io/problematheu/tech-challenge-api:latest
+            ${{ env.IMAGEM }}:${{ steps.meta.outputs.sha_tag }}
+            ${{ env.IMAGEM }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -73,56 +76,107 @@ jobs:
           {
             echo "# 🐳 CD — Build e push da imagem"
             echo
-            echo "Publicada em \`docker.io/problematheu/tech-challenge-api\`:"
+            echo "Publicada em \`${IMAGEM}\`:"
             echo "- \`${{ steps.meta.outputs.sha_tag }}\`"
             echo "- \`latest\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ─────────────────────────────────────────────
-  # F2-6.3 — Deploy no cluster Kubernetes (EKS)
+  # F3-1.5 — Deploy no EKS
   # ─────────────────────────────────────────────
   deploy:
-    name: Deploy no cluster
+    name: Deploy no EKS
     needs: build-and-push
-    if: vars.DEPLOY_ENABLED == 'true'
-    runs-on: ${{ vars.DEPLOY_RUNNER_LABEL || 'ubuntu-latest' }}
-    environment: production
+    runs-on: ubuntu-latest
+    environment: prod
     permissions:
       contents: read
-      id-token: write # necessário para autenticação AWS via OIDC
+      id-token: write # OIDC
+    env:
+      TAG: ${{ needs.build-and-push.outputs.image_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Configurar credenciais AWS (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Credenciais AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Atualizar kubeconfig do EKS
+      # O nome do cluster é publicado pelo infra-k8s na SSM: este repositório
+      # não precisa saber nada da infraestrutura além do path.
+      - name: Kubeconfig
         run: |
-          aws eks update-kubeconfig \
-            --name "${{ vars.EKS_CLUSTER_NAME || 'tech-challenge-eks' }}" \
-            --region "${{ vars.AWS_REGION || 'us-east-1' }}"
+          CLUSTER=$(aws ssm get-parameter --name /oficina/shared/eks/cluster_name \
+            --query Parameter.Value --output text)
+          aws eks update-kubeconfig --name "$CLUSTER" --region "${{ vars.AWS_REGION }}"
 
-      - name: Aplicar manifestos (kustomize overlay aws)
-        run: kubectl apply -k k8s/overlays/aws
-
-      - name: Atualizar tag da imagem
+      - name: Instalar kustomize
         run: |
-          kubectl -n oficina set image deployment/api \
-            api=docker.io/problematheu/tech-challenge-api:${{ needs.build-and-push.outputs.image_tag }}
+          if ! command -v kustomize >/dev/null; then
+            # --proto '=https': o -L segue redirects, e sem isto poderia
+            # seguir para http.
+            curl -sSL --proto '=https' --tlsv1.2 \
+              "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz" \
+              | sudo tar -xz -C /usr/local/bin kustomize
+          fi
+          kustomize version
+
+      # A tag entra no overlay ANTES do apply: um rollout só, com a imagem
+      # certa — não um com `latest` seguido de outro com o SHA.
+      - name: Aplicar manifestos (overlay prod)
+        id: apply
+        working-directory: k8s/overlays/prod
+        run: |
+          kustomize edit set image "${IMAGEM}=${IMAGEM}:${TAG}"
+          kustomize build . | grep -E 'image:' # visível no log
+          kubectl apply -k .
 
       - name: Aguardar rollout
-        run: kubectl -n oficina rollout status deployment/api --timeout=180s
+        id: rollout
+        run: kubectl -n "$NAMESPACE" rollout status deployment/api --timeout=300s
+
+      # Rollout que não converge (imagem quebrada, probe falhando) volta para a
+      # revisão anterior sozinho — sem deixar o ambiente pela metade. Só depois
+      # do apply: falha antes disso não mexeu em nada, e desfazer reverteria
+      # um deploy saudável.
+      - name: Rollback em caso de falha
+        if: failure() && (steps.apply.outcome == 'failure' || steps.rollout.outcome == 'failure')
+        run: |
+          kubectl -n "$NAMESPACE" rollout undo deployment/api
+          kubectl -n "$NAMESPACE" rollout status deployment/api --timeout=180s
+
+      # Marcador de deploy no New Relic — a linha vertical no gráfico que
+      # responde "a latência subiu depois de qual deploy?". Opcional: só roda
+      # se o ID da aplicação APM estiver configurado como variable.
+      # Segredo e valores do contexto entram por `env`, não expandidos no
+      # script: expansão inline vira injeção de shell se o valor tiver aspas.
+      - name: Registrar deploy no New Relic
+        if: success() && vars.NEW_RELIC_APP_ID != ''
+        env:
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NEW_RELIC_APP_ID: ${{ vars.NEW_RELIC_APP_ID }}
+          ATOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
+        run: |
+          curl -sS -o /dev/null -w 'New Relic: HTTP %{http_code}\n' -X POST \
+            "https://api.newrelic.com/v2/applications/${NEW_RELIC_APP_ID}/deployments.json" \
+            -H "Api-Key: ${NEW_RELIC_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"deployment\":{\"revision\":\"${TAG}\",\"user\":\"${ATOR}\",\"changelog\":\"${REF}\"}}"
 
       - name: Job Summary
+        if: always()
         run: |
           {
-            echo "# 🚀 CD — Deploy no cluster"
+            echo "# 🚀 CD — Deploy no EKS"
             echo
-            echo "Imagem \`${{ needs.build-and-push.outputs.image_tag }}\` implantada em \`oficina/api\`."
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "Imagem \`${TAG}\` implantada em \`${NAMESPACE}/api\` (ref \`${{ github.ref_name }}\`)."
+            else
+              echo "**Deploy falhou** — rollback para a revisão anterior executado. Ver o log acima."
+            fi
             echo
             echo "> Migrations rodam no boot da aplicação (advisory lock do Postgres via golang-migrate — ver k8s/README.md)."
           } >> "$GITHUB_STEP_SUMMARY"
