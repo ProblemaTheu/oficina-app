@@ -74,7 +74,7 @@ terraform output -raw db_password
 terraform destroy
 ```
 
-Depois do apply, ajustar `k8s/overlays/aws/kustomization.yaml` com o
+Depois do apply, ajustar `k8s/overlays/prod/kustomization.yaml` com o
 `rds_endpoint` e criar o Secret `oficina-secrets` com a senha gerada.
 
 ### Recursos criados (aws)

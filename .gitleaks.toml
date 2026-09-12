@@ -15,3 +15,7 @@ paths = ['''internal/infra/http/api/api\.gen\.go''']
 [[allowlists]]
 description = "Exemplos de JWT truncados na documentação — header HS256 (público) + reticências"
 regexes = ['''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.\.\.''']
+
+[[allowlists]]
+description = "Segredo fictício de teste do middleware de webhook — o próprio valor diz o que é"
+regexes = ['''segredo-do-teste-com-32-ou-mais-caracteres''']
