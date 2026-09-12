@@ -344,16 +344,55 @@ Saída: `gh workflow run cd.yml --ref feature/fase-3`. O `cd.yml` tem `workflow_
 
 ---
 
+## 12/09 — CI/CD dos 4 repositórios (F3-1.4, F3-1.5, F3-1.6)
+
+Até aqui só o `oficina-app` tinha workflows, e o job de deploy dele **nunca tinha rodado**: referenciava o secret `AWS_DEPLOY_ROLE_ARN` (não existe — a role está na variable `AWS_ROLE_ARN`), usava o environment `production` (a trust policy OIDC só aceita `prod`) e aplicava `k8s/overlays/aws`, overlay da Fase 2 que devolveria o Service a `ClusterIP` — derrubando o CLB que o API Gateway aponta. Os 3 repos novos não tinham workflow nenhum; todo `apply` foi feito da máquina local.
+
+**Entregável verificado**, tudo pelo pipeline e a partir de `feature/fase-3` (disparo manual — o gatilho automático é só `main`):
+
+| Repo | PR → `homolog` | Apply/deploy via CI |
+|---|---|---|
+| `oficina-infra-k8s` | plan comentado: **sem mudanças** | `0 added, 0 changed, 0 destroyed` |
+| `oficina-infra-db` | plan comentado: **sem mudanças** | `0 added, 0 changed, 0 destroyed` |
+| `oficina-lambda-auth` | testes + plan comentado | `2 changed` (só `source_code_hash`) · smoke test `400 cpf_invalido` |
+| `oficina-app` | build, lint, integração, gitleaks verdes | imagem `35aa901` no EKS, `rollout status` ok |
+
+### Decisões
+
+**Duas roles OIDC por repositório de Terraform.** A role de apply só aceita `main` ou `environment:prod`, então `pull_request` não a assume — e é assim que deve ser. Para o plan comentado no PR, o bootstrap ganhou `gha-<repo>-plan` com `ReadOnlyAccess` + `secretsmanager:GetSecretValue` em `oficina/*` (o refresh de `aws_secretsmanager_secret_version` precisa) e trust só em `pull_request`. Um PR malicioso mostra no máximo um plan. O que ela **não** protege: o state guarda a senha do RDS, e quem lê o state lê a senha — vale para qualquer desenho de plan em PR. A de `infra-k8s` ainda entra no cluster com `AmazonEKSViewPolicy`, porque o provider kubernetes lê o namespace no refresh.
+
+**`environment: prod` no job de apply, mesmo sem admin.** O GitHub cria o environment quando um workflow o referencia — foi assim que `prod` apareceu nos 3 repos. É o `sub` que a trust policy exige e é onde o reviewer obrigatório será ligado quando houver admin. Consequência honesta: até lá, qualquer branch com `environment: prod` no job consegue assumir a role de apply. É o mesmo grau de proteção que `main` sem ruleset tem hoje.
+
+**`plan` e `apply` no mesmo job, com `-out=tfplan`.** O apply consome exatamente o que foi planejado. Em PR, `-lock=false`: a role read-only não escreve o lock no S3, e plan não precisa dele.
+
+**Deploy da app pelo overlay `prod`, com `kustomize edit set image` antes do apply.** Um rollout só, com o SHA — não um com `latest` seguido de outro. Rollback automático se o rollout não convergir, condicionado a `apply`/`rollout` terem falhado: falha antes disso não mexeu em nada, e desfazer reverteria um deploy saudável.
+
+### Achados que custaram tempo
+
+**`gh workflow run` não enxerga workflow que ainda não está na `main`.** Ele só é registrado quando algum gatilho dele dispara. De `feature/fase-3`, o único gatilho possível é `pull_request` para `homolog` — por isso os PRs foram abertos antes do disparo manual.
+
+**O módulo EKS grava como administrador da chave KMS quem executou o Terraform.** `kms_key_administrators` vazio vira `[caller]`: `admin-cli` local, role de plan no PR, role de apply no CI — a policy mudaria a cada execução. Fixado em `admin_principal_arns` sem o root. Apareceu no primeiro plan em PR, como `1 to change` que ninguém tinha pedido.
+
+**Drift de addons e AMI.** Os addons e o node group seguem a versão mais recente; entre 03/09 e 12/09 saíram builds novos e o plan trouxe `5 to change`, incluindo substituição rolling dos 2 nós. Aplicado localmente antes de ligar o CI, para ele partir de `0 to change`. Vai voltar a cada build novo da AWS — é comportamento do módulo; fixar versão é decisão para depois da entrega.
+
+**A `gitleaks-action` embute a 8.24.3, que não lê a allowlist no formato do `.gitleaks.toml`.** Acusava um segredo fictício de teste que a 8.30 local suprime. `GITLEAKS_VERSION: '8.30.1'` nos 4 workflows.
+
+**Node 20 sai dos runners em 16/09/2026.** Todas as actions subiram para as majors em Node 24 (`checkout@v7`, `setup-go@v7`, `configure-aws-credentials@v6`, `setup-terraform@v4`, `github-script@v9`, `docker/*`, `golangci-lint-action@v9`). A `sonarcloud-github-action` está arquivada — substituída pela `sonarqube-scan-action@v8`, mesmos args.
+
+**O SonarCloud tem análise automática ligada no `oficina-infra-k8s`** (instalado pelo dono do repo, não pelo workflow) e reprova o PR com *Security Rating C on New Code*. Não é check obrigatório e o corte 15 dispensa Sonar nos repos novos — mas o badge vermelho fica visível no PR. Ou desliga a análise automática no SonarCloud, ou trata os achados (são as escolhas dos cortes 1 e 2: subnet pública, SG aberto).
+
+---
+
 ## Pendências
 
 | Pendência | Depende de | Prazo |
 |---|---|---|
-| **Branch protection nos 4 repos** | `ProblemaTheu` conceder **Admin** | 07/09 |
-| **Environment `prod` com reviewer** | idem | 07/09 |
+| **Branch protection nos 4 repos** | `ProblemaTheu` conceder **Admin** | antes da entrega |
+| **Environment `prod` com reviewer** (já existe nos 4; falta a regra) | idem | antes da entrega |
 | **`soat-architecture` nos 3 repos novos** | idem | antes da entrega |
-| Quota de vCPU aprovada | AWS (solicitado, `PENDING`) | antes do dia 2 |
-| `SONAR_PROJECT_KEY` aponta para `tech-challenge-1` | *Update key* no SonarCloud **antes** de trocar a variable | 07/09 |
-| Validar CD automático na `feature/fase-3` | `DEPLOY_ENABLED` e execução do workflow | 07/09 |
+| SonarCloud automático no `infra-k8s`: desligar ou tratar os achados | dono do projeto no SonarCloud | antes da entrega |
+| `SONAR_PROJECT_KEY` aponta para `tech-challenge-1` | *Update key* no SonarCloud **antes** de trocar a variable | antes da entrega |
+| Merge dos 4 PRs `feature/fase-3 → homolog` e depois `homolog → main` (liga o deploy automático) | revisão | antes da entrega |
 | Rotacionar as chaves do New Relic | passaram pelo chat | depois da entrega |
 
 **O que `Write` já permite** (testado): push, branches, secrets e variables de repositório. **Só ruleset e environment exigem `admin`** — ruleset responde `404`, environment responde `403 Must have admin rights`.
