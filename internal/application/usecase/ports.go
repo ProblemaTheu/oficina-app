@@ -93,6 +93,34 @@ type notifier interface {
 	NotificarMudancaStatus(ctx context.Context, n NotificacaoStatus) error
 }
 
+// Resultados possíveis de um EventoOS.
+const (
+	ResultadoSucesso = "sucesso"
+	ResultadoFalha   = "falha"
+)
+
+// EventoOS descreve um evento de negócio de Ordem de Serviço emitido para a
+// plataforma de observabilidade. Alimenta os dashboards (volume diário de OS,
+// tempo médio por status) e o alerta de falha no processamento de OS. Nenhum
+// dado sensível (CPF, e-mail) trafega neste evento — apenas identificadores e
+// metadados de status.
+type EventoOS struct {
+	OsID                  string  // UUID da OS (vazio quando a criação falha antes de persistir)
+	Numero                string  // número legível (OS-YYYY-NNNNN)
+	Status                string  // status resultante da operação
+	StatusAnterior        string  // status de origem (vazio na criação)
+	Resultado             string  // ResultadoSucesso | ResultadoFalha
+	Motivo                string  // rótulo curto do erro quando Resultado == ResultadoFalha
+	DuracaoStatusSegundos float64 // tempo no status anterior; 0 quando não aplicável
+}
+
+// eventRecorder é a porta de saída para eventos de negócio (observabilidade).
+// Implementações vivem na infra (ex.: custom events do New Relic). É opcional:
+// quando ausente, os casos de uso operam normalmente, apenas sem emitir eventos.
+type eventRecorder interface {
+	RegistrarEventoOS(ctx context.Context, e EventoOS)
+}
+
 type osRepo interface {
 	BuscarStatusID(ctx context.Context, nome entity.Status) (uuid.UUID, error)
 	GerarNumeroOS(ctx context.Context) (string, error)
