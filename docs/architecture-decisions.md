@@ -139,3 +139,179 @@ go generate ./internal/infra/http/api/...
 ```
 
 Um único comando atualiza todo o código gerado ao modificar o contrato.
+
+---
+
+## ADR-004 — Orquestração de containers: Kubernetes gerenciado (EKS)
+
+### Contexto
+
+A Fase 3 exige que a aplicação rode em nuvem, escale sob carga e seja provisionada por IaC. É preciso escolher a plataforma de execução dos containers na AWS.
+
+### Alternativas consideradas
+
+| Alternativa | Prós | Contras |
+|-------------|------|---------|
+| **EKS (Kubernetes gerenciado)** | Padrão de mercado, HPA nativo, manifestos portáveis, control plane gerenciado | Curva de aprendizado, custo do control plane |
+| ECS + Fargate | Sem gerência de nós, integração AWS fluida | Autoescalonamento e conceitos proprietários, menos portável |
+| EC2 + Docker Compose | Simples de entender | Sem autoescalonamento real, sem self-healing, operação manual |
+| Lambda (app inteira) | Escala a zero, sem servidor | Inadequado para API stateful de longa duração com pool de conexões ao RDS |
+
+### Decisão: Amazon EKS
+
+**1. HPA nativo atende o requisito de escala**
+
+O requisito de "escalar sob carga (2 → ≥4 réplicas)" é atendido de forma declarativa pelo `HorizontalPodAutoscaler` do Kubernetes (ver ADR-005), sem código nem serviço proprietário.
+
+**2. Manifestos portáveis e versionados**
+
+Todo o estado desejado do cluster vive em `k8s/` (Kustomize com `base` + `overlays/prod` e `overlays/local`). O mesmo manifesto roda localmente (kind/minikube) e em produção, mudando apenas o overlay.
+
+**3. Separação clara com a infraestrutura**
+
+O cluster e seus add-ons são provisionados por Terraform no repositório `oficina-infra-k8s`; a aplicação apenas entrega manifestos e imagem. Essa fronteira sustenta a divisão em 4 repositórios.
+
+---
+
+## ADR-005 — Autoescalonamento horizontal (HPA)
+
+### Contexto
+
+A aplicação precisa absorver picos de tráfego sem intervenção manual e reduzir custo quando ocioso. É preciso definir a estratégia e os parâmetros de autoescalonamento.
+
+### Alternativas consideradas
+
+| Alternativa | Prós | Contras |
+|-------------|------|---------|
+| **HPA por CPU (autoscaling/v2)** | Nativo, métrica simples e previsível, fácil de demonstrar | Reage a CPU, não diretamente a latência/RPS |
+| HPA por métrica custom (RPS/latência) | Escala pelo sinal de negócio real | Exige metrics-adapter/Prometheus adapter, mais peças móveis |
+| Escalonamento manual (`kubectl scale`) | Controle total | Não atende o requisito de escala automática |
+| Cluster Autoscaler apenas | Ajusta nós | Não ajusta réplicas do pod — resolve outro problema |
+
+### Decisão: HPA v2 por utilização de CPU, `min=2` / `max=5` / alvo 50%
+
+```yaml
+minReplicas: 2
+maxReplicas: 5
+metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+behavior:
+  scaleDown:
+    stabilizationWindowSeconds: 60
+```
+
+**1. `min=2` garante disponibilidade**
+
+Duas réplicas em subnets/AZs distintas evitam ponto único de falha e permitem rolling update sem downtime.
+
+**2. CPU a 50% dá margem para o pico**
+
+Com alvo de 50%, o HPA começa a criar réplicas antes da saturação — quando um teste de carga (`hey`) satura os 2 pods, o autoscaler sobe rapidamente até 5.
+
+**3. `stabilizationWindowSeconds: 60` no scale-down evita flapping**
+
+Após o pico, a redução espera 60s antes de remover réplicas, o que também torna a demonstração no vídeo estável e legível (sobe sob carga, volta a 2 depois).
+
+---
+
+## ADR-006 — Padrão de comunicação: REST síncrono + webhook assíncrono assinado
+
+### Contexto
+
+O sistema tem dois padrões de interação distintos: chamadas cliente→API (abrir OS, consultar status) e a resposta de aprovação/recusa de orçamento, que chega de um sistema externo em momento indeterminado. É preciso decidir como cada uma se comunica.
+
+### Alternativas consideradas
+
+| Alternativa | Prós | Contras |
+|-------------|------|---------|
+| **REST síncrono + webhook HTTP assinado (HMAC)** | Simples, sem broker, resposta imediata onde faz sentido, callback desacoplado no tempo | Webhook exige endpoint público e verificação de autenticidade |
+| Fila/mensageria (SQS/SNS) para tudo | Desacoplamento total, resiliência | Overhead operacional desproporcional ao volume atual, complexidade de entrega/idempotência |
+| Polling do cliente pelo status do orçamento | Nenhuma porta de entrada extra | Latência, desperdício de requisições, pior UX |
+
+### Decisão: REST síncrono para o fluxo do usuário; webhook HTTP com HMAC para a resposta de orçamento
+
+**1. Síncrono onde a resposta é imediata**
+
+Abrir OS, avançar status e consultar são operações request/response — o cliente precisa do resultado na hora. REST sobre o contrato OpenAPI (ADR-003) cobre isso.
+
+**2. Webhook assíncrono para o que é assíncrono por natureza**
+
+A decisão do cliente sobre o orçamento chega quando ele responde — pode ser minutos ou horas depois. Um `POST /v1/webhooks/budget-response` recebe esse callback sem manter conexão aberta.
+
+**3. Autenticidade por HMAC, não por JWT**
+
+O webhook vem de um sistema externo, não de um usuário. Ele é validado pela assinatura HMAC do corpo (middleware `AssinaturaWebhook`), com o segredo compartilhado `WEBHOOK_SECRET` — não por token de usuário. O processamento é idempotente: reenvio do provedor não deduz estoque duas vezes.
+
+**4. Sem broker por decisão de proporcionalidade**
+
+O volume e os requisitos atuais não justificam SQS/SNS. A comunicação assíncrona necessária (um único callback) é atendida por webhook, sem introduzir um broker para operar e monitorar.
+
+---
+
+## ADR-007 — Observabilidade: New Relic (APM + eventos de negócio)
+
+### Contexto
+
+A Fase 3 exige APM, logs correlacionados, dashboards de negócio e alerta de falha no processamento de OS. É preciso escolher a plataforma e como instrumentar sem vazar dado sensível (LGPD).
+
+### Alternativas consideradas
+
+| Alternativa | Prós | Contras |
+|-------------|------|---------|
+| **New Relic (APM + Custom Events + Logs in Context)** | APM, infra, logs, eventos e alertas em uma plataforma; agente Go maduro | SaaS pago, dado sai do ambiente |
+| Prometheus + Grafana + Loki (self-hosted) | Open-source, sem custo de licença | Operação de vários componentes, sem APM/tracing pronto |
+| CloudWatch | Nativo AWS | Tracing/APM e dashboards de negócio mais trabalhosos |
+
+### Decisão: New Relic, com APM automático + `OrdemServicoEvent` como custom event
+
+**1. Duas camadas complementares**
+
+- **APM automático**: o middleware envolve cada requisição numa transação New Relic, dando latência, throughput e erros sem código de negócio.
+- **Eventos de negócio**: cada transição relevante de OS emite um `OrdemServicoEvent` (`app.RecordCustomEvent`), que alimenta os dashboards de volume diário, tempo médio por status e falhas, além do alerta.
+
+**2. Correlação trace ↔ log ↔ evento**
+
+O evento carrega `trace.id`/`span.id` da transação corrente (`GetTraceMetadata`), permitindo pular de um ponto no gráfico para o trace distribuído e para os logs JSON daquela mesma requisição (`correlation_id` + `trace.id`).
+
+**3. LGPD: o evento não carrega dado pessoal**
+
+`OrdemServicoEvent` só leva identificadores da OS e metadados de status (`os_id`, `numero`, `status`, `resultado`, `duracao_status_segundos`, `motivo`). Nunca CPF, nome ou e-mail.
+
+**4. Observabilidade nunca quebra o negócio**
+
+A emissão é no-op quando não há transação no contexto (ex.: ambiente local sem licença) e o caso de uso jamais falha por causa dela — é um efeito colateral, não um passo do fluxo.
+
+---
+
+## ADR-008 — Notificação de status ao cliente: e-mail via SMTP
+
+### Contexto
+
+O cliente deve ser notificado nas mudanças de status relevantes da OS (aguardando aprovação, em execução, finalizada, entregue). É preciso escolher o canal e como isolá-lo do fluxo transacional. O requisito da Fase 3 pede a escolha registrada em ADR.
+
+### Alternativas consideradas
+
+| Alternativa | Prós | Contras |
+|-------------|------|---------|
+| **SMTP (SES na nuvem, Mailpit local)** | Um só código para os dois ambientes, protocolo padrão, `net/smtp` na stdlib | Entrega best-effort, sem histórico de entregas rico |
+| SDK específico da AWS SES | Recursos avançados (templates, métricas de entrega) | Acopla o código ao provedor, sem equivalente local trivial |
+| SNS / fila de notificação | Desacoplamento, retry gerenciado | Complexidade desproporcional para um e-mail simples |
+
+### Decisão: notificador SMTP único, apontando para SES (nuvem) ou Mailpit (local), envio assíncrono best-effort
+
+**1. Um código, dois ambientes**
+
+`SMTPNotifier` usa `net/smtp`: com `SMTP_USER` definido, autentica via PLAIN (interface SMTP do Amazon SES em produção); sem usuário, conecta sem autenticação ao Mailpit/MailHog local (`localhost:1025`). A escolha do ambiente é só configuração (`SMTP_HOST`/`SMTP_PORT`), sem `if` no código.
+
+**2. Assíncrono e best-effort — nunca bloqueia a transição**
+
+A notificação é disparada numa goroutine com timeout próprio. Falha de envio (cliente sem e-mail, provedor fora) é apenas logada; a transição de status da OS é concluída de qualquer forma. Comunicação com o cliente não pode derrubar a operação.
+
+**3. Escolha para a demonstração**
+
+No vídeo, a notificação é demonstrada com **Mailpit** local capturando o e-mail — evita depender da saída de porta 25/verificação de domínio do SES no momento da gravação, mantendo o mesmo caminho de código de produção.
