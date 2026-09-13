@@ -19,11 +19,24 @@ type OrdemServicoUseCase struct {
 	servicoRepo servicoRepo
 	pecaRepo    pecaRepo
 	notifier    notifier
+	eventos     eventRecorder
+}
+
+// OSUseCaseOption configura dependências opcionais do OrdemServicoUseCase sem
+// alterar a assinatura do construtor (os callers existentes seguem válidos).
+type OSUseCaseOption func(*OrdemServicoUseCase)
+
+// ComEventRecorder injeta o emissor de eventos de negócio (observabilidade).
+// Sem ele, o caso de uso não emite eventos — o comportamento padrão em testes
+// e no ambiente local sem New Relic.
+func ComEventRecorder(r eventRecorder) OSUseCaseOption {
+	return func(uc *OrdemServicoUseCase) { uc.eventos = r }
 }
 
 // NewOrdemServicoUseCase cria uma nova instância do use case. O notifier é
 // opcional (pode ser nil): quando presente, o cliente é notificado nas
-// mudanças de status relevantes.
+// mudanças de status relevantes. Dependências opcionais (ex.: emissor de
+// eventos) são configuradas via OSUseCaseOption.
 func NewOrdemServicoUseCase(
 	osR osRepo,
 	cliR clienteRepo,
@@ -31,8 +44,9 @@ func NewOrdemServicoUseCase(
 	svcR servicoRepo,
 	pecR pecaRepo,
 	notif notifier,
+	opts ...OSUseCaseOption,
 ) *OrdemServicoUseCase {
-	return &OrdemServicoUseCase{
+	uc := &OrdemServicoUseCase{
 		osRepo:      osR,
 		clienteRepo: cliR,
 		veiculoRepo: veicR,
@@ -40,6 +54,19 @@ func NewOrdemServicoUseCase(
 		pecaRepo:    pecR,
 		notifier:    notif,
 	}
+	for _, opt := range opts {
+		opt(uc)
+	}
+	return uc
+}
+
+// registrarEvento emite um evento de negócio quando há um recorder configurado.
+// Nunca bloqueia nem falha o caso de uso: observabilidade é um efeito colateral.
+func (uc *OrdemServicoUseCase) registrarEvento(ctx context.Context, e EventoOS) {
+	if uc.eventos == nil {
+		return
+	}
+	uc.eventos.RegistrarEventoOS(ctx, e)
 }
 
 // statusNotificaveis são as mudanças de status comunicadas ao cliente.
@@ -221,11 +248,24 @@ func (uc *OrdemServicoUseCase) CriarOS(ctx context.Context, input CriarOSInput) 
 	}
 
 	if _, err := uc.osRepo.Criar(ctx, os, itensServico, itensPeca); err != nil {
+		uc.registrarEvento(ctx, EventoOS{
+			Numero:    numero,
+			Status:    string(entity.StatusRecebida),
+			Resultado: ResultadoFalha,
+			Motivo:    "persistencia_os",
+		})
 		return nil, err
 	}
 
 	// Registrar histórico inicial
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, nil, statusID, nil)
+
+	uc.registrarEvento(ctx, EventoOS{
+		OsID:      os.ID.String(),
+		Numero:    numero,
+		Status:    string(entity.StatusRecebida),
+		Resultado: ResultadoSucesso,
+	})
 
 	return uc.osRepo.BuscarPorID(ctx, os.ID.String())
 }
@@ -317,6 +357,7 @@ func (uc *OrdemServicoUseCase) AvancarStatus(ctx context.Context, input AvancarS
 	case entity.StatusEmExecucao:
 		iniciadoEm = &now
 		if err := uc.osRepo.DeduzirEstoquePecas(ctx, os.ID); err != nil {
+			uc.registrarEvento(ctx, eventoFalhaTransicao(os, input.NovoStatus, "deducao_estoque"))
 			return nil, err
 		}
 	case entity.StatusFinalizada:
@@ -326,6 +367,7 @@ func (uc *OrdemServicoUseCase) AvancarStatus(ctx context.Context, input AvancarS
 	}
 
 	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, input.Diagnostico, nil, nil, iniciadoEm, finalizadoEm, entregueEm); err != nil {
+		uc.registrarEvento(ctx, eventoFalhaTransicao(os, input.NovoStatus, "atualizacao_status"))
 		return nil, err
 	}
 
@@ -333,7 +375,37 @@ func (uc *OrdemServicoUseCase) AvancarStatus(ctx context.Context, input AvancarS
 
 	uc.notificarMudancaStatus(os, input.NovoStatus, input.Observacao)
 
+	uc.registrarEvento(ctx, eventoSucessoTransicao(os, input.NovoStatus, now))
+
 	return uc.osRepo.BuscarPorID(ctx, input.OsID)
+}
+
+// eventoSucessoTransicao monta o evento de negócio de uma transição bem-sucedida.
+// A duração é o tempo que a OS permaneceu no status anterior — a diferença entre
+// agora e a última atualização — e alimenta o dashboard de "tempo médio por status".
+func eventoSucessoTransicao(os *entity.OrdemServico, novo entity.Status, agora time.Time) EventoOS {
+	return EventoOS{
+		OsID:                  os.ID.String(),
+		Numero:                os.Numero,
+		Status:                string(novo),
+		StatusAnterior:        string(os.StatusNome),
+		Resultado:             ResultadoSucesso,
+		DuracaoStatusSegundos: agora.Sub(os.AtualizadoEm).Seconds(),
+	}
+}
+
+// eventoFalhaTransicao monta o evento de negócio de uma transição que falhou na
+// persistência (não em validação de entrada) — a fonte do alerta de falha no
+// processamento de OS.
+func eventoFalhaTransicao(os *entity.OrdemServico, novo entity.Status, motivo string) EventoOS {
+	return EventoOS{
+		OsID:           os.ID.String(),
+		Numero:         os.Numero,
+		Status:         string(novo),
+		StatusAnterior: string(os.StatusNome),
+		Resultado:      ResultadoFalha,
+		Motivo:         motivo,
+	}
 }
 
 // AprovarOrcamento aprova o orçamento e avança para em_execucao.
@@ -359,17 +431,21 @@ func (uc *OrdemServicoUseCase) AprovarOrcamento(ctx context.Context, osID string
 	}
 
 	if err := uc.osRepo.DeduzirEstoquePecas(ctx, os.ID); err != nil {
+		uc.registrarEvento(ctx, eventoFalhaTransicao(os, entity.StatusEmExecucao, "deducao_estoque"))
 		return nil, err
 	}
 
 	now := time.Now()
 	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, nil, &now, nil, &now, nil, nil); err != nil {
+		uc.registrarEvento(ctx, eventoFalhaTransicao(os, entity.StatusEmExecucao, "atualizacao_status"))
 		return nil, err
 	}
 
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, nil)
 
 	uc.notificarMudancaStatus(os, entity.StatusEmExecucao, nil)
+
+	uc.registrarEvento(ctx, eventoSucessoTransicao(os, entity.StatusEmExecucao, now))
 
 	return uc.osRepo.BuscarPorID(ctx, osID)
 }
@@ -435,12 +511,15 @@ func (uc *OrdemServicoUseCase) RejeitarOrcamento(ctx context.Context, osID strin
 
 	now := time.Now()
 	if err := uc.osRepo.AtualizarStatus(ctx, os.ID, novoStatusID, nil, nil, &now, nil, &now, nil); err != nil {
+		uc.registrarEvento(ctx, eventoFalhaTransicao(os, entity.StatusFinalizada, "atualizacao_status"))
 		return nil, err
 	}
 
 	_ = uc.osRepo.RegistrarHistorico(ctx, os.ID, &os.StatusID, novoStatusID, motivo)
 
 	uc.notificarMudancaStatus(os, entity.StatusFinalizada, motivo)
+
+	uc.registrarEvento(ctx, eventoSucessoTransicao(os, entity.StatusFinalizada, now))
 
 	return uc.osRepo.BuscarPorID(ctx, osID)
 }

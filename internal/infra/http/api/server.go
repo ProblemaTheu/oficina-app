@@ -17,6 +17,7 @@ import (
 	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/http/middleware"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/notification"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/observability"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/repository"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -50,13 +51,14 @@ func NovoServer(db *sql.DB) *Server {
 	osRepo := repository.NovoOrdemServicoRepository(db)
 	usuarioRepo := repository.NovoUsuarioRepository(db)
 	notifier := notification.NovoNotifierDoAmbiente()
+	eventos := observability.NovoEventRecorder()
 
 	return &Server{
 		clientUseCase:  usecase.NewClientUseCase(clienteRepo),
 		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo, clienteRepo),
 		serviceUseCase: usecase.NewServiceUseCase(servicoRepo),
 		partUseCase:    usecase.NewPartUseCase(pecaRepo),
-		osUseCase:      usecase.NewOrdemServicoUseCase(osRepo, clienteRepo, veiculoRepo, servicoRepo, pecaRepo, notifier),
+		osUseCase:      usecase.NewOrdemServicoUseCase(osRepo, clienteRepo, veiculoRepo, servicoRepo, pecaRepo, notifier, usecase.ComEventRecorder(eventos)),
 		authUseCase:    usecase.NewAuthUseCase(usuarioRepo),
 	}
 }
