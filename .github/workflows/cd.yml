@@ -154,18 +154,20 @@ jobs:
       # variável o passo é pulado e nada muda.
       #
       # Usa a mutation changeTrackingCreateEvent (API atual, que popula a tela
-      # nova de Change tracking) e associa a entidade por busca de NOME —
-      # dispensa o GUID/ID numérico. `apiKey` precisa ser uma User key (NRAK-*).
+      # nova de Change tracking) e associa a entidade pelo GUID do APM
+      # (entitySearch por id — mais preciso que por nome). O GUID não é segredo;
+      # fica na variable NEW_RELIC_ENTITY_GUID. `apiKey` precisa ser uma User
+      # key (NRAK-*), guardada em secret.
       - name: Registrar deploy no New Relic (Change Tracking)
-        if: success() && vars.NEW_RELIC_APP_NAME != ''
+        if: success() && vars.NEW_RELIC_ENTITY_GUID != ''
         uses: newrelic/deployment-marker-action@d88a59ea8f713ad6935e60de27273157790b1e3b # v2.6.2
         with:
           apiKey: ${{ secrets.NEW_RELIC_API_KEY }}
           region: US
           commandType: changeTrackingCreateEvent
-          entitySearch: "name = '${{ vars.NEW_RELIC_APP_NAME }}'"
+          entitySearch: "id = '${{ vars.NEW_RELIC_ENTITY_GUID }}'"
           category: Deployment
-          type: Basic
+          type: BASIC
           version: ${{ env.TAG }}
           commit: ${{ github.sha }}
           changelog: ${{ github.ref_name }}
