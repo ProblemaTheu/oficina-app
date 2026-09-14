@@ -147,24 +147,31 @@ jobs:
           kubectl -n "$NAMESPACE" rollout undo deployment/api
           kubectl -n "$NAMESPACE" rollout status deployment/api --timeout=180s
 
-      # Marcador de deploy no New Relic — a linha vertical no gráfico que
-      # responde "a latência subiu depois de qual deploy?". Opcional: só roda
-      # se o ID da aplicação APM estiver configurado como variable.
-      # Segredo e valores do contexto entram por `env`, não expandidos no
-      # script: expansão inline vira injeção de shell se o valor tiver aspas.
-      - name: Registrar deploy no New Relic
-        if: success() && vars.NEW_RELIC_APP_ID != ''
-        env:
-          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
-          NEW_RELIC_APP_ID: ${{ vars.NEW_RELIC_APP_ID }}
-          ATOR: ${{ github.actor }}
-          REF: ${{ github.ref_name }}
-        run: |
-          curl -sS -o /dev/null -w 'New Relic: HTTP %{http_code}\n' -X POST \
-            "https://api.newrelic.com/v2/applications/${NEW_RELIC_APP_ID}/deployments.json" \
-            -H "Api-Key: ${NEW_RELIC_API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d "{\"deployment\":{\"revision\":\"${TAG}\",\"user\":\"${ATOR}\",\"changelog\":\"${REF}\"}}"
+      # Marcador de deploy no New Relic (Change Tracking) — a linha vertical nos
+      # gráficos do APM e o evento em "Change tracking", que respondem "a
+      # latência subiu depois de qual deploy?". Opcional: só roda quando o nome
+      # do APM está configurado como variable, então em repositórios sem essa
+      # variável o passo é pulado e nada muda.
+      #
+      # Usa a mutation changeTrackingCreateEvent (API atual, que popula a tela
+      # nova de Change tracking) e associa a entidade pelo GUID do APM
+      # (entitySearch por id — mais preciso que por nome). O GUID não é segredo;
+      # fica na variable NEW_RELIC_ENTITY_GUID. `apiKey` precisa ser uma User
+      # key (NRAK-*), guardada em secret.
+      - name: Registrar deploy no New Relic (Change Tracking)
+        if: success() && vars.NEW_RELIC_ENTITY_GUID != ''
+        uses: newrelic/deployment-marker-action@d88a59ea8f713ad6935e60de27273157790b1e3b # v2.6.2
+        with:
+          apiKey: ${{ secrets.NEW_RELIC_API_KEY }}
+          region: US
+          commandType: changeTrackingCreateEvent
+          entitySearch: "id = '${{ vars.NEW_RELIC_ENTITY_GUID }}'"
+          category: Deployment
+          type: BASIC
+          version: ${{ env.TAG }}
+          commit: ${{ github.sha }}
+          changelog: ${{ github.ref_name }}
+          user: ${{ github.actor }}
 
       - name: Job Summary
         if: always()
