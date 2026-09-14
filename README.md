@@ -15,6 +15,7 @@
 
 ## Índice
 
+- [Fase 3 — Nuvem, autenticação por CPF e observabilidade](#fase-3--nuvem-autenticação-por-cpf-e-observabilidade)
 - [Fase 2 — Objetivos e arquitetura da solução](#fase-2--objetivos-e-arquitetura-da-solução)
 - [Quickstart](#quickstart)
 - [Tecnologias](#tecnologias)
@@ -35,6 +36,20 @@
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Gerando código a partir do OpenAPI](#gerando-código-a-partir-do-openapi)
 - [Documentação adicional](#documentação-adicional)
+
+---
+
+## Fase 3 — Nuvem, autenticação por CPF e observabilidade
+
+A Fase 3 leva a aplicação da Fase 2 para uma **nuvem AWS gerenciada**, com autenticação de clientes na borda e observabilidade de ponta a ponta:
+
+- **Autenticação de cliente por CPF na borda** — o **API Gateway** delega a um **Lambda authorizer** a validação do token antes de qualquer requisição chegar ao cluster. Um segundo Lambda (emissor) valida o CPF, consulta o cliente no banco, checa se está ativo e assina o JWT. Requisição sem credencial válida é barrada com **401 no próprio gateway**, sem gastar recurso do EKS;
+- **Execução gerenciada no EKS** — o cluster kind local dá lugar ao **Amazon EKS**, com o mesmo autoescalonamento (HPA, 2–5 réplicas) e manifestos Kustomize (`k8s/overlays/prod`);
+- **Persistência gerenciada** — o Postgres in-cluster dá lugar ao **RDS PostgreSQL**, provisionado por Terraform no repositório `oficina-infra-db`;
+- **Observabilidade no New Relic** — APM automático por requisição, **logs em JSON correlacionados** (`correlation_id` + `trace.id`), **eventos de negócio** (`OrdemServicoEvent`, sem dado pessoal — LGPD por design) que alimentam dashboards de volume diário de OS, tempo médio por status e falhas de processamento, além de alerta de falha;
+- **Infra dividida em repositórios de IaC** — a solução é distribuída em **4 repositórios** (aplicação, autenticação serverless, infra de cluster e infra de banco), cada um com seu ciclo de CI/CD.
+
+O desenho completo — diagrama de componentes na AWS, diagramas de sequência da autenticação e da abertura de OS, e o modelo entidade-relacionamento — está em **[docs/planejamentos/fase-3/arquitetura.md](docs/planejamentos/fase-3/arquitetura.md)**. As decisões de nuvem, banco, autenticação e divisão de repositórios estão nas **[RFCs](docs/rfcs/)**; as decisões técnicas (EKS, HPA, padrão de comunicação, observabilidade, notificação por e-mail) nas **[ADRs 004–008](docs/architecture-decisions.md)**.
 
 ---
 
@@ -643,7 +658,9 @@ Toda OS percorre um fluxo de status com transições controladas. Tentativas de 
 | Documento | Conteúdo |
 |-----------|----------|
 | [docs/objectives.md](docs/objectives.md) | Objetivos do sistema, escopo, requisitos funcionais e não-funcionais |
-| [docs/architecture-decisions.md](docs/architecture-decisions.md) | ADRs: escolha do PostgreSQL, chi e oapi-codegen |
+| [docs/planejamentos/fase-3/arquitetura.md](docs/planejamentos/fase-3/arquitetura.md) | Arquitetura da Fase 3: diagrama de componentes (AWS), sequência da autenticação e da abertura de OS, e o modelo ER |
+| [docs/rfcs/](docs/rfcs/) | RFCs: escolha da nuvem, banco de dados, autenticação e estratégia de ambientes |
+| [docs/architecture-decisions.md](docs/architecture-decisions.md) | 8 ADRs: PostgreSQL, chi, oapi-codegen, EKS, HPA, padrão de comunicação, observabilidade (New Relic) e notificação por e-mail |
 | [docs/ubiquitous-language.md](docs/ubiquitous-language.md) | Glossário dos termos do domínio (linguagem ubíqua) |
 | [docs/ddd-aggregates.md](docs/ddd-aggregates.md) | Agregados DDD, entidades internas e invariantes |
 | [docs/bounded-contexts.md](docs/bounded-contexts.md) | Contextos delimitados e mapa de contextos |
