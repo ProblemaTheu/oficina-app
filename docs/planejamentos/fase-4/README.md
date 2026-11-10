@@ -43,7 +43,7 @@ Cada linha vira uma ADR ou RFC (ver [F4-8.2](backlog.md#f4-82--rfcs-e-adrs-da-fa
 
 | Tema | Decisão | Racional |
 |------|---------|----------|
-| **Divisão** | **OS Service** (`oficina-app`), **Billing Service** (`oficina-billing-service`), **Execution Service** (`oficina-execution-service`) — exatamente os três sugeridos no enunciado | São os três momentos da OS com donos diferentes no negócio (atendimento, cobrança, oficina) e com ritmos de mudança distintos. Ir além de 3 aumenta o trabalho de costura sem aumentar a nota. |
+| **Divisão** | **OS Service** (`oficina-app`), **Billing Service** (`oficina-billing`), **Execution Service** (`oficina-execution`) — exatamente os três sugeridos no enunciado | São os três momentos da OS com donos diferentes no negócio (atendimento, cobrança, oficina) e com ritmos de mudança distintos. Ir além de 3 aumenta o trabalho de costura sem aumentar a nota. |
 | **O que fica no OS Service** | Clientes, veículos, usuários/login de funcionário, catálogo de serviços, **peças e estoque**, OS, histórico, relatórios e o **orquestrador da saga** | Estoque é consultado e reservado na abertura da OS; separá-lo criaria um quarto serviço e uma etapa remota a mais na saga. Fica registrado como evolução na RFC-005. |
 | **Nome do repo do OS Service** | **Manter `oficina-app`** 🔁 | O rename da Fase 3 tocou 8 pontos e deixou a chave do Sonar pendente. O README do repo declara "OS Service" logo no título. |
 | **Banco do OS Service** | PostgreSQL — o RDS que já existe (`oficina-infra-db`) | Zero migração de dados; o modelo é relacional e transacional. |
@@ -74,11 +74,11 @@ Cada linha vira uma ADR ou RFC (ver [F4-8.2](backlog.md#f4-82--rfcs-e-adrs-da-fa
 | ≥ 3 microsserviços independentes | OS, Billing, Execution | 3 repos | E1, E2, E3 |
 | Cada um com repositório, infraestrutura e banco próprios | `infra/` por repo + RDS (OS), RDS (Billing), DynamoDB (Execution) | 3 repos | F4-0.2, F4-6.2 |
 | OS Service: abertura, atualização e consulta de status/histórico | `POST/GET /v1/work-orders`, histórico com etapas da saga | `oficina-app` | F4-1.1, F4-1.7 |
-| Billing: gerar e enviar orçamento para aprovação | Comando `GerarOrcamento` + e-mail com link | `oficina-billing-service` | F4-2.2 |
-| Billing: registrar e verificar pagamentos — **Mercado Pago** | Preference + webhook `x-signature` + `GET /payments/{id}` | `oficina-billing-service` | F4-2.3, F4-2.4 |
+| Billing: gerar e enviar orçamento para aprovação | Comando `GerarOrcamento` + e-mail com link | `oficina-billing` | F4-2.2 |
+| Billing: registrar e verificar pagamentos — **Mercado Pago** | Preference + webhook `x-signature` + `GET /payments/{id}` | `oficina-billing` | F4-2.3, F4-2.4 |
 | Billing: atualizar status da OS após pagamento | Resposta `PagamentoConfirmado` → orquestrador | billing → app | F4-2.6 |
-| Execution: fila de execução | Tabela DynamoDB + GSI por fila/estado | `oficina-execution-service` | F4-3.2 |
-| Execution: status durante diagnóstico e reparo | API do mecânico (`iniciar`, `concluir-diagnostico`, `concluir`) | `oficina-execution-service` | F4-3.3 |
+| Execution: fila de execução | Tabela DynamoDB + GSI por fila/estado | `oficina-execution` | F4-3.2 |
+| Execution: status durante diagnóstico e reparo | API do mecânico (`iniciar`, `concluir-diagnostico`, `concluir`) | `oficina-execution` | F4-3.3 |
 | Execution: comunicar finalização ao OS Service | Resposta `ExecucaoConcluida` | execution → app | F4-3.4 |
 | ≥ 1 banco SQL e ≥ 1 NoSQL | PostgreSQL × 2 + DynamoDB | — | F4-0.1 |
 | REST síncrono quando necessário | Lambda → `GET /internal/clientes/por-cpf/{cpf}` | app + lambda | F4-1.6 |
@@ -155,7 +155,7 @@ Levantamento feito sobre o código e a infraestrutura ao fim da Fase 3 (`main` e
 
 A Fase 4 só é considerada entregue quando:
 
-- [ ] Existem **3 repositórios de serviço** (`oficina-app`, `oficina-billing-service`, `oficina-execution-service`), cada um com código, `Dockerfile`, manifestos K8s, `infra/` Terraform, pipelines, `docs/arquitetura.md`, `docs/openapi.yaml` e README com evidência de cobertura.
+- [ ] Existem **3 repositórios de serviço** (`oficina-app`, `oficina-billing`, `oficina-execution`), cada um com código, `Dockerfile`, manifestos K8s, `infra/` Terraform, pipelines, `docs/arquitetura.md`, `docs/openapi.yaml` e README com evidência de cobertura.
 - [ ] Cada serviço tem **banco próprio**; há ao menos **um SQL** (PostgreSQL) e **um NoSQL** (DynamoDB); nenhum serviço — **nem a Lambda** — tem credencial para o banco de outro (comprovado pelas policies/usuários).
 - [ ] Uma OS criada percorre **OS → Execution (diagnóstico) → Billing (orçamento + pagamento Mercado Pago) → Execution (reparo) → OS (finalizada)** sem intervenção além das ações humanas (mecânico e cliente).
 - [ ] Os três cenários de falha compensam corretamente e deixam a OS `cancelada`, o estoque liberado e, quando houve pagamento, **o estorno registrado no Mercado Pago**: orçamento recusado · pagamento recusado · falha na execução. *(Aprovação expirada fica como evolução — corte 5 do [plano de 4 dias](plano-execucao.md#os-cortes).)* Pagamento aprovado **depois** da compensação é estornado automaticamente.

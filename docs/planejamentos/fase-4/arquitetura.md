@@ -505,8 +505,8 @@ flowchart LR
     end
     subgraph servicos["Serviços (Fase 4)"]
         app["oficina-app<br/>OS Service<br/>infra/: filas da saga, role"]
-        bill["oficina-billing-service<br/>infra/: RDS billing, fila, role"]
-        exec["oficina-execution-service<br/>infra/: DynamoDB, fila, role"]
+        bill["oficina-billing<br/>infra/: RDS billing, fila, role"]
+        exec["oficina-execution<br/>infra/: DynamoDB, fila, role"]
     end
 
     k8s -- "SSM: vpc, subnets, sg, cluster, gateway" --> db & lam & app & bill & exec

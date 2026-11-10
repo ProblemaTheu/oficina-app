@@ -26,8 +26,8 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 
 | Item | Valor |
 |---|---|
-| Repo Billing | `ProblemaTheu/oficina-billing-service` |
-| Repo Execution | `ProblemaTheu/oficina-execution-service` |
+| Repo Billing | `ProblemaTheu/oficina-billing` |
+| Repo Execution | `ProblemaTheu/oficina-execution` |
 | Aplicação Mercado Pago | `7172532218475199` (Checkout Pro · API de Orders · conta do vendedor de teste) · vendedor de teste `TESTUSER38172746988478263` (id `3832864978`) · comprador de teste id `3832647366` |
 | Segredo do Billing | `oficina/prod/billing` (`db_password`, `mp_access_token`, `mp_webhook_secret`, `webhook_secret`) |
 | Token interno | `oficina/prod/internal` |
@@ -44,7 +44,10 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 | Pendência | Status |
 |---|---|
 | Branch protection nos repos existentes | ✅ ativa (confirmado em 31/10) |
-| Mesmo ruleset nos 2 repos novos | ⬜ |
+| Repos novos criados (`oficina-billing`, `oficina-execution` — sem o sufixo `-service`) | ✅ 10/11 14:38, **vazios** (sem commit, sem `main`) |
+| Mesmo ruleset nos 2 repos novos (+ `required_status_checks`) | ⬜ — só depois do 1º commit na `main` |
+| Roles OIDC `gha-oficina-billing` / `gha-oficina-execution` | ⬜ [infra-k8s#3](https://github.com/ProblemaTheu/oficina-infra-k8s/pull/3) |
+| 3º nó, access entries e namespaces `billing-prod` / `execution-prod` | ⬜ [infra-k8s#4](https://github.com/ProblemaTheu/oficina-infra-k8s/pull/4) (depois do #3) |
 | Environment `prod` com reviewer | ⬜ |
 | `soat-architecture` nos repos | ⬜ |
 | Chave do Sonar `tech-challenge-1` → `oficina-app` | ⬜ |
@@ -78,7 +81,7 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 
 ## 10/11 — Replanejamento
 
-**Situação encontrada:** em ter 10/11 (D6 do plano original de 7 dias) nada do D0–D5 estava feito — os repos `oficina-billing-service` e `oficina-execution-service` não existiam, não havia migration `000007` nem código de saga, e este diário estava vazio. O PR do planejamento (#18) só foi mergeado em 09/11.
+**Situação encontrada:** em ter 10/11 (D6 do plano original de 7 dias) nada do D0–D5 estava feito — os repos `oficina-billing` e `oficina-execution` não existiam, não havia migration `000007` nem código de saga, e este diário estava vazio. O PR do planejamento (#18) só foi mergeado em 09/11.
 
 **Decisão:** [plano de 4 dias](plano-execucao.md) (ter 10/11 → sex 13/11), submissão na sexta até 18 h, sábado e domingo como reserva. Novos cortes 7′ e 18–25; o estorno do pagamento tardio passou a **não cortável**.
 

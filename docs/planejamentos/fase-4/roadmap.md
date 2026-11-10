@@ -165,8 +165,8 @@ Traduzindo: **contrato → mensageria → saga no OS → orquestrador → orçam
 2º  oficina-infra-k8s                VPC + EKS + addon Pod Identity + nós
 3º  oficina-infra-db                 RDS do OS
 4º  oficina-app/infra                ┐
-    oficina-billing-service/infra    ├ em qualquer ordem (ARNs por convenção)
-    oficina-execution-service/infra  ┘
+    oficina-billing/infra    ├ em qualquer ordem (ARNs por convenção)
+    oficina-execution/infra  ┘
 5º  CDs dos 3 serviços               publicam o DNS de cada CLB na SSM
 6º  oficina-lambda-auth              rotas do Gateway para os 3 CLBs
 ```
@@ -230,8 +230,8 @@ Base da Fase 3 (variante enxuta): **~US$ 4,90/dia**. Acréscimos da Fase 4:
 | Pessoa | Épicos | Repositórios |
 |---|---|---|
 | **A — OS + saga** | E1, E4 (orquestrador, compensações, timeouts), F4-5.2 | `oficina-app` |
-| **B — Billing** | E2, F4-5.3 | `oficina-billing-service` |
-| **C — Execution + plataforma** | E3, E6, F4-1.5 (Lambda) | `oficina-execution-service`, `oficina-infra-k8s`, `oficina-lambda-auth` |
+| **B — Billing** | E2, F4-5.3 | `oficina-billing` |
+| **C — Execution + plataforma** | E3, E6, F4-1.5 (Lambda) | `oficina-execution`, `oficina-infra-k8s`, `oficina-lambda-auth` |
 | **Todos** | F4-0.1 (contrato), E7 (cada um instrumenta o seu), E8, E9 | — |
 
 **Pontos de sincronização obrigatórios:**

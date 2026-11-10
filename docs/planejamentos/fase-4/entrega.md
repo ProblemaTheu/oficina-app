@@ -7,7 +7,7 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 ## Checklist antes de submeter
 
 ### Repositórios (um por microsserviço)
-- [ ] `oficina-app` (OS Service), `oficina-billing-service` e `oficina-execution-service` públicos, com `soat-architecture` **aceito** (print guardado)
+- [ ] `oficina-app` (OS Service), `oficina-billing` e `oficina-execution` públicos, com `soat-architecture` **aceito** (print guardado)
 - [ ] Cada um contém: código-fonte, `Dockerfile`, `k8s/` (base + overlay prod), `infra/` Terraform, `.github/workflows/`
 - [ ] `main` protegida com PR obrigatório e checks obrigatórios — comprovado por um `git push origin main` rejeitado
 - [ ] CI verde no último commit de cada `main`
@@ -96,8 +96,8 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 | # | Repositório | Papel | Link |
 |---|---|---|---|
 | 1 | `oficina-app` | **OS Service** — atendimento, catálogo, estoque, ciclo de vida da OS e orquestrador da saga (PostgreSQL) | `https://github.com/ProblemaTheu/oficina-app` |
-| 2 | `oficina-billing-service` | **Billing Service** — orçamentos e pagamentos via Mercado Pago (PostgreSQL) | `https://github.com/ProblemaTheu/oficina-billing-service` |
-| 3 | `oficina-execution-service` | **Execution Service** — fila de diagnóstico e reparo (DynamoDB) | `https://github.com/ProblemaTheu/oficina-execution-service` |
+| 2 | `oficina-billing` | **Billing Service** — orçamentos e pagamentos via Mercado Pago (PostgreSQL) | `https://github.com/ProblemaTheu/oficina-billing` |
+| 3 | `oficina-execution` | **Execution Service** — fila de diagnóstico e reparo (DynamoDB) | `https://github.com/ProblemaTheu/oficina-execution` |
 | 4 | `oficina-lambda-auth` | Autenticação por CPF e rotas do API Gateway (Fase 3, atualizado) | `https://github.com/ProblemaTheu/oficina-lambda-auth` |
 | 5 | `oficina-infra-k8s` | VPC, EKS, API Gateway (Fase 3, atualizado) | `https://github.com/ProblemaTheu/oficina-infra-k8s` |
 | 6 | `oficina-infra-db` | RDS do OS Service (Fase 3) | `https://github.com/ProblemaTheu/oficina-infra-db` |

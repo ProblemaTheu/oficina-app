@@ -16,8 +16,8 @@
 
 - **3 pessoas, 3 trilhas paralelas**, ~12 h/dia em D1–D3 (~100 h no total). O escopo abaixo, com os cortes, foi dimensionado para ~85 h.
   - **A — OS + saga** (`oficina-app`)
-  - **B — Billing + Mercado Pago** (`oficina-billing-service`)
-  - **C — Execution + plataforma** (`oficina-execution-service`, `oficina-infra-k8s`, `oficina-infra-db`, `oficina-lambda-auth`)
+  - **B — Billing + Mercado Pago** (`oficina-billing`)
+  - **C — Execution + plataforma** (`oficina-execution`, `oficina-infra-k8s`, `oficina-infra-db`, `oficina-lambda-auth`)
 - **Com 2 pessoas:** aplique a [ordem de sacrifício](#ordem-de-sacrifício-se-atrasar) até o item 5 **antes de começar** e divida a trilha C entre A (Lambda, Gateway) e B (Execution). **Com 1 pessoa, sexta não é viável** — negocie o prazo do portal (15/11) ou o escopo com o grupo hoje.
 - **Duas sincronizações por dia, 15 min:** **13 h** e **21 h**. Cada trilha diz se o marco parcial fechou. Corte de escopo **só** nessas sincronizações.
 - **Testes junto com o código.** O gate de 80% entra no CI no D3; quem deixar teste para quinta não fecha.

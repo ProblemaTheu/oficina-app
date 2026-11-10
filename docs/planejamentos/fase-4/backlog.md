@@ -8,7 +8,7 @@ Convenções usadas em todo o backlog:
 
 | Item | Convenção |
 |---|---|
-| Repositórios | `ProblemaTheu/oficina-app` (OS), `ProblemaTheu/oficina-billing-service`, `ProblemaTheu/oficina-execution-service` |
+| Repositórios | `ProblemaTheu/oficina-app` (OS), `ProblemaTheu/oficina-billing`, `ProblemaTheu/oficina-execution` |
 | Namespaces K8s | `oficina-prod` (OS — mantido da Fase 3), `billing-prod`, `execution-prod` |
 | Imagens | `problematheu/oficina-api` (já existe), `problematheu/oficina-billing`, `problematheu/oficina-execution` |
 | Filas | `os-saga-replies.fifo`, `billing-commands.fifo`, `execution-commands.fifo` + `*-dlq.fifo` |
@@ -74,7 +74,7 @@ Convenções usadas em todo o backlog:
 2. Criar os repos novos a partir de um esqueleto comum:
 
    ```bash
-   for r in oficina-billing-service oficina-execution-service; do
+   for r in oficina-billing oficina-execution; do
      gh repo create "ProblemaTheu/$r" --public --description "Oficina — ${r#oficina-} (Tech Challenge Fase 4)"
      gh api -X PUT "repos/ProblemaTheu/$r/collaborators/soat-architecture" -f permission=pull
    done
@@ -112,17 +112,17 @@ Convenções usadas em todo o backlog:
      ]
    }
    EOF
-   gh api -X POST repos/ProblemaTheu/oficina-billing-service/rulesets --input /tmp/ruleset.json
+   gh api -X POST repos/ProblemaTheu/oficina-billing/rulesets --input /tmp/ruleset.json
    ```
 
    > `required_approving_review_count: 0` mantém o PR obrigatório sem travar um time pequeno (mesma decisão da Fase 3). Os nomes em `required_status_checks` precisam bater **exatamente** com o `name:` dos jobs — confira depois do primeiro PR.
 
-5. **OIDC para os repos novos.** No `bootstrap/` (Fase 3), acrescentar as roles `gha-oficina-billing-service` e `gha-oficina-execution-service` (+ as `-plan` read-only), com `sub` restrito a `repo:ProblemaTheu/<repo>:environment:prod` e `pull_request`. Cada role precisa de **access entry** no EKS com `AmazonEKSEditPolicy` limitada ao namespace do serviço:
+5. **OIDC para os repos novos.** No `bootstrap/` (Fase 3), acrescentar as roles `gha-oficina-billing` e `gha-oficina-execution` (+ as `-plan` read-only), com `sub` restrito a `repo:ProblemaTheu/<repo>:environment:prod` e `pull_request`. Cada role precisa de **access entry** no EKS com `AmazonEKSEditPolicy` limitada ao namespace do serviço:
 
    ```hcl
    access_entries = {
      gha_billing = {
-       principal_arn = "arn:aws:iam::706215605178:role/gha-oficina-billing-service"
+       principal_arn = "arn:aws:iam::706215605178:role/gha-oficina-billing"
        policy_associations = {
          edit = {
            policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
@@ -555,7 +555,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 ### F4-2.1 — Esqueleto do serviço
 
-**Objetivo:** repo `oficina-billing-service` no mesmo padrão do `oficina-app` (Go 1.26, Clean Architecture, API-first com `oapi-codegen`, chi, `golang-migrate`, `slog` JSON + New Relic).
+**Objetivo:** repo `oficina-billing` no mesmo padrão do `oficina-app` (Go 1.26, Clean Architecture, API-first com `oapi-codegen`, chi, `golang-migrate`, `slog` JSON + New Relic).
 
 **Passo a passo**
 
@@ -773,7 +773,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 ### F4-3.1 — Esqueleto com DynamoDB
 
-**Objetivo:** repo `oficina-execution-service` no mesmo padrão, com persistência em DynamoDB via `aws-sdk-go-v2`.
+**Objetivo:** repo `oficina-execution` no mesmo padrão, com persistência em DynamoDB via `aws-sdk-go-v2`.
 
 **Passo a passo**
 
@@ -866,7 +866,7 @@ Autorização: `tipo=usuario` com papel `mecanico` ou `administrador`. `diagnost
 **Objetivo:** cada serviço provisiona a **sua fila de entrada** no próprio `infra/`.
 
 ```hcl
-# oficina-billing-service/infra/filas.tf
+# oficina-billing/infra/filas.tf
 resource "aws_sqs_queue" "comandos_dlq" {
   name                      = "billing-commands-dlq.fifo"
   fifo_queue                = true
@@ -1271,8 +1271,8 @@ Pontos de atenção no `cd.yml` (base: o do `oficina-app`, que já funciona):
 | Repo | `infra/` provisiona |
 |---|---|
 | `oficina-app` | `os-saga-replies.fifo` + DLQ, role do pod (Pod Identity) com SQS + Secrets, associação ao namespace `oficina-prod`, parâmetros SSM |
-| `oficina-billing-service` | `billing-commands.fifo` + DLQ, **RDS PostgreSQL `billing`** (`db.t4g.micro`, criptografado, subnet privada, SG aceitando só o SG dos nós), segredo `oficina/prod/billing`, role do pod, SSM |
-| `oficina-execution-service` | `execution-commands.fifo` + DLQ, **tabela DynamoDB** (on-demand, PITR, TTL), role do pod com acesso só à tabela, SSM |
+| `oficina-billing` | `billing-commands.fifo` + DLQ, **RDS PostgreSQL `billing`** (`db.t4g.micro`, criptografado, subnet privada, SG aceitando só o SG dos nós), segredo `oficina/prod/billing`, role do pod, SSM |
+| `oficina-execution` | `execution-commands.fifo` + DLQ, **tabela DynamoDB** (on-demand, PITR, TTL), role do pod com acesso só à tabela, SSM |
 
 Backend: o mesmo bucket `oficina-tfstate-706215605178`, chave `<repo>/terraform.tfstate`, `use_lockfile = true`. Rede e cluster lidos da SSM publicada pelo `oficina-infra-k8s`.
 
@@ -1579,4 +1579,4 @@ Modelo em [entrega.md](entrega.md#conteúdo-do-pdf): participantes, links dos re
 
 ### F4-9.3 — Teardown e custo
 
-Ordem de destroy (inversa): `lambda-auth` (rotas) → `oficina-execution-service/infra` ∥ `oficina-billing-service/infra` ∥ `oficina-app/infra` → apagar os Services `LoadBalancer` dos 3 namespaces (os CLBs são do Kubernetes, não do Terraform — lição da Fase 3) → `infra-db` → `infra-k8s`. Conferir órfãos: CLBs, ENIs, snapshots finais do RDS billing (`skip_final_snapshot = true` na demo), filas, chaves KMS em `PendingDeletion`.
+Ordem de destroy (inversa): `lambda-auth` (rotas) → `oficina-execution/infra` ∥ `oficina-billing/infra` ∥ `oficina-app/infra` → apagar os Services `LoadBalancer` dos 3 namespaces (os CLBs são do Kubernetes, não do Terraform — lição da Fase 3) → `infra-db` → `infra-k8s`. Conferir órfãos: CLBs, ENIs, snapshots finais do RDS billing (`skip_final_snapshot = true` na demo), filas, chaves KMS em `PendingDeletion`.
