@@ -28,7 +28,7 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 |---|---|
 | Repo Billing | `ProblemaTheu/oficina-billing-service` |
 | Repo Execution | `ProblemaTheu/oficina-execution-service` |
-| Aplicação Mercado Pago | `7172532218475199` (Checkout Pro, conta pessoal) · vendedor de teste `TESTUSER38172746988478263` (id `3832864978`) · comprador de teste id `3832647366` |
+| Aplicação Mercado Pago | `7172532218475199` (Checkout Pro · API de Orders · conta do vendedor de teste) · vendedor de teste `TESTUSER38172746988478263` (id `3832864978`) · comprador de teste id `3832647366` |
 | Segredo do Billing | `oficina/prod/billing` (`db_password`, `mp_access_token`, `mp_webhook_secret`, `webhook_secret`) |
 | Token interno | `oficina/prod/internal` |
 | Filas | `[URLs]` |
@@ -73,7 +73,8 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 - **Webhook (ngrok → receptor local):** simulações de `order` e `payment` entregues e com `x-signature` **válido** pela regra do F4-2.4; `ts` em **segundos**; query `?data.id=<id>&type=order`. Evento correto: **Order (Mercado Pago)**.
 - **Cartão recusado:** order fica `action_required / waiting_retry` e aceita nova tentativa (até 20) — `retries.allowed: false` é ignorado. **`POST /v1/orders/{id}/cancel`** → `canceled` e o checkout bloqueia ("O que você queria pagar não está disponível"). Billing cancela a order antes de emitir `PagamentoRecusado`.
 - A rede corporativa bloqueia `*.ngrok-free.dev` **de saída** (TLS reset), mas o MP chega ao túnel normalmente.
-- **Pendente para o D2:** notificação **real** de order `ORDTST...` — salvar a URL no seletor **Teste** de *Configuração de Webhooks* (nenhuma notificação real chegou com a URL só em produção).
+- **Orders de teste não disparam webhook.** A aplicação só tem configuração de webhook de produção (`webhooks?env=production`, sem seletor Teste/Produção apesar da doc) e *Notificações enviadas* mostra **nenhuma** para os 5 pagamentos `ORDTST...`; os *Logs* da aplicação mostram todas as nossas chamadas. **Decisão:** reconciliador no Billing (consulta pendentes a cada 10 s, F4-2.4 passo 7) como mecanismo principal; webhook validado por simulação e mantido como acelerador.
+- Aplicação definitiva: `7172532218475199`, criada na conta do **vendedor de teste**, tipo **API de Orders**.
 
 ## 10/11 — Replanejamento
 

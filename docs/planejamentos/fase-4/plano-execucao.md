@@ -107,7 +107,7 @@ Legenda: 🔴 bloqueante · 🟡 caminho crítico · 🟢 paralelizável · 🔵
 | Trilha | Tarefas (em ordem) |
 |---|---|
 | **A** | F4-4.4 orquestrador como tabela pura, com teste de tabela `estado × tipo` (100% no pacote `saga`) · F4-4.5 compensações (pilha inversa, `cancelada`, `LiberarReserva`) · F4-1.1 recorte (remover approve/reject, `PATCH` só `finalizada → entregue`) · F4-1.4 bloco `saga` no `GET` + `estoque_reservado` no `GET /v1/parts` · F4-1.5 lado OS: `GET /internal/clientes/por-cpf/{cpf}` |
-| **B** | F4-2.2 aprovar (cria a order) / recusar / `CancelarOrcamento` · F4-2.3 adaptador do MP com testes `httptest` · F4-2.6 stub (`POST /_stub/pagar`) · F4-2.4 webhook ([fluxo corrigido](backlog.md#f4-24--webhook-do-mercado-pago)) — testar a assinatura com *Simular notificação* do painel via ngrok · F4-2.5 estorno **e pagamento tardio** · cobertura ≥ 80% no fim do dia |
+| **B** | F4-2.2 aprovar (cria a order) / recusar / `CancelarOrcamento` · F4-2.3 adaptador do MP com testes `httptest` · F4-2.6 stub (`POST /_stub/pagar`) · F4-2.4 webhook ([fluxo corrigido](backlog.md#f4-24--webhook-do-mercado-pago)) + **reconciliador** (passo 7 — orders de teste não disparam webhook; validar a assinatura com *Simular notificação*) · F4-2.5 estorno **e pagamento tardio** · cobertura ≥ 80% no fim do dia |
 | **C** | F4-3.2/3.3/3.4 tarefas `REPARO`, `iniciar`, `concluir`, `CancelarTarefas` · F4-4.7 falha `FAL*` · **a partir das 15 h:** F4-6.2 `infra/` dos 3 serviços (filas + DLQ + alarme, RDS do Billing, tabela DynamoDB, roles e associações do Pod Identity, SSM) aplicados · F4-6.3 manifestos `k8s/` dos 3 |
 
 **Sincronização 13 h:** caminho feliz chega a `AGUARDANDO_APROVACAO` no compose.

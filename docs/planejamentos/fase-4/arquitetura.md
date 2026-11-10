@@ -245,9 +245,13 @@ sequenceDiagram
     BI-->>C: 200 {link_pagamento}
     BI--)QR: OrcamentoAprovado
     C->>MP: paga com cartão de teste (APRO)
-    MP->>GW: POST /billing/webhooks/mercadopago (x-signature)
-    GW->>BI: 
-    BI->>BI: valida assinatura
+    alt webhook (produção / Simular notificação)
+        MP->>GW: POST /billing/webhooks/mercadopago (x-signature)
+        GW->>BI: 
+        BI->>BI: valida assinatura
+    else reconciliador a cada 10 s (sandbox: orders de teste não notificam)
+        BI->>BI: pagamentos pendentes
+    end
     BI->>MP: GET /v1/orders/{id}
     MP-->>BI: status processed
     BI--)QR: PagamentoConfirmado

@@ -698,7 +698,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    }
    ```
 
-   > Responder `200` em até **22 s** (senão o MP reenvia a cada 15 min). Ainda **não validado:** notificação real de order `ORDTST...` — exige a URL no seletor **Teste** de *Configuração de Webhooks* (cada ambiente tem URL própria, e salvar gera assinatura exclusiva). Primeiro teste do D2.
+   > Responder `200` em até **22 s** (senão o MP reenvia a cada 15 min). **Limitação do sandbox (10/11):** a aplicação só tem webhook de **produção** (`webhooks?env=production`) e o painel mostra *"Notificações enviadas: nenhuma"* para os 5 pagamentos de orders `ORDTST...` — **orders de teste não disparam webhook**. O handler só é exercitável por *Simular notificação* (validado) e pelo stub. Por isso existe o **reconciliador** (passo 7).
 
 3. Assinatura inválida → `401`.
 4. **Verificação ativa:** `ConsultarCobranca(data.id)` (`GET /v1/orders/{id}`); usar `external_reference` para achar o orçamento e `status`:
@@ -721,11 +721,17 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
    A idempotência vem do **`mp_order_id` + transição de status**: a segunda notificação do mesmo pagamento não encontra mais `pendente` e não gera outra mensagem. *(O desenho anterior gravava `notificacoes_mp` antes do `GET` e respondia "200 sem efeito" no conflito — um `GET` falho fazia o pagamento nunca ser processado.)*
 6. Pagamento `approved` para orçamento `cancelado` → estorno imediato (F4-2.5 passo 4), sem `PagamentoConfirmado`.
+7. **Reconciliador (mecanismo principal de confirmação — decisão de 10/11).** Goroutine no Billing que, a cada `MP_RECONCILIAR_INTERVALO` (default 10 s), lista `pagamentos` com `status = 'pendente'` e chama a **mesma** função do handler a partir do passo 2 (`ConsultarCobranca` → tabela de status → transação). Sem líder único necessário: o Billing roda com 1 réplica (corte 7′), e a idempotência por `mp_order_id` + transição de status torna inofensiva a corrida com o webhook.
+   - O webhook vira **acelerador**: quando chega (produção, ou *Simular notificação*), o processamento é imediato; quando não chega (sandbox), o reconciliador resolve em ≤ 10 s.
+   - Parar de reconciliar um pagamento quando o orçamento sair de `aprovado` (pago, recusado, cancelado) — a consulta é só para pendentes.
+   - Justificativa para a ADR-014: o webhook diz "algo mudou"; a verdade vem da API — o reconciliador é a mesma verificação ativa, sem depender da entrega.
 
 **Critérios de aceite**
 - [ ] Testes de assinatura: válida, `v1` errado, `ts` fora da janela, header ausente, `data.id` em maiúsculas.
 - [ ] Mesma notificação reenviada 3× → um `PagamentoConfirmado`.
 - [ ] `GET /v1/orders/{id}` falha (stub com 500) na primeira notificação e funciona no reenvio → um `PagamentoConfirmado`.
+- [ ] **Sem nenhum webhook**, pagar uma order em sandbox → `PagamentoConfirmado` em ≤ 10 s (reconciliador).
+- [ ] Webhook e reconciliador processando o mesmo pagamento ao mesmo tempo → um `PagamentoConfirmado`.
 - [ ] Notificação com corpo forjado mas `data.id` de pagamento recusado → `PagamentoRecusado` (prova que a verdade vem do `GET`).
 
 ---
@@ -755,7 +761,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 **Passo a passo**
 
 1. Binário `cmd/mp-stub` no repo do Billing (entra na mesma imagem): implementa `POST /v1/orders`, `GET /v1/orders/{id}`, `POST /v1/orders/{id}/refund` (com o `409 order_already_refunded`) e `POST /v1/orders/{id}/cancel` em memória, com os mesmos formatos de resposta registrados em F4-2.3.
-2. Rota de controle `POST /_stub/pagar {order_id, resultado: "processed"|"failed"}`: cria o pagamento e **chama o webhook do Billing** com `x-signature` válido (mesmo segredo do compose).
+2. Rota de controle `POST /_stub/pagar {order_id, resultado: "processed"|"failed"}`: cria o pagamento (a order passa a `processed` ou `action_required`); o reconciliador do Billing encontra sozinho. Opcional: `?notificar=true` também **chama o webhook do Billing** com `x-signature` válido (mesmo segredo do compose), para exercitar o handler no BDD.
 3. **Nunca** habilitado em produção: o manifesto `k8s/overlays/prod` não referencia o stub, e o `MP_BASE_URL` de prod vem do ConfigMap.
 
 **Critérios de aceite**
@@ -1382,7 +1388,7 @@ O DNS de cada CLB vem da SSM (`/oficina/prod/<servico>/lb-dns`), publicado pelo 
 
 **Critérios de aceite**
 - [ ] `curl https://<gateway>/billing/v1/orcamentos/x` sem token → 401 no Gateway.
-- [ ] Webhook simulado pelo painel do MP chega ao Billing (log com `x-request-id`).
+- [ ] Webhook simulado pelo painel do MP chega ao Billing (log com `x-request-id`) e passa na validação do `x-signature` (orders de teste não disparam webhook real — F4-2.4).
 
 ---
 
