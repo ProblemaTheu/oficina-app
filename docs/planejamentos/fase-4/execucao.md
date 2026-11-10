@@ -70,7 +70,10 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 ### Achados que custaram tempo (~1h30)
 - Estorno: Preferences/Payments bloqueia com conta de teste; Orders funciona. Idempotência confirmada (mesma chave → mesmo `REF...`); chave nova em order estornada → `409 order_already_refunded`.
 - Os tokens de teste aparecem no histórico de conversa — **renovar as credenciais** no painel antes da gravação.
-- Pendentes para o D2: nome do evento de webhook para Orders no painel, formato do `x-signature` (`ts` em s ou ms) e status da order com cartão `OTHE`.
+- **Webhook (ngrok → receptor local):** simulações de `order` e `payment` entregues e com `x-signature` **válido** pela regra do F4-2.4; `ts` em **segundos**; query `?data.id=<id>&type=order`. Evento correto: **Order (Mercado Pago)**.
+- **Cartão recusado:** order fica `action_required / waiting_retry` e aceita nova tentativa (até 20) — `retries.allowed: false` é ignorado. **`POST /v1/orders/{id}/cancel`** → `canceled` e o checkout bloqueia ("O que você queria pagar não está disponível"). Billing cancela a order antes de emitir `PagamentoRecusado`.
+- A rede corporativa bloqueia `*.ngrok-free.dev` **de saída** (TLS reset), mas o MP chega ao túnel normalmente.
+- **Pendente para o D2:** notificação **real** de order `ORDTST...` — salvar a URL no seletor **Teste** de *Configuração de Webhooks* (nenhuma notificação real chegou com a URL só em produção).
 
 ## 10/11 — Replanejamento
 

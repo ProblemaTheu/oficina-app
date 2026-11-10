@@ -658,7 +658,8 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 **Critérios de aceite**
 - [ ] Teste do adaptador contra `httptest.Server` cobre 201, 400, 401, 5xx e timeout.
 - [ ] Aprovação real em sandbox devolve um `checkout_url` que abre o Checkout Pro.
-- [ ] **A validar no D2:** status da order quando o cartão é recusado (`OTHE`) — se a order permite nova tentativa (ex.: `action_required`) ou falha (`failed`); isso define quando o Billing emite `PagamentoRecusado`.
+- [x] **Validado em 10/11 — cartão recusado:** a tentativa fica `failed / rejected_by_issuer`, mas a **order continua aberta** (`action_required / waiting_retry`) e aceita nova tentativa no mesmo link — até 20. `config.online.retries.allowed: false` na criação é **ignorado** pelo Checkout Pro (volta `true`, `max_attempts: 20`).
+- [x] **Validado em 10/11 — cancelamento:** `POST /v1/orders/{id}/cancel` numa order `action_required` → `200`, order `canceled`; o checkout passa a mostrar "O que você queria pagar não está disponível" e não aceita pagamento.
 
 ---
 
@@ -669,7 +670,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 **Passo a passo**
 
 1. Rota pública `POST /billing/webhooks/mercadopago` (sem authorizer no Gateway — F4-6.5).
-2. **Validar `x-signature`** (formato `ts=<epoch>,v1=<hmac>`). O manifesto assinado é `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, com `data.id` vindo da **query string** (em minúsculas se alfanumérico — **atenção:** com a API de Orders o `data.id` é o id da order, alfanumérico e maiúsculo, `ORDTST...`; a regra das minúsculas passa a importar de verdade):
+2. **Validar `x-signature`** (formato `ts=<epoch>,v1=<hmac>`; **validado em 10/11** com notificações do painel: `ts` em **segundos** (10 dígitos), query `?data.id=<id>&type=order`, mesmo segredo para `order` e `payment`). O manifesto assinado é `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, com `data.id` vindo da **query string** (em minúsculas se alfanumérico — **atenção:** com a API de Orders o `data.id` é o id da order, alfanumérico e maiúsculo, `ORDTST...`; a regra das minúsculas passa a importar de verdade):
 
    ```go
    func assinaturaValida(segredo, xSignature, xRequestID, dataID string, agora time.Time) bool {
@@ -697,7 +698,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    }
    ```
 
-   > Confira na documentação vigente se o `ts` vem em segundos ou milissegundos e ajuste a janela — o exemplo oficial já variou. Teste com uma notificação real do painel (*Simular notificação*) antes de confiar.
+   > Responder `200` em até **22 s** (senão o MP reenvia a cada 15 min). Ainda **não validado:** notificação real de order `ORDTST...` — exige a URL no seletor **Teste** de *Configuração de Webhooks* (cada ambiente tem URL própria, e salvar gera assinatura exclusiva). Primeiro teste do D2.
 
 3. Assinatura inválida → `401`.
 4. **Verificação ativa:** `ConsultarCobranca(data.id)` (`GET /v1/orders/{id}`); usar `external_reference` para achar o orçamento e `status`:
@@ -705,11 +706,12 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    | `status` da order | Ação |
    |---|---|
    | `processed` (`accredited`) | `pagamentos → aprovado` (`mp_order_id` UNIQUE) + outbox `PagamentoConfirmado` |
-   | `failed`, `canceled`, `expired` | `pagamentos → recusado` + outbox `PagamentoRecusado{status_detail}` |
-   | `created`, `processing`, `action_required` | nada; aguarda próxima notificação |
+   | **`action_required` / `waiting_retry`** (tentativa recusada) | **`POST /v1/orders/{id}/cancel`** → se `200`/`canceled`: `pagamentos → recusado` + outbox `PagamentoRecusado{status_detail da tentativa}`. Se o cancel falhar porque a order já foi paga (corrida com uma 2ª tentativa), reconsultar e tratar como `processed` |
+   | `failed`, `canceled`, `expired` | `pagamentos → recusado` + outbox `PagamentoRecusado` (idempotente se já recusado) |
+   | `created`, `processing` | nada; aguarda próxima notificação |
    | `refunded` | conferência do estorno (F4-2.5) |
 
-   > Os status `processed` e `refunded` foram observados em 10/11; os demais vêm da referência da API de Orders — confirme com um pagamento `OTHE` no D2.
+   > Observados em 10/11: `processed`, `refunded`, `action_required/waiting_retry` e `canceled`. **Por que cancelar antes de recusar:** a order recusada continua pagável e o Checkout Pro ignora `retries.allowed: false`; sem o cancel, o cliente paga depois que a saga já compensou.
 
 5. **Ordem do handler (corrigida em 10/11)** — síncrono, nesta sequência:
    1. validar assinatura;
@@ -737,7 +739,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 1. **`EstornarPagamento`**: buscar o pagamento `aprovado` do orçamento; `POST /v1/orders/{mp_order_id}/refund` sem corpo (estorno total) e `X-Idempotency-Key = message_id` do comando; `409 order_already_refunded` = sucesso; gravar `mp_refund_id` (`REF...`), `status = estornado` e outbox `PagamentoEstornado`.
 2. Sem pagamento aprovado (falha antes do pagamento, ou já estornado) → responde `PagamentoEstornado{refund_id: null}` — compensação de algo que não aconteceu é sucesso.
 3. Erro 5xx/rede do MP → **não** dá ack na mensagem: o SQS reentrega após o visibility timeout; após 5 tentativas vai para a DLQ e dispara alerta (F4-7.4). A chave de idempotência evita estorno duplo nas retentativas.
-4. **Pagamento aprovado chegando depois da compensação** — **não cortável** no plano de 4 dias (no Checkout Pro o cliente pode pagar de novo no mesmo link depois de um `PagamentoRecusado`): o webhook encontra o orçamento `cancelado` → estorna na hora e **não** envia `PagamentoConfirmado`.
+4. **Pagamento aprovado chegando depois da compensação** — **não cortável** no plano de 4 dias. A 1ª defesa é cancelar a order antes de emitir `PagamentoRecusado` (F4-2.4) e no `CancelarOrcamento` (F4-2.2); esta é a 2ª, para a corrida entre o cancel e uma nova tentativa: o webhook encontra o orçamento `cancelado` → estorna na hora e **não** envia `PagamentoConfirmado`.
 
 **Critérios de aceite**
 - [ ] Estorno visível no painel do MP para a OS de teste.
