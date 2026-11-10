@@ -2,6 +2,8 @@
 
 > Cada tarefa tem **objetivo**, **passo a passo** e **critérios de aceite**. Os IDs (`F4-x.y`) são referenciados no [roadmap](roadmap.md) e no [plano de execução](plano-execucao.md). Decisões de fundo estão no [README](README.md#decisões-técnicas-recomendadas); desenho em [arquitetura.md](arquitetura.md).
 
+> **Revisão de 10/11 — plano de 4 dias.** O backlog continua descrevendo o desenho completo; o que **não** será feito nesta entrega está marcado com ✂️ e o número do corte no [plano de execução](plano-execucao.md#os-cortes). Correções de desenho feitas nesta revisão: DDL da migration `000007` (coluna `nome_status`, `reserva_estado`, `ignorada`, `falhou_em`), fluxo do webhook do Mercado Pago (F4-2.4), relay do DynamoDB com réplica única (F4-3.1), numeração das etapas no orquestrador (F4-4.4) e exposição real de `/internal/*` (F4-1.5).
+
 Convenções usadas em todo o backlog:
 
 | Item | Convenção |
@@ -25,7 +27,7 @@ Convenções usadas em todo o backlog:
 **Passo a passo**
 
 1. Revisar a tabela de [decisões](README.md#decisões-técnicas-recomendadas). Qualquer troca (ex.: RabbitMQ no lugar de SQS) muda F4-4.1, F4-6.2 e o compose local — decida agora.
-2. Criar `docs/mensagens/` no `oficina-app` com um JSON Schema por tipo de mensagem do [catálogo](arquitetura.md#52-catálogo) e um `envelope.schema.json`:
+2. ✂️ *(corte 18 — o contrato fica no catálogo em Markdown da arquitetura §5)* Criar `docs/mensagens/` no `oficina-app` com um JSON Schema por tipo de mensagem do [catálogo](arquitetura.md#52-catálogo) e um `envelope.schema.json`:
 
    ```json
    {
@@ -51,7 +53,7 @@ Convenções usadas em todo o backlog:
 3. Abrir rascunho da **RFC-005 (decomposição)** e da **RFC-006 (saga)** em `docs/rfcs/` — o contexto está fresco agora; finalizar em F4-8.2.
 
 **Critérios de aceite**
-- [ ] `docs/mensagens/*.schema.json` cobre as 21 mensagens do catálogo.
+- [ ] ~~`docs/mensagens/*.schema.json` cobre as 21 mensagens do catálogo.~~ ✂️ corte 18 — catálogo da arquitetura §5 revisado pelas 3 trilhas no D1.
 - [ ] Máquina de estados da saga ([arquitetura §3.2](arquitetura.md#32-máquina-de-estados-da-saga)) revisada e sem transição ambígua.
 - [ ] RFC-005 e RFC-006 em rascunho com contexto e alternativas.
 
@@ -353,8 +355,14 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 1. Migration `000007_fase4_saga.up.sql`:
 
    ```sql
-   INSERT INTO status_ordens (id, nome) VALUES (gen_random_uuid(), 'cancelada')
-   ON CONFLICT (nome) DO NOTHING;
+   -- a coluna é nome_status (000001_initial_schema); id fixo segue o padrão do seed 000002
+   INSERT INTO status_ordens (id, nome_status, descricao) VALUES
+     ('660e8400-e29b-41d4-a716-446655440007', 'cancelada',
+      'OS cancelada pela compensação da saga (recusa, pagamento recusado ou falha na execução).')
+   ON CONFLICT (nome_status) DO NOTHING;
+
+   -- 'finalizada' deixa de significar "rejeitada"
+   UPDATE status_ordens SET descricao = 'Serviço concluído.' WHERE nome_status = 'finalizada';
 
    ALTER TABLE ordens_servico
      ADD COLUMN cancelado_em         timestamptz,
@@ -364,6 +372,13 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
      ADD COLUMN estoque_reservado integer NOT NULL DEFAULT 0,
      ADD CONSTRAINT pecas_reserva_valida
        CHECK (estoque_reservado >= 0 AND estoque_reservado <= estoque_atual);
+
+   -- idempotência de Liberar/Baixar por item (critério de aceite abaixo)
+   ALTER TABLE itens_os_pecas
+     ADD COLUMN reserva_estado text NOT NULL DEFAULT 'baixada'
+       CHECK (reserva_estado IN ('reservada', 'liberada', 'baixada'));
+   -- DEFAULT 'baixada' para as OS antigas, cujo estoque já foi deduzido;
+   -- o CriarOS grava 'reservada' explicitamente.
 
    CREATE TABLE sagas_os (
      id             uuid PRIMARY KEY,
@@ -385,7 +400,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
      id          uuid PRIMARY KEY,
      saga_id     uuid NOT NULL REFERENCES sagas_os(id),
      etapa       text NOT NULL,
-     resultado   text NOT NULL CHECK (resultado IN ('ok', 'falha', 'compensada')),
+     resultado   text NOT NULL CHECK (resultado IN ('ok', 'falha', 'compensada', 'ignorada')),
      message_id  uuid,
      detalhe     jsonb,
      ocorrido_em timestamptz NOT NULL DEFAULT now()
@@ -400,9 +415,11 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
      trace_headers jsonb NOT NULL DEFAULT '{}',
      criado_em     timestamptz NOT NULL DEFAULT now(),
      enviado_em    timestamptz,
-     tentativas    integer NOT NULL DEFAULT 0
+     tentativas    integer NOT NULL DEFAULT 0,
+     falhou_em     timestamptz          -- preenchido após 10 tentativas (F4-4.2)
    );
-   CREATE INDEX outbox_pendentes_idx ON outbox (criado_em) WHERE enviado_em IS NULL;
+   CREATE INDEX outbox_pendentes_idx ON outbox (criado_em)
+     WHERE enviado_em IS NULL AND falhou_em IS NULL;
 
    CREATE TABLE mensagens_processadas (
      message_id    uuid PRIMARY KEY,
@@ -426,7 +443,8 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
    A reserva é um `UPDATE ... WHERE estoque_atual - estoque_reservado >= $n` por peça; `RowsAffected() == 0` → `ErrEstoqueInsuficiente`. Sem `SELECT` antes (evita a corrida).
 
-4. `DeduzirEstoquePecas` sai de cena; testes de integração (`integration.yml`) cobrem as três operações contra Postgres real, incluindo a corrida de duas reservas para a última peça.
+4. Expor `estoque_reservado` (e `estoque_disponivel = atual - reservado`) no schema `Peca` do `GET /v1/parts/{id}` — o BDD (F4-5.2) verifica a reserva **só por HTTP**.
+5. `DeduzirEstoquePecas` sai de cena; testes de integração (`integration.yml`) cobrem as três operações contra Postgres real, incluindo a corrida de duas reservas para a última peça.
 
 **Critérios de aceite**
 - [ ] Duas OS concorrentes para a última unidade: uma cria, a outra recebe `422 ESTOQUE_INSUFICIENTE` (teste de integração).
@@ -453,7 +471,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    	if err := uc.estoque.Reservar(ctx, tx, os.ID); err != nil {
    		return err // nenhuma saga nasce se a reserva falhar (T1)
    	}
-   	saga := saga.Nova(os.ID, uc.relogio.Agora())
+   	saga := saga.Nova(os.ID, uc.relogio.Agora()) // nasce em DIAGNOSTICO_PENDENTE, etapa T1 ok
    	if err := uc.sagas.Criar(ctx, tx, saga); err != nil {
    		return err
    	}
@@ -514,6 +532,8 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    ```
 
    Middleware compara o token com `subtle.ConstantTimeCompare`. Rota responde 404 (não 401) sem o header, para não revelar que existe.
+
+   > **Atenção:** "fora do API Gateway" não é "privada". A Lambda sai da VPC e chama o **CLB público** do OS, então `/internal/*` é alcançável pela internet e o token é a única proteção. Assuma isso na ADR-015 (evolução: CLB interno + Lambda na VPC sem rota para o RDS).
 2. No `oficina-lambda-auth`:
    - trocar a query em `clientes` por um cliente HTTP com timeout de 2 s para `OS_INTERNAL_URL` (DNS do CLB do OS Service);
    - **remover a configuração de VPC da Lambda** e o SG de acesso ao RDS — a Lambda não precisa mais da rede privada. Bônus: some o cold start de ENI;
@@ -523,7 +543,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 **Critérios de aceite**
 - [ ] A role da Lambda não tem nenhuma permissão nem rota de rede para o RDS (`terraform plan` mostra a remoção).
 - [ ] Os 4 cenários de `/auth/token` da Fase 3 continuam passando.
-- [ ] `curl` em `/internal/...` sem o header → 404.
+- [ ] `curl` em `/internal/...` pelo DNS do CLB, sem o header → 404; com token errado → 404.
 
 ---
 
@@ -571,7 +591,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 3. **Recusar:** `gerado → recusado` + outbox `OrcamentoRecusado`.
 4. **Webhook `budget-response`** migrado: mesma validação HMAC da Fase 2 (`internal/infra/http/middleware/webhook.go`), traduzido em aprovar/recusar.
 5. **Expiração:** o timeout de aprovação é do **orquestrador** (F4-4.6), não do Billing. O Billing só recusa aprovar um orçamento vencido (`422 ORCAMENTO_EXPIRADO`).
-6. **`CancelarOrcamento`** (compensação): qualquer status não terminal → `cancelado`; se houver pagamento `aprovado` desse orçamento, **estorna antes** (F4-2.5). Responde `OrcamentoCancelado` mesmo se já estava cancelado.
+6. **`CancelarOrcamento`** (compensação): qualquer status não terminal → `cancelado`; se houver pagamento `aprovado` desse orçamento, **estorna antes** (F4-2.5); se houver preference, **expira-a** (`PUT /checkout/preferences/{id}` com `expiration_date_to` = agora — confira o campo na doc vigente; falha aqui só gera log, porque o passo 4 de F4-2.5 cobre o pagamento tardio). Responde `OrcamentoCancelado` mesmo se já estava cancelado.
 
 **Critérios de aceite**
 - [ ] Mesmo `GerarOrcamento` entregue duas vezes → um orçamento, duas respostas iguais.
@@ -663,7 +683,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
    > Confira na documentação vigente se o `ts` vem em segundos ou milissegundos e ajuste a janela — o exemplo oficial já variou. Teste com uma notificação real do painel (*Simular notificação*) antes de confiar.
 
-3. Assinatura inválida → `401`. Válida → grava `notificacoes_mp` (PK `x_request_id`; conflito = duplicata → `200` sem efeito) e responde **`200` imediatamente**.
+3. Assinatura inválida → `401`.
 4. **Verificação ativa:** `ConsultarPagamento(data.id)`; usar `external_reference` para achar o orçamento e `status`:
 
    | `status` do MP | Ação |
@@ -673,11 +693,19 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    | `pending`, `in_process` | nada; aguarda próxima notificação |
    | `refunded` | conferência do estorno (F4-2.5) |
 
-5. O processamento pode ser síncrono no handler (rápido) — mas se o `GET` ao MP falhar, responda `500` para o MP reenviar.
+5. **Ordem do handler (corrigida em 10/11)** — síncrono, nesta sequência:
+   1. validar assinatura;
+   2. `ConsultarPagamento(data.id)` — se falhar, responder **`500`** e **não gravar nada**, para o reenvio do MP ser processado de verdade;
+   3. numa transação: atualizar `pagamentos` com `UPDATE ... WHERE mp_payment_id = $1 AND status = 'pendente'` (ou `INSERT` com `mp_payment_id` UNIQUE) **+** outbox **+** `notificacoes_mp` (`ON CONFLICT (x_request_id) DO NOTHING`, só auditoria);
+   4. responder `200`.
+
+   A idempotência vem do **`mp_payment_id` + transição de status**: a segunda notificação do mesmo pagamento não encontra mais `pendente` e não gera outra mensagem. *(O desenho anterior gravava `notificacoes_mp` antes do `GET` e respondia "200 sem efeito" no conflito — um `GET` falho fazia o pagamento nunca ser processado.)*
+6. Pagamento `approved` para orçamento `cancelado` → estorno imediato (F4-2.5 passo 4), sem `PagamentoConfirmado`.
 
 **Critérios de aceite**
 - [ ] Testes de assinatura: válida, `v1` errado, `ts` fora da janela, header ausente, `data.id` em maiúsculas.
 - [ ] Mesma notificação reenviada 3× → um `PagamentoConfirmado`.
+- [ ] `GET /v1/payments` falha (stub com 500) na primeira notificação e funciona no reenvio → um `PagamentoConfirmado`.
 - [ ] Notificação com corpo forjado mas `data.id` de pagamento recusado → `PagamentoRecusado` (prova que a verdade vem do `GET`).
 
 ---
@@ -691,7 +719,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 1. **`EstornarPagamento`**: buscar o pagamento `aprovado` do orçamento; `POST /v1/payments/{id}/refunds` com corpo vazio (estorno total) e `X-Idempotency-Key = message_id` do comando; gravar `mp_refund_id`, `status = estornado` e outbox `PagamentoEstornado`.
 2. Sem pagamento aprovado (falha antes do pagamento, ou já estornado) → responde `PagamentoEstornado{refund_id: null}` — compensação de algo que não aconteceu é sucesso.
 3. Erro 5xx/rede do MP → **não** dá ack na mensagem: o SQS reentrega após o visibility timeout; após 5 tentativas vai para a DLQ e dispara alerta (F4-7.4). A chave de idempotência evita estorno duplo nas retentativas.
-4. **Pagamento aprovado chegando depois da compensação** (cliente pagou após o prazo): o webhook encontra o orçamento `cancelado` → estorna na hora e **não** envia `PagamentoConfirmado`.
+4. **Pagamento aprovado chegando depois da compensação** — **não cortável** no plano de 4 dias (no Checkout Pro o cliente pode pagar de novo no mesmo link depois de um `PagamentoRecusado`): o webhook encontra o orçamento `cancelado` → estorna na hora e **não** envia `PagamentoConfirmado`.
 
 **Critérios de aceite**
 - [ ] Estorno visível no painel do MP para a OS de teste.
@@ -747,6 +775,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    ```
 
 4. Relay da outbox: `Query gsi1 gsi1pk = OUTBOX#PENDENTE` em ordem de `gsi1sk`, publica, e `UpdateItem REMOVE gsi1pk, gsi1sk` (item sai do índice esparso). Item de inbox com `ttl` de 7 dias.
+   **O relay do DynamoDB não tem líder único** — por isso o Execution roda com **1 réplica fixa** (corte 7′). Com 2+ réplicas, mensagens da mesma saga podem sair fora de ordem; a evolução é um *lease* em `RELAY#LIDER` (`UpdateItem` condicional em `expira_em < :agora`).
 
 **Critérios de aceite**
 - [ ] Testes do repositório contra DynamoDB Local/LocalStack no CI (job de integração, como o `integration.yml` do OS).
@@ -762,10 +791,11 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 1. Entidade `Tarefa{ID, OsID, SagaID, Tipo(DIAGNOSTICO|REPARO), Estado, Mecanico, Prioridade, ...}` com máquina de estados: `AGUARDANDO → EM_ANDAMENTO → CONCLUIDA`, e `AGUARDANDO|EM_ANDAMENTO → CANCELADA`.
 2. Prioridade: `REPARO` antes de `DIAGNOSTICO` (carro já pago esperando é o pior cenário para a oficina); dentro do mesmo tipo, FIFO por `criado_em`. `gsi1sk = <prioridade>#<criado_em>`.
-3. **Pegar a próxima** sem dois mecânicos pegarem a mesma: `Query` no GSI + `UpdateItem` condicional `estado = AGUARDANDO`; se falhar a condição, tenta a próxima (máx. 3).
+3. ✂️ *(corte 19)* **Pegar a próxima** sem dois mecânicos pegarem a mesma: `Query` no GSI + `UpdateItem` condicional `estado = AGUARDANDO`; se falhar a condição, tenta a próxima (máx. 3).
 
 **Critérios de aceite**
-- [ ] Teste concorrente: 2 goroutines pedem a próxima tarefa de uma fila com 1 item → uma recebe, outra recebe "fila vazia".
+- [ ] `GET /execution/v1/fila?tipo=REPARO` lista as tarefas na ordem do GSI (prioridade, `criado_em`).
+- [ ] ~~Teste concorrente de `fila/proxima`~~ ✂️ corte 19.
 
 ---
 
@@ -774,9 +804,9 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 | Método | Rota | Efeito | Resposta à saga |
 |---|---|---|---|
 | GET | `/execution/v1/fila?tipo=` | Lista tarefas aguardando, em ordem | — |
-| POST | `/execution/v1/fila/proxima` | Atribui a próxima ao mecânico do JWT | `DiagnosticoIniciado` (se diagnóstico) |
+| POST | ✂️ `/execution/v1/fila/proxima` *(corte 19)* | Atribui a próxima ao mecânico do JWT | — |
 | POST | `/execution/v1/tarefas/{id}/concluir-diagnostico` | `{diagnostico}` → `CONCLUIDA` | `DiagnosticoConcluido` |
-| POST | `/execution/v1/tarefas/{id}/iniciar` | Reparo → `EM_ANDAMENTO` | `ExecucaoIniciada` |
+| POST | `/execution/v1/tarefas/{id}/iniciar` | Tarefa → `EM_ANDAMENTO`, mecânico do JWT | `DiagnosticoIniciado` (diagnóstico) · `ExecucaoIniciada` (reparo) |
 | POST | `/execution/v1/tarefas/{id}/concluir` | Reparo → `CONCLUIDA` | `ExecucaoConcluida` |
 | GET | `/execution/v1/tarefas?os_id=` | Tarefas de uma OS | — |
 
@@ -891,10 +921,12 @@ data "aws_iam_policy_document" "os_pod" {
 
    	linhas, err := conn.QueryContext(ctx, `
    		SELECT id, destino, envelope, trace_headers FROM outbox
-   		WHERE enviado_em IS NULL ORDER BY criado_em LIMIT 50`)
+   		WHERE enviado_em IS NULL AND falhou_em IS NULL ORDER BY criado_em LIMIT 50`)
    	// ... para cada linha: Publicar; em sucesso UPDATE enviado_em = now();
    	//     em erro UPDATE tentativas = tentativas + 1 e PARA o ciclo
    	//     (não pula mensagem: pular quebraria a ordem da saga)
+   	//     com tentativas >= 10: UPDATE falhou_em = now() + log error com saga_id —
+   	//     a linha sai do índice e deixa de travar as OUTRAS sagas (head-of-line)
    }
    ```
 
@@ -947,12 +979,14 @@ data "aws_iam_policy_document" "os_pod" {
    // fluxo é a saga inteira em uma tabela. Ler esta tabela é ler o processo.
    var fluxo = map[chave]passo{
    	{DiagnosticoPendente, "DiagnosticoConcluido"}: {para: OrcamentoPendente, comando: "GerarOrcamento", etapaOK: "T2"},
-   	{OrcamentoPendente, "OrcamentoGerado"}:         {para: AguardandoAprovacao, statusOS: entity.StatusAguardandoAprovacao, etapaOK: "T3", prazo: prazoAprovacao},
-   	{AguardandoAprovacao, "OrcamentoAprovado"}:     {para: AguardandoPagamento, etapaOK: "T4", prazo: prazoPagamento},
+   	{OrcamentoPendente, "OrcamentoGerado"}:         {para: AguardandoAprovacao, statusOS: entity.StatusAguardandoAprovacao, etapaOK: "T3"},
+   	{AguardandoAprovacao, "OrcamentoAprovado"}:     {para: AguardandoPagamento, etapaOK: "T4"},
    	{AguardandoPagamento, "PagamentoConfirmado"}:   {para: ExecucaoPendente, comando: "ExecutarReparo", etapaOK: "T5"},
-   	{ExecucaoPendente, "ExecucaoIniciada"}:         {para: EmExecucao, statusOS: entity.StatusEmExecucao, baixarReserva: true},
-   	{EmExecucao, "ExecucaoConcluida"}:              {para: Concluida, statusOS: entity.StatusFinalizada, etapaOK: "T6"},
+   	{ExecucaoPendente, "ExecucaoIniciada"}:         {para: EmExecucao, statusOS: entity.StatusEmExecucao, baixarReserva: true, etapaOK: "T6"}, // pivô
+   	{EmExecucao, "ExecucaoConcluida"}:              {para: Concluida, statusOS: entity.StatusFinalizada, etapaOK: "T7"},
    }
+   // A saga nasce em DiagnosticoPendente com T1 ok (F4-1.3) — não há estado INICIADA.
+   // prazo: só documentação nesta entrega (corte 5); o campo existe para o watchdog futuro.
 
    // falhas leva cada resposta de falha ao início da compensação.
    var falhas = map[chave]string{ // valor = etapa que falhou
@@ -990,14 +1024,15 @@ data "aws_iam_policy_document" "os_pod" {
 2. **Uma compensação por vez**: envia a próxima só quando chega a resposta da anterior. Mais lento, mas mantém a regra "no máximo uma mensagem pendente por saga" de que o relay depende para garantir ordem.
 3. Status da OS vai para `cancelada` **no início** da compensação (o cliente não deve ver "aguardando pagamento" enquanto o estorno corre); `cancelado_em` e `motivo_cancelamento` preenchidos.
 4. `COMPENSADA` só após a última resposta + `LiberarReserva`. Notificação ao cliente por e-mail ("OS cancelada — pagamento estornado", se for o caso).
+5. Pilha por estado (para conferência rápida): T2 falhou → [`LiberarReserva`]; T3 → [`CancelarTarefas`, `LiberarReserva`]; T4/T5 → [`CancelarOrcamento`, `CancelarTarefas`, `LiberarReserva`]; T6 → [`EstornarPagamento`, `CancelarOrcamento`, `CancelarTarefas`, `LiberarReserva`]. Não existe `DevolverEstoque`: a baixa só acontece no pivô (T6 ok), depois do qual não se compensa.
 
 **Critérios de aceite**
-- [ ] Os 5 cenários da [tabela de falhas](arquitetura.md#33-etapas-e-compensações) testados no pacote `saga` e os 4 principais no BDD.
+- [ ] Os 5 cenários da [tabela de falhas](arquitetura.md#33-etapas-e-compensações) testados no pacote `saga`; no BDD, a falha T6 (`FAL*`) com estorno (corte 20).
 - [ ] Estoque igual ao inicial e pagamento `estornado` ao fim do cenário T6.
 
 ---
 
-### F4-4.6 — Timeouts e watchdog
+### F4-4.6 — Timeouts e watchdog ✂️ *(corte 5 — evolução registrada na RFC-006)*
 
 **Passo a passo**
 
@@ -1074,6 +1109,8 @@ data "aws_iam_policy_document" "os_pod" {
 
 **Objetivo:** "pelo menos um fluxo completo testado com BDD" — a saga de ponta a ponta, contra os 3 serviços reais.
 
+> **Plano de 4 dias (corte 20):** obrigatórios só o 1º (caminho feliz) e o 4º (falha no reparo com estorno). Os outros dois entram se sobrar tempo no D3.
+
 **Passo a passo**
 
 1. `go get github.com/cucumber/godog` no `oficina-app`; `features/saga_os.feature`:
@@ -1131,12 +1168,12 @@ data "aws_iam_policy_document" "os_pod" {
 5. Nos repos de Billing e Execution, o mesmo workflow roda com **eles** buildados do PR e os outros em `latest` — o BDD vira o teste de integração entre serviços nos três.
 
 **Critérios de aceite**
-- [ ] 4 cenários verdes no CI, em < 5 min.
+- [ ] 2 cenários obrigatórios verdes (no CI ou, no pior caso, localmente com o relatório anexado — sacrifício 5), em < 5 min.
 - [ ] Relatório do BDD linkado no README.
 
 ---
 
-### F4-5.3 — Testes de contrato das mensagens
+### F4-5.3 — Testes de contrato das mensagens ✂️ *(corte 13)*
 
 **Passo a passo**
 
@@ -1272,7 +1309,7 @@ resource "aws_eks_pod_identity_association" "execution" {
 
 1. Em cada repo, `k8s/base` (Namespace, ServiceAccount, Deployment, Service `LoadBalancer`, HPA, ConfigMap) + `k8s/overlays/prod` — mesmo formato do `oficina-app`.
 2. Deployment: probes `/health/live` e `/health/ready` (ready inclui banco **e** SQS), `terminationGracePeriodSeconds: 90` (F4-4.3), `resources.requests` modestos (`cpu: 50m`, `memory: 64Mi`) — o cluster é pequeno.
-3. HPA: OS 2–5 (como na Fase 3); Billing e Execution **1–3** (corte 7).
+3. HPA: OS 2–5 (como na Fase 3); Billing e Execution com **1 réplica fixa, sem HPA** (corte 7′ — garante a ordem do relay do DynamoDB, ver F4-3.1).
 4. **Manter o OS no namespace `oficina-prod`** da Fase 3 em vez de criar `os-prod`: trocar o namespace troca o Service e, com ele, o DNS do CLB para o qual o API Gateway aponta. Os serviços novos usam `billing-prod` e `execution-prod`.
 
 **Critérios de aceite**
@@ -1409,6 +1446,8 @@ O DNS de cada CLB vem da SSM (`/oficina/prod/<servico>/lb-dns`), publicado pelo 
 
 ### F4-7.3 — Dashboard da saga
 
+> **Plano de 4 dias (corte 21):** pela UI, só os 4 primeiros painéis (desfechos, taxa de compensação, onde falham, tempo por etapa) + os 2 de latência/erro por serviço. Dados: corte 25.
+
 Dashboard como código (JSON versionado em `oficina-app/observability/dashboard-saga.json`, aplicado via NerdGraph ou Terraform `newrelic_one_dashboard_json`):
 
 | Painel | NRQL |
@@ -1430,6 +1469,8 @@ Dashboard como código (JSON versionado em `oficina-app/observability/dashboard-
 ---
 
 ### F4-7.4 — Alertas
+
+> **Plano de 4 dias (corte 21/22):** só a **taxa de compensação** (New Relic) e o **alarme da DLQ** (CloudWatch + SNS). As demais linhas são evolução.
 
 | Condição | Fonte | Limite |
 |---|---|---|

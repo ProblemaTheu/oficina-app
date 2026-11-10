@@ -1,6 +1,8 @@
 # Arquitetura-alvo — Fase 4
 
 > Arquitetura de microsserviços da oficina, com saga orquestrada pelo OS Service sobre SQS FIFO. Os diagramas abaixo são a base do "diagrama geral da arquitetura final" pedido no PDF — **revise-os contra o que foi realmente implantado** antes de exportar (F4-8.4).
+>
+> **Revisão de 10/11 (replanejamento para 4 dias).** Corrigidos: saga nasce em `DIAGNOSTICO_PENDENTE` (o estado `INICIADA` não tinha transição); numeração das etapas T1–T7 alinhada ao código do orquestrador, com o **pivô em T6** (início do reparo); `DevolverEstoque` removido (nunca era alcançado); timeouts e *watchdog* marcados como **evolução** (corte 5); exposição real da rota `/internal/*`; isolamento de rede do RDS do Billing descrito com honestidade; relay do Execution com réplica única; nome do segredo do Billing unificado em `oficina/prod/billing`.
 
 ---
 
@@ -106,11 +108,11 @@ Como a regra é **provada** (e mostrada no vídeo/PDF):
 
 | Isolamento | Mecanismo |
 |---|---|
-| Billing não lê o banco do OS | Instância RDS separada, senha em segredo próprio (`oficina/prod/billing-db`), SG do RDS billing só aceita o SG dos nós, e o pod não tem a senha do outro |
+| Billing não lê o banco do OS | Instância RDS separada, usuário e senha em segredo próprio (`oficina/prod/billing`), e o pod de cada serviço só recebe o próprio segredo. **Limite assumido:** o SG do RDS aceita o SG dos nós e os 3 serviços dividem os nós, então a rede alcança — o isolamento é por **credencial**. Evolução: *Security Groups for Pods* (registrar na ADR-009) |
 | OS não lê o banco do Billing | Idem, simétrico |
 | Execution só acessa a própria tabela | Policy da role do Pod Identity: `dynamodb:*Item`, `Query` e `TransactWriteItems` apenas em `arn:...:table/execution-tarefas*` |
 | Cada serviço só consome a própria fila | Policy: `sqs:ReceiveMessage`/`DeleteMessage` só na fila de comandos do serviço; `sqs:SendMessage` só na fila de respostas |
-| Lambda sem banco | Removidos o SG de acesso ao RDS e o campo DSN do segredo da Lambda |
+| Lambda sem banco | Removidos a configuração de VPC, o SG de acesso ao RDS e o campo DSN do segredo da Lambda |
 
 ---
 
@@ -123,7 +125,7 @@ O **orquestrador** é um componente do OS Service (`internal/application/saga`),
 - persiste o estado da saga em `sagas_os` **na mesma transação** em que muda a OS e grava na `outbox`;
 - envia **comandos** para a fila de cada serviço e consome **respostas** da fila `os-saga-replies.fifo`;
 - decide a próxima etapa ou, em caso de falha, executa as **compensações em ordem inversa** das etapas já concluídas;
-- trata **timeouts** (orçamento sem resposta, pagamento não confirmado) com um *watchdog* periódico.
+- **não** trata timeouts nesta entrega: o *watchdog* de prazos (orçamento sem resposta, pagamento não confirmado) está desenhado em F4-4.6 e fica como **evolução** registrada na RFC-006 (corte 5). As colunas `prazo_em` já existem para isso.
 
 Por que não coreografia — resumo para o README (a argumentação completa vai na RFC-006):
 
@@ -142,30 +144,33 @@ Com **3 participantes, um fluxo linear e uma espera humana**, a orquestração g
 
 ```mermaid
 stateDiagram-v2
-    [*] --> INICIADA: POST /v1/work-orders<br/>(OS recebida + reserva de peças)
-    INICIADA --> DIAGNOSTICO_PENDENTE: → IniciarDiagnostico
-    DIAGNOSTICO_PENDENTE --> ORCAMENTO_PENDENTE: ← DiagnosticoConcluido<br/>→ GerarOrcamento
-    ORCAMENTO_PENDENTE --> AGUARDANDO_APROVACAO: ← OrcamentoGerado
-    AGUARDANDO_APROVACAO --> AGUARDANDO_PAGAMENTO: ← OrcamentoAprovado
-    AGUARDANDO_PAGAMENTO --> EXECUCAO_PENDENTE: ← PagamentoConfirmado<br/>→ ExecutarReparo
-    EXECUCAO_PENDENTE --> EM_EXECUCAO: ← ExecucaoIniciada<br/>(baixa da reserva)
-    EM_EXECUCAO --> CONCLUIDA: ← ExecucaoConcluida
+    [*] --> DIAGNOSTICO_PENDENTE: POST /v1/work-orders<br/>TX: OS recebida + reserva (T1)<br/>+ IniciarDiagnostico na outbox
+    DIAGNOSTICO_PENDENTE --> ORCAMENTO_PENDENTE: ← DiagnosticoConcluido (T2)<br/>→ GerarOrcamento
+    ORCAMENTO_PENDENTE --> AGUARDANDO_APROVACAO: ← OrcamentoGerado (T3)
+    AGUARDANDO_APROVACAO --> AGUARDANDO_PAGAMENTO: ← OrcamentoAprovado (T4)
+    AGUARDANDO_PAGAMENTO --> EXECUCAO_PENDENTE: ← PagamentoConfirmado (T5)<br/>→ ExecutarReparo
+    EXECUCAO_PENDENTE --> EM_EXECUCAO: ← ExecucaoIniciada (T6 — pivô)<br/>baixa da reserva
+    EM_EXECUCAO --> CONCLUIDA: ← ExecucaoConcluida (T7)
 
     DIAGNOSTICO_PENDENTE --> COMPENSANDO: ← DiagnosticoFalhou
     ORCAMENTO_PENDENTE --> COMPENSANDO: ← OrcamentoFalhou
-    AGUARDANDO_APROVACAO --> COMPENSANDO: ← OrcamentoRecusado / timeout
-    AGUARDANDO_PAGAMENTO --> COMPENSANDO: ← PagamentoRecusado / timeout
+    AGUARDANDO_APROVACAO --> COMPENSANDO: ← OrcamentoRecusado
+    AGUARDANDO_PAGAMENTO --> COMPENSANDO: ← PagamentoRecusado
     EXECUCAO_PENDENTE --> COMPENSANDO: ← ExecucaoFalhou
-    COMPENSANDO --> COMPENSADA: todas as compensações confirmadas
+    COMPENSANDO --> COMPENSADA: todas as compensações confirmadas<br/>+ LiberarReserva (local)
     CONCLUIDA --> [*]
     COMPENSADA --> [*]
 ```
+
+- **Não existe estado `INICIADA`:** a saga nasce já em `DIAGNOSTICO_PENDENTE`, na mesma transação que grava a OS, a reserva e o comando `IniciarDiagnostico` na outbox. Um estado intermediário sem transição de saída só criaria sagas "paradas".
+- **Timeouts (`/ timeout` nas esperas humanas) são evolução** — corte 5 do [plano](plano-execucao.md#os-cortes). O desenho está em F4-4.6.
+- **Depois do pivô (T6) não há compensação.** Uma falha em `EM_EXECUCAO` é tratada pela oficina (correção manual), não pela saga — o carro já está desmontado e as peças já saíram do estoque.
 
 Correspondência com o status visível da OS (o que o cliente vê em `GET /v1/work-orders/{id}/status`):
 
 | Estado da saga | Status da OS |
 |---|---|
-| `INICIADA`, `DIAGNOSTICO_PENDENTE` | `recebida` → `em_diagnostico` (quando o Execution responde `DiagnosticoIniciado`, evento informativo) |
+| `DIAGNOSTICO_PENDENTE` | `recebida` → `em_diagnostico` (quando o Execution responde `DiagnosticoIniciado`, evento informativo que não muda o estado da saga) |
 | `ORCAMENTO_PENDENTE`, `AGUARDANDO_APROVACAO`, `AGUARDANDO_PAGAMENTO` | `aguardando_aprovacao` |
 | `EXECUCAO_PENDENTE`, `EM_EXECUCAO` | `em_execucao` |
 | `CONCLUIDA` | `finalizada` (→ `entregue` pelo PATCH manual do atendente) |
@@ -173,26 +178,30 @@ Correspondência com o status visível da OS (o que o cliente vê em `GET /v1/wo
 
 ### 3.3 Etapas e compensações
 
-| # | Etapa | Serviço | Ação | Compensação |
-|---|---|---|---|---|
-| T1 | Abrir OS e reservar peças | OS (local) | `ordens_servico` + `pecas.estoque_reservado += n` | `LiberarReserva` (local) |
-| T2 | Diagnóstico | Execution | Tarefa `DIAGNOSTICO` na fila | `CancelarTarefas` |
-| T3 | Orçamento | Billing | Orçamento a partir dos itens + diagnóstico; e-mail com link | `CancelarOrcamento` |
-| T4 | Aprovação | Billing (humano) | Cliente aprova → cria preference no Mercado Pago | (coberta por T3) |
-| T5 | Pagamento | Billing (Mercado Pago) | Webhook → `GET /v1/payments/{id}` = `approved` | `EstornarPagamento` (refund) |
-| T6 | Reparo | Execution | Tarefa `REPARO`; ao iniciar, OS baixa a reserva | `CancelarTarefas` + `DevolverEstoque` |
-| T7 | Conclusão | Execution → OS | OS `finalizada` | — (pivô: depois daqui não se compensa, só se corrige) |
+A etapa é registrada como `ok` em `sagas_os_etapas` **quando chega a resposta indicada** — é a mesma tabela que o código do orquestrador usa ([F4-4.4](backlog.md#f4-44--orquestrador)).
+
+| # | Etapa | Registrada `ok` quando | Serviço | Ação | Compensação |
+|---|---|---|---|---|---|
+| T1 | Abrir OS e reservar peças | `CriarOS` comita | OS (local) | `ordens_servico` + `pecas.estoque_reservado += n` | `LiberarReserva` (local) |
+| T2 | Diagnóstico | `DiagnosticoConcluido` | Execution | Tarefa `DIAGNOSTICO` na fila | `CancelarTarefas` |
+| T3 | Orçamento | `OrcamentoGerado` | Billing | Orçamento a partir dos itens + diagnóstico; e-mail com link | `CancelarOrcamento` (também expira a preference no MP, se houver) |
+| T4 | Aprovação | `OrcamentoAprovado` | Billing (humano) | Cliente aprova → cria preference no Mercado Pago | (coberta por T3) |
+| T5 | Pagamento | `PagamentoConfirmado` | Billing (Mercado Pago) | Webhook → `GET /v1/payments/{id}` = `approved` | `EstornarPagamento` (refund) |
+| T6 | **Início do reparo — pivô** | `ExecucaoIniciada` | Execution → OS | Tarefa `REPARO` iniciada; OS **baixa a reserva** na mesma tx | — (a partir daqui não se compensa) |
+| T7 | Conclusão | `ExecucaoConcluida` | Execution → OS | OS `finalizada` | — |
 
 | Falha em | Compensações executadas (ordem inversa) | Resultado |
 |---|---|---|
 | T1 — peça sem saldo para reservar | — (a transação local não comita) | `422`, nenhuma saga criada |
-| T2 — Execution rejeita (ex.: fila fechada) | `LiberarReserva` | OS `cancelada` |
+| T2 — Execution rejeita (ex.: payload inválido) | `LiberarReserva` | OS `cancelada` |
 | T3 — Billing não consegue gerar | `CancelarTarefas` → `LiberarReserva` | OS `cancelada` |
-| T4 — **cliente recusa** ou prazo expira | `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada` |
-| T5 — **pagamento recusado** (cartão `OTHE`) ou prazo expira | `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada` |
-| T6 — **falha ao iniciar o reparo** | `EstornarPagamento` → `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada`, refund no MP |
+| T4 — **cliente recusa** | `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada` |
+| T5 — **pagamento recusado** (titular `OTHE`) | `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada` |
+| T6 — **falha ao iniciar o reparo** (placa `FAL*`) | `EstornarPagamento` → `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada`, refund no MP |
 
-> **Compensação também falha.** Um `EstornarPagamento` pode receber 5xx do Mercado Pago. Compensações são comandos como quaisquer outros: idempotentes, reentregues pelo SQS até `maxReceiveCount`, e depois vão para a DLQ — que dispara alerta (F4-7.4). A saga fica em `COMPENSANDO` e o *watchdog* a reporta como presa. **Nunca** marque `COMPENSADA` sem a confirmação de todas.
+> **Pagamento recusado não fecha a porta do Checkout Pro.** O cliente pode tentar outro cartão no mesmo link depois que a saga já compensou. Duas defesas, ambas obrigatórias: (1) `CancelarOrcamento` expira a preference (`PUT /checkout/preferences/{id}` com `expiration_date_to` = agora — confira o campo na doc vigente); (2) o Billing **estorna** qualquer pagamento `approved` que chegue para orçamento `cancelado` e não envia `PagamentoConfirmado` (F4-2.5 passo 4). O orquestrador também responde `EstornarPagamento` a um `PagamentoConfirmado` recebido em `COMPENSANDO/COMPENSADA` (F4-4.4 passo 3).
+
+> **Compensação também falha.** Um `EstornarPagamento` pode receber 5xx do Mercado Pago. Compensações são comandos como quaisquer outros: idempotentes, reentregues pelo SQS até `maxReceiveCount`, e depois vão para a DLQ — que dispara o alarme (F4-7.4). A saga fica em `COMPENSANDO` até alguém reprocessar a DLQ (runbook no README). **Nunca** marque `COMPENSADA` sem a confirmação de todas.
 
 ---
 
@@ -216,7 +225,7 @@ sequenceDiagram
 
     C->>GW: POST /v1/work-orders (JWT)
     GW->>OS: (authorizer ok)
-    OS->>OS: TX: OS recebida + reserva + saga INICIADA + outbox[IniciarDiagnostico]
+    OS->>OS: TX: OS recebida + reserva + saga DIAGNOSTICO_PENDENTE + outbox[IniciarDiagnostico]
     OS-->>C: 201 {id, status: recebida}
     OS--)QE: IniciarDiagnostico (relay da outbox)
     QE--)EX: consome
@@ -296,6 +305,8 @@ sequenceDiagram
     OS-->>L: 200 {id, nome, status} · 404
     L-->>C: 200 JWT · 400 · 403 inativo · 404
 ```
+
+> **Exposição real de `/internal/*`.** A rota não tem integração no API Gateway, mas a Lambda (fora da VPC) a chama pelo DNS do CLB do OS Service — e um `Service type: LoadBalancer` é **público** por padrão. Portanto `/internal/*` é alcançável pela internet e protegido **só** pelo `X-Internal-Token` (comparação em tempo constante, 404 sem o header, token em `oficina/prod/internal`). Isso é assumido na ADR-015; evolução: CLB interno (`service.beta.kubernetes.io/aws-load-balancer-internal: "true"`) + Lambda na VPC sem acesso ao RDS.
 
 ---
 
@@ -392,6 +403,9 @@ erDiagram
         jsonb detalhe
         timestamptz ocorrido_em
     }
+    itens_os_pecas {
+        text reserva_estado "NOVO: reservada | liberada | baixada (idempotência de Liberar/Baixar)"
+    }
     pecas {
         int estoque_atual
         int estoque_reservado "NOVO, CHECK <= estoque_atual"
@@ -404,6 +418,7 @@ erDiagram
         timestamptz criado_em
         timestamptz enviado_em "NULL = pendente"
         int tentativas
+        timestamptz falhou_em "após 10 tentativas: sai da fila do relay e gera log de erro"
     }
     mensagens_processadas {
         uuid message_id PK
@@ -449,12 +464,14 @@ erDiagram
         text mp_refund_id
     }
     notificacoes_mp {
-        text x_request_id PK "idempotência do webhook"
+        text x_request_id PK "auditoria; gravada SÓ depois de processar"
         bigint mp_payment_id
         jsonb corpo
         timestamptz recebido_em
     }
 ```
+
+**Idempotência do webhook** é por `pagamentos.mp_payment_id` (UNIQUE) + transição de status (`pendente → aprovado` só acontece uma vez), não por `x_request_id`: se a notificação fosse gravada antes do `GET /v1/payments` e o `GET` falhasse, o reenvio do MP bateria na PK e o pagamento nunca seria processado ([F4-2.4](backlog.md#f4-24--webhook-do-mercado-pago)).
 
 Valores monetários em `numeric(12,2)` — o OS Service ainda usa `float64` no domínio, e o Billing é onde arredondamento vira bug de dinheiro (ver F4-2.1).
 
@@ -469,6 +486,7 @@ Valores monetários em `numeric(12,2)` — o OS Service ainda usa `float64` no d
 - **Próxima tarefa da fila:** `Query GSI1 gsi1pk = FILA#REPARO#AGUARDANDO`, `ScanIndexForward = true`, `Limit 1`.
 - **Atribuir ao mecânico sem corrida:** `UpdateItem` com `ConditionExpression estado = :aguardando`.
 - **Efeito + inbox + outbox atômicos:** um `TransactWriteItems` com `Put` inbox (`attribute_not_exists(pk)`), `Update` tarefa e `Put` outbox.
+- **Relay com réplica única.** Diferente do Postgres, aqui não há *advisory lock*: duas réplicas publicando a outbox ao mesmo tempo podem inverter `DiagnosticoIniciado` e `DiagnosticoConcluido` da mesma saga. Nesta entrega o Execution roda com **1 réplica fixa** (corte 7′ do [plano](plano-execucao.md#os-cortes)); evolução: *lease* de líder num item `RELAY#LIDER` com `UpdateItem` condicional e TTL. O mesmo vale para o Billing por simplicidade, embora lá o advisory lock já resolva.
 
 ---
 

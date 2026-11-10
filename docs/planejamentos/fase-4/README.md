@@ -13,7 +13,7 @@ Este diretório traduz o enunciado (`SOAT - Fase 4 - Tech challenge.pdf`) em ép
 | [README.md](README.md) | Este arquivo — resumo executivo, decisões, mapa de entregáveis, achados do estado atual, épicos e DoD |
 | [arquitetura.md](arquitetura.md) | Arquitetura-alvo: componentes, posse de dados, catálogo de mensagens, máquina de estados da saga, sequências (caminho feliz e compensação) e topologia dos repositórios |
 | [backlog.md](backlog.md) | Backlog detalhado — **é aqui que está o "como fazer"**, com código, comandos e critérios de aceite |
-| **[plano-execucao.md](plano-execucao.md)** | ⏱️ **Documento de trabalho** — **7 dias (05/11 → 11/11)** em 3 trilhas paralelas, code freeze na qua 11/11, entrega no sáb 14/11 (prazo 15/11). Cortes e ordem de sacrifício. **Comece por aqui.** |
+| **[plano-execucao.md](plano-execucao.md)** | ⏱️ **Documento de trabalho** — **replanejado em 10/11: 4 dias (ter 10/11 → sex 13/11)** em 3 trilhas paralelas, code freeze na qui 12/11 às 22 h, **submissão na sex 13/11 até 18 h** (prazo do portal 15/11). Cortes e ordem de sacrifício. **Comece por aqui.** |
 | [roadmap.md](roadmap.md) | Sprints, grafo de dependências, caminho crítico, riscos, custo e divisão por integrante |
 | [entrega.md](entrega.md) | Checklist de entrega, roteiro do vídeo e conteúdo do PDF do portal |
 | [execucao.md](execucao.md) | 📋 Diário de execução — valores herdados da Fase 3 e espaço para registrar o que for feito |
@@ -147,6 +147,8 @@ Levantamento feito sobre o código e a infraestrutura ao fim da Fase 3 (`main` e
 
 11. **O ambiente AWS provavelmente foi destruído após a entrega da Fase 3** (o `kubeconfig` local não tem contexto). O `apply` completo leva ~25 min e o pedido de quota de vCPU para 32 estava `CASE_OPENED`. Confirmar quota e estado no dia 1. → **F4-0.3**
 
+12. **(10/11) O plano de 7 dias não começou.** Em 10/11 — data do D6 no plano original — não existiam os 2 repositórios novos, a migration `000007` nem código de saga, e o diário estava vazio. O cronograma foi refeito para 4 dias, com os cortes 7′ e 18–25 ([plano](plano-execucao.md)), e a revisão corrigiu defeitos de desenho no webhook do Mercado Pago, no relay do DynamoDB, na migration e na máquina de estados ([arquitetura](arquitetura.md), [backlog](backlog.md)).
+
 ---
 
 ## Critérios de aceite globais (Definition of Done da fase)
@@ -156,15 +158,15 @@ A Fase 4 só é considerada entregue quando:
 - [ ] Existem **3 repositórios de serviço** (`oficina-app`, `oficina-billing-service`, `oficina-execution-service`), cada um com código, `Dockerfile`, manifestos K8s, `infra/` Terraform, pipelines, `docs/arquitetura.md`, `docs/openapi.yaml` e README com evidência de cobertura.
 - [ ] Cada serviço tem **banco próprio**; há ao menos **um SQL** (PostgreSQL) e **um NoSQL** (DynamoDB); nenhum serviço — **nem a Lambda** — tem credencial para o banco de outro (comprovado pelas policies/usuários).
 - [ ] Uma OS criada percorre **OS → Execution (diagnóstico) → Billing (orçamento + pagamento Mercado Pago) → Execution (reparo) → OS (finalizada)** sem intervenção além das ações humanas (mecânico e cliente).
-- [ ] Os três cenários de falha compensam corretamente e deixam a OS `cancelada`, o estoque liberado e, quando houve pagamento, **o estorno registrado no Mercado Pago**: orçamento recusado · pagamento recusado · falha na execução. *(Aprovação expirada fica como evolução — corte 5 do [plano de 7 dias](plano-execucao.md#os-cortes).)*
+- [ ] Os três cenários de falha compensam corretamente e deixam a OS `cancelada`, o estoque liberado e, quando houve pagamento, **o estorno registrado no Mercado Pago**: orçamento recusado · pagamento recusado · falha na execução. *(Aprovação expirada fica como evolução — corte 5 do [plano de 4 dias](plano-execucao.md#os-cortes).)* Pagamento aprovado **depois** da compensação é estornado automaticamente.
 - [ ] Reprocessar qualquer mensagem (reentrega do SQS) não produz efeito duplicado — testado.
 - [ ] Mensagem venenosa vai para a **DLQ** após N tentativas e gera alerta.
 - [ ] Cobertura de testes unitários **≥ 80% em cada serviço**, com o CI **falhando** abaixo disso.
-- [ ] O fluxo completo da saga (feliz + ao menos uma compensação) roda em **BDD** no CI.
+- [ ] O fluxo completo da saga (feliz + falha no reparo com estorno) roda em **BDD** — no CI, ou localmente com o relatório anexado se o CI ficar instável (sacrifício 5).
 - [ ] SonarCloud com quality gate passando nos 3 repos de serviço.
 - [ ] Cada serviço tem pipeline **independente** que faz build, testes, Sonar e deploy no EKS a cada merge na `main`, com rollback automático.
 - [ ] `main` protegida com PR obrigatório e checks obrigatórios nos repos — comprovado por um push rejeitado.
-- [ ] No New Relic: APM dos 3 serviços, **um trace distribuído atravessando as filas**, logs com `saga_id`/`correlation_id`, dashboard da saga e alerta de compensação/DLQ.
+- [ ] No New Relic: APM dos 3 serviços, **um trace distribuído atravessando as filas**, logs com `saga_id`/`correlation_id`, dashboard da saga (4+ painéis) e alerta de compensação; alarme da DLQ no CloudWatch.
 - [ ] README do `oficina-app` documenta e **justifica** a escolha da saga orquestrada.
 - [ ] Vídeo ≤ 15 min publicado com os 4 itens pedidos; PDF submetido com os 6 itens pedidos.
 - [ ] Custo sob controle: `destroy` executado após a gravação (ver [F4-9.3](backlog.md#f4-93--teardown-e-custo)).

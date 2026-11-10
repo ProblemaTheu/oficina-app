@@ -2,7 +2,7 @@
 
 Sequência de execução, dependências, riscos e controle de custo. As tarefas referenciam os IDs de [backlog.md](backlog.md). O cronograma diário está no [plano de execução](plano-execucao.md).
 
-> ⏱️ **As sprints abaixo são a referência do "jeito certo com tempo" (~18 dias).** O que será executado é o [plano de 7 dias](plano-execucao.md) (05/11 → 11/11), que comprime estas sprints em 3 trilhas paralelas e aplica os cortes 5 e 13–17.
+> ⏱️ **As sprints abaixo são a referência do "jeito certo com tempo" (~18 dias).** O que será executado é o [plano de 4 dias](plano-execucao.md) (ter 10/11 → sex 13/11, replanejado em 10/11), que comprime estas sprints em 3 trilhas paralelas e aplica os cortes 5, 7′ e 13–25. O orçamento e a ordem de `apply` abaixo continuam valendo; a nuvem fica ligada de ter 10/11 à noite até sex 13/11 (~3 dias × US$ 7,10 ≈ **US$ 22**).
 
 ---
 
@@ -212,13 +212,15 @@ Base da Fase 3 (variante enxuta): **~US$ 4,90/dia**. Acréscimos da Fase 4:
 | Mensagens fora de ordem ou duplicadas corromperem a saga | Média | Alto | FIFO por `saga_id` + relay com líder único + inbox + lock otimista na saga; teste de 3 relays concorrentes (F4-4.2) |
 | Compensação falhar (estorno com 5xx) e a saga ficar presa | Baixa | Alto | Reentrega + DLQ + alerta; watchdog emite `SagaPresaEvent`; runbook de reprocessar a DLQ no README |
 | Cobertura de 80% não fechar em Billing/Execution | Média | Alto | Gate desde o primeiro PR; adaptadores atrás de interface; não deixar teste para a Sprint 5 |
-| Pods `Pending` por limite de 11 pods/nó do `t3.small` | Alta | Alto | Medir na Sprint 4 (F4-6.4); 3º nó; HPA 1–3 nos serviços novos |
+| Pods `Pending` por limite de 11 pods/nó do `t3.small` | Alta | Alto | Medir no D2 (F4-6.4); 3º nó; Billing e Execution com 1 réplica fixa |
 | `AccessDenied` silencioso no consumidor (IAM) | Alta | Médio | `/health/ready` testa `GetQueueAttributes` na própria fila; `simulate-principal-policy` antes do deploy |
 | Dependência circular entre os `infra/` | Média | Médio | ARNs por convenção + URLs via SSM no CD ([arquitetura §7](arquitetura.md#7-topologia-dos-repositórios)) |
 | BDD lento/instável no CI (compose com 7 containers) | Média | Médio | Healthchecks com `depends_on: condition: service_healthy`; polling com timeout em vez de `sleep`; cache de imagens |
 | LocalStack passar a exigir token | Média | Médio | Plano B: ElasticMQ + DynamoDB Local (F4-0.4) |
 | Dashboard vazio no dia da gravação | Alta | Alto | Script de ~20 sagas (com falhas) nos 2 dias anteriores |
 | Lambda quebrar ao trocar o banco por REST | Baixa | Alto | Os 4 cenários do `/auth/token` como teste de fumaça no CD da Lambda |
+| **Prazo de 4 dias sem folga** (plano original não começou) | Alta | **Crítico** | Marco do D1 como bloqueante; corte só nas sincronizações das 13 h e 21 h; [ordem de sacrifício](plano-execucao.md#ordem-de-sacrifício-se-atrasar); sáb/dom 14–15/11 como reserva real |
+| Pagamento aprovado depois de a saga compensar (cliente tenta outro cartão no mesmo link) | Média | Alto — dinheiro retido com OS cancelada | Preference expirada no `CancelarOrcamento` + estorno automático do pagamento tardio (F4-2.5 passo 4), **não cortável** |
 | Vídeo estourar 15 min (agora com 3 serviços) | Alta | Alto | Roteiro cronometrado em [entrega.md](entrega.md); blocos pré-gravados; prazos curtos de saga na demo |
 
 ---
@@ -238,4 +240,4 @@ Base da Fase 3 (variante enxuta): **~US$ 4,90/dia**. Acréscimos da Fase 4:
 - Fim da Sprint 3 — BDD verde nos 3 repos.
 - Sprint 5 — ensaio completo do vídeo antes da gravação final.
 
-Com **uma pessoa só**, siga o [plano de execução](plano-execucao.md), que já assume essa realidade.
+O [plano de 4 dias](plano-execucao.md) assume **3 pessoas**. Com 2, aplique a ordem de sacrifício até o item 5 antes de começar; com 1, o prazo de sexta não é viável.
