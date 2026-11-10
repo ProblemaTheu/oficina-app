@@ -73,7 +73,7 @@ flowchart TB
     os --- rdsos
     bill --- rdsbill
     exec --- ddb
-    bill -- "Preferences / Payments / Refunds" --> mp
+    bill -- "API de Orders<br/>criar · consultar · refund · cancel" --> mp
 
     os & bill & exec & ltoken -. segredo JWT .-> sm
     os & bill & exec -. APM + logs .-> nr
@@ -184,9 +184,9 @@ A etapa é registrada como `ok` em `sagas_os_etapas` **quando chega a resposta i
 |---|---|---|---|---|---|
 | T1 | Abrir OS e reservar peças | `CriarOS` comita | OS (local) | `ordens_servico` + `pecas.estoque_reservado += n` | `LiberarReserva` (local) |
 | T2 | Diagnóstico | `DiagnosticoConcluido` | Execution | Tarefa `DIAGNOSTICO` na fila | `CancelarTarefas` |
-| T3 | Orçamento | `OrcamentoGerado` | Billing | Orçamento a partir dos itens + diagnóstico; e-mail com link | `CancelarOrcamento` (também expira a preference no MP, se houver) |
-| T4 | Aprovação | `OrcamentoAprovado` | Billing (humano) | Cliente aprova → cria preference no Mercado Pago | (coberta por T3) |
-| T5 | Pagamento | `PagamentoConfirmado` | Billing (Mercado Pago) | Webhook → `GET /v1/payments/{id}` = `approved` | `EstornarPagamento` (refund) |
+| T3 | Orçamento | `OrcamentoGerado` | Billing | Orçamento a partir dos itens + diagnóstico; e-mail com link | `CancelarOrcamento` (também cancela a order no MP, se ainda não paga) |
+| T4 | Aprovação | `OrcamentoAprovado` | Billing (humano) | Cliente aprova → cria a order no Mercado Pago (`checkout_url`) | (coberta por T3) |
+| T5 | Pagamento | `PagamentoConfirmado` | Billing (Mercado Pago) | Webhook → `GET /v1/orders/{id}` = `processed` | `EstornarPagamento` (refund) |
 | T6 | **Início do reparo — pivô** | `ExecucaoIniciada` | Execution → OS | Tarefa `REPARO` iniciada; OS **baixa a reserva** na mesma tx | — (a partir daqui não se compensa) |
 | T7 | Conclusão | `ExecucaoConcluida` | Execution → OS | OS `finalizada` | — |
 
@@ -199,7 +199,7 @@ A etapa é registrada como `ok` em `sagas_os_etapas` **quando chega a resposta i
 | T5 — **pagamento recusado** (titular `OTHE`) | `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada` |
 | T6 — **falha ao iniciar o reparo** (placa `FAL*`) | `EstornarPagamento` → `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada`, refund no MP |
 
-> **Pagamento recusado não fecha a porta do Checkout Pro.** O cliente pode tentar outro cartão no mesmo link depois que a saga já compensou. Duas defesas, ambas obrigatórias: (1) `CancelarOrcamento` expira a preference (`PUT /checkout/preferences/{id}` com `expiration_date_to` = agora — confira o campo na doc vigente); (2) o Billing **estorna** qualquer pagamento `approved` que chegue para orçamento `cancelado` e não envia `PagamentoConfirmado` (F4-2.5 passo 4). O orquestrador também responde `EstornarPagamento` a um `PagamentoConfirmado` recebido em `COMPENSANDO/COMPENSADA` (F4-4.4 passo 3).
+> **Pagamento recusado não fecha a porta do Checkout Pro.** O cliente pode tentar outro cartão no mesmo link depois que a saga já compensou. Duas defesas, ambas obrigatórias: (1) `CancelarOrcamento` cancela a order ainda não paga (`POST /v1/orders/{id}/cancel` — confira na referência quais status aceitam); (2) o Billing **estorna** qualquer pagamento `approved` que chegue para orçamento `cancelado` e não envia `PagamentoConfirmado` (F4-2.5 passo 4). O orquestrador também responde `EstornarPagamento` a um `PagamentoConfirmado` recebido em `COMPENSANDO/COMPENSADA` (F4-4.4 passo 3).
 
 > **Compensação também falha.** Um `EstornarPagamento` pode receber 5xx do Mercado Pago. Compensações são comandos como quaisquer outros: idempotentes, reentregues pelo SQS até `maxReceiveCount`, e depois vão para a DLQ — que dispara o alarme (F4-7.4). A saga fica em `COMPENSANDO` até alguém reprocessar a DLQ (runbook no README). **Nunca** marque `COMPENSADA` sem a confirmação de todas.
 
@@ -240,16 +240,16 @@ sequenceDiagram
     QR--)OS: saga AGUARDANDO_APROVACAO · OS aguardando_aprovacao
     C->>GW: POST /billing/v1/orcamentos/{id}/aprovar
     GW->>BI: 
-    BI->>MP: POST /checkout/preferences (external_reference = orcamento_id)
-    MP-->>BI: init_point
+    BI->>MP: POST /v1/orders (external_reference = orcamento_id)
+    MP-->>BI: checkout_url
     BI-->>C: 200 {link_pagamento}
     BI--)QR: OrcamentoAprovado
     C->>MP: paga com cartão de teste (APRO)
     MP->>GW: POST /billing/webhooks/mercadopago (x-signature)
     GW->>BI: 
     BI->>BI: valida assinatura
-    BI->>MP: GET /v1/payments/{id}
-    MP-->>BI: status approved
+    BI->>MP: GET /v1/orders/{id}
+    MP-->>BI: status processed
     BI--)QR: PagamentoConfirmado
     QR--)OS: saga EXECUCAO_PENDENTE
     OS--)QE: ExecutarReparo
@@ -278,7 +278,7 @@ sequenceDiagram
     EX--)OS: ExecucaoFalhou {motivo}
     OS->>OS: TX: saga COMPENSANDO · OS cancelada · outbox[EstornarPagamento]
     OS--)BI: EstornarPagamento
-    BI->>MP: POST /v1/payments/{id}/refunds (X-Idempotency-Key)
+    BI->>MP: POST /v1/orders/{id}/refund (X-Idempotency-Key)
     MP-->>BI: 201 refund
     BI--)OS: PagamentoEstornado
     OS--)BI: CancelarOrcamento
@@ -348,7 +348,7 @@ sequenceDiagram
 | `OrcamentoFalhou` | resposta | Billing → OS | `os-saga-replies.fifo` | `motivo` |
 | `OrcamentoAprovado` | resposta | Billing → OS | `os-saga-replies.fifo` | `orcamento_id`, `link_pagamento` |
 | `OrcamentoRecusado` | resposta | Billing → OS | `os-saga-replies.fifo` | `orcamento_id`, `motivo` |
-| `PagamentoConfirmado` | resposta | Billing → OS | `os-saga-replies.fifo` | `pagamento_id`, `mp_payment_id`, `valor` |
+| `PagamentoConfirmado` | resposta | Billing → OS | `os-saga-replies.fifo` | `pagamento_id`, `mp_order_id`, `valor` |
 | `PagamentoRecusado` | resposta | Billing → OS | `os-saga-replies.fifo` | `mp_status_detail` |
 | `ExecutarReparo` | comando | OS → Execution | `execution-commands.fifo` | `itens`, `diagnostico` |
 | `ExecucaoIniciada` | resposta | Execution → OS | `os-saga-replies.fifo` | `tarefa_id`, `iniciado_em` |
@@ -457,21 +457,21 @@ erDiagram
     pagamentos {
         uuid id PK
         uuid orcamento_id FK
-        text mp_preference_id
-        bigint mp_payment_id "UNIQUE"
+        text mp_order_id "UNIQUE — ORDTST... em teste"
+        text mp_payment_ref "transactions.payments[0].id"
         text status "pendente | aprovado | recusado | estornado"
         numeric valor
         text mp_refund_id
     }
     notificacoes_mp {
         text x_request_id PK "auditoria; gravada SÓ depois de processar"
-        bigint mp_payment_id
+        text mp_order_id
         jsonb corpo
         timestamptz recebido_em
     }
 ```
 
-**Idempotência do webhook** é por `pagamentos.mp_payment_id` (UNIQUE) + transição de status (`pendente → aprovado` só acontece uma vez), não por `x_request_id`: se a notificação fosse gravada antes do `GET /v1/payments` e o `GET` falhasse, o reenvio do MP bateria na PK e o pagamento nunca seria processado ([F4-2.4](backlog.md#f4-24--webhook-do-mercado-pago)).
+**Idempotência do webhook** é por `pagamentos.mp_order_id` (UNIQUE) + transição de status (`pendente → aprovado` só acontece uma vez), não por `x_request_id`: se a notificação fosse gravada antes do `GET /v1/payments` e o `GET` falhasse, o reenvio do MP bateria na PK e o pagamento nunca seria processado ([F4-2.4](backlog.md#f4-24--webhook-do-mercado-pago)).
 
 Valores monetários em `numeric(12,2)` — o OS Service ainda usa `float64` no domínio, e o Billing é onde arredondamento vira bug de dinheiro (ver F4-2.1).
 

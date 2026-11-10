@@ -152,9 +152,13 @@ Convenções usadas em todo o backlog:
 **Passo a passo**
 
 1. **Mercado Pago**
-   - Criar a aplicação no [painel de desenvolvedores](https://www.mercadopago.com.br/developers/panel/app) (produto: Checkout Pro).
-   - Em *Contas de teste*, criar um **vendedor** e um **comprador** de teste. Use as credenciais **do vendedor de teste**; pague logado como **comprador de teste** em janela anônima.
-   - Em *Webhooks*, cadastrar a URL `https://<api-gateway>/billing/webhooks/mercadopago`, evento **Pagamentos**, e copiar a **assinatura secreta** (valida o `x-signature`).
+   > **Validado em 10/11** (ver [diário](execucao.md#1011--mercado-pago-validado)). O que funcionou — e o que **não** funciona:
+   - Criar a aplicação na **conta pessoal** de um integrante, no [painel](https://www.mercadopago.com.br/developers/panel/app): solução **Checkout Pro**, tipo de API **API de Orders**.
+   - Em *Contas de teste*, criar **vendedor** e **comprador** (ambos Brasil). Código de verificação no login = o que aparece em *Credenciais → Conta de teste*.
+   - Usar as **Credenciais de teste** da aplicação (o Access Token começa com `APP_USR-` e termina com o id do **vendedor de teste** vinculado — é normal). ❌ **Não** usar credenciais de produção de uma aplicação criada *dentro* do vendedor de teste: cobram, mas o estorno responde `401 Unauthorized use of live credentials`.
+   - ❌ A **API de Preferences** (`/checkout/preferences` + `/v1/payments/{id}/refunds`) cobra, mas **não estorna** com conta de teste (mesmo 401). Com a **API de Orders** cobrança, consulta e estorno funcionam (F4-2.3).
+   - Pagar como **comprador de teste em outro navegador ou no perfil Convidado** — janelas anônimas do Chrome compartilham a sessão do vendedor e o checkout responde "A transação não aceita este meio de pagamento". Cartão gerado no painel (*Cartões de teste*), titular `APRO`/`OTHE`, CPF `12345678909`.
+   - Em *Webhooks*, cadastrar a URL `https://<api-gateway>/billing/webhooks/mercadopago` (ngrok no D2), evento **Order (Mercado Pago)** — *confirmar o nome do evento no painel ao configurar* — e copiar a **assinatura secreta** (valida o `x-signature`).
    - Guardar `MP_ACCESS_TOKEN` e `MP_WEBHOOK_SECRET` em `oficina/prod/billing` no Secrets Manager — nunca no repo.
    - Anotar os [cartões de teste](https://www.mercadopago.com.br/developers/pt/docs/checkout-pro/additional-content/your-integrations/test/cards) e os nomes de titular que forçam resultado (`APRO` aprovado, `OTHE` recusado). **Confira na documentação vigente** — o painel muda com frequência.
 2. **AWS:** conferir o pedido de quota de vCPU (32) que estava `CASE_OPENED` e o estado do ambiente (`aws eks list-clusters`, `aws rds describe-db-instances`). Se destruído, o `apply` completo leva ~25 min — agende.
@@ -162,7 +166,7 @@ Convenções usadas em todo o backlog:
 4. Confirmar no fórum se a dispensa de homologação continua valendo na Fase 4 e guardar o print.
 
 **Critérios de aceite**
-- [ ] Uma preference criada via `curl` com o token de teste devolve `init_point`, e um pagamento `APRO` aparece no painel.
+- [x] Uma order criada via `curl` com o token de teste devolve `checkout_url`, um pagamento `APRO` deixa a order `processed` e o estorno via API deixa a order `refunded` (10/11).
 - [ ] Quota de vCPU ≥ 8 confirmada (3 × `t3.small` = 6).
 - [ ] Chaves do New Relic rotacionadas.
 
@@ -587,11 +591,11 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 1. **`GerarOrcamento`** (consumidor): numa transação — inbox, `orcamentos` + `itens_orcamento` com `expira_em = now() + PRAZO_ORCAMENTO` (default 48 h; 2 min na demo), outbox `OrcamentoGerado`. Depois do commit, e-mail ao cliente (porta `Notifier`, mesmo SMTP/Mailpit da Fase 2) com o link `GET /billing/v1/orcamentos/{id}`.
    - Orçamento já existente para a OS → reenvia `OrcamentoGerado` com o mesmo `orcamento_id` (idempotência de negócio, além da inbox).
-2. **Aprovar:** `gerado → aprovado`; cria a preference no Mercado Pago (F4-2.3) **fora** da transação; grava `pagamentos(status=pendente, mp_preference_id)` e outbox `OrcamentoAprovado{link_pagamento}`. Se o MP falhar, a aprovação **não** é gravada e o cliente recebe `502` — pode tentar de novo.
+2. **Aprovar:** `gerado → aprovado`; cria a **order** no Mercado Pago (F4-2.3) **fora** da transação; grava `pagamentos(status=pendente, mp_order_id)` e outbox `OrcamentoAprovado{link_pagamento}`. Se o MP falhar, a aprovação **não** é gravada e o cliente recebe `502` — pode tentar de novo.
 3. **Recusar:** `gerado → recusado` + outbox `OrcamentoRecusado`.
 4. **Webhook `budget-response`** migrado: mesma validação HMAC da Fase 2 (`internal/infra/http/middleware/webhook.go`), traduzido em aprovar/recusar.
 5. **Expiração:** o timeout de aprovação é do **orquestrador** (F4-4.6), não do Billing. O Billing só recusa aprovar um orçamento vencido (`422 ORCAMENTO_EXPIRADO`).
-6. **`CancelarOrcamento`** (compensação): qualquer status não terminal → `cancelado`; se houver pagamento `aprovado` desse orçamento, **estorna antes** (F4-2.5); se houver preference, **expira-a** (`PUT /checkout/preferences/{id}` com `expiration_date_to` = agora — confira o campo na doc vigente; falha aqui só gera log, porque o passo 4 de F4-2.5 cobre o pagamento tardio). Responde `OrcamentoCancelado` mesmo se já estava cancelado.
+6. **`CancelarOrcamento`** (compensação): qualquer status não terminal → `cancelado`; se houver pagamento `aprovado` desse orçamento, **estorna antes** (F4-2.5); se houver order ainda não paga, **cancela-a** (`POST /v1/orders/{id}/cancel` — confira na referência quais status aceitam cancelamento; falha aqui só gera log, porque o passo 4 de F4-2.5 cobre o pagamento tardio). Responde `OrcamentoCancelado` mesmo se já estava cancelado.
 
 **Critérios de aceite**
 - [ ] Mesmo `GerarOrcamento` entregue duas vezes → um orçamento, duas respostas iguais.
@@ -610,39 +614,51 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
    ```go
    type gatewayPagamento interface {
-   	CriarCobranca(ctx context.Context, c Cobranca) (ResultadoCobranca, error)
-   	ConsultarPagamento(ctx context.Context, mpPaymentID int64) (Pagamento, error)
-   	Estornar(ctx context.Context, mpPaymentID int64, chaveIdempotencia string) (Estorno, error)
+   	CriarCobranca(ctx context.Context, c Cobranca) (ResultadoCobranca, error)       // POST /v1/orders
+   	ConsultarCobranca(ctx context.Context, mpOrderID string) (Cobranca, error)      // GET  /v1/orders/{id}
+   	Estornar(ctx context.Context, mpOrderID, chaveIdempotencia string) (Estorno, error) // POST /v1/orders/{id}/refund
+   	Cancelar(ctx context.Context, mpOrderID string) error                           // POST /v1/orders/{id}/cancel
    }
    ```
 
-2. Adaptador HTTP `internal/infra/mercadopago` (sem SDK — são 3 chamadas; o SDK Go oficial é pouco mantido):
+2. Adaptador HTTP `internal/infra/mercadopago` sobre a **API de Orders** (decisão de 10/11 — a API de Preferences não estorna com conta de teste; ver F4-0.3). Sem SDK — são 4 chamadas:
 
    ```go
-   // POST {MP_BASE_URL}/checkout/preferences
+   // POST {MP_BASE_URL}/v1/orders — valores como STRING decimal ("89.90"), não float
    corpo := map[string]any{
-   	"items": []map[string]any{{
-   		"title":       "Orçamento " + c.NumeroOS,
-   		"quantity":    1,
-   		"currency_id": "BRL",
-   		"unit_price":  c.Valor.Reais(), // float só na fronteira do JSON do MP
-   	}},
+   	"type":               "online",
+   	"processing_mode":    "manual", // como no exemplo oficial do Checkout Pro (Orders)
+   	"total_amount":       c.Valor.String(),
    	"external_reference": c.OrcamentoID.String(),
-   	"notification_url":   c.URLNotificacao,
-   	"expires":            true,
-   	"expiration_date_to": c.ExpiraEm.Format(time.RFC3339),
+   	"payer":              map[string]any{"email": c.ClienteEmail},
+   	"items": []map[string]any{{
+   		"title":      "Orçamento " + c.NumeroOS,
+   		"unit_price": c.Valor.String(),
+   		"quantity":   1,
+   	}},
+   	// config: URLs de retorno/notificação e restrições — conferir os campos na referência
    }
    req.Header.Set("Authorization", "Bearer "+a.accessToken)
    req.Header.Set("X-Idempotency-Key", c.OrcamentoID.String())
    ```
 
-   Resposta: usar `init_point` (com credenciais de vendedor de teste o link já é de sandbox; se a sua conta devolver `sandbox_init_point`, prefira-o — confira na doc vigente).
+   Resposta (`201`, validado): `id` (`ORDTST...` com credencial de teste) → `pagamentos.mp_order_id`; **`checkout_url`** → `link_pagamento`; `status: created`.
+
+   Respostas observadas em 10/11:
+
+   | Chamada | Resultado |
+   |---|---|
+   | `GET /v1/orders/{id}` após pagar | `status: processed`, `status_detail: accredited`, `total_paid_amount`, `transactions.payments[0].id` (`PAY...`) e `reference_id` (id numérico em `/v1/payments`) |
+   | `POST /v1/orders/{id}/refund` sem corpo | `201`, `status: refunded`, `transactions.refunds[0].id` (`REF...`) |
+   | Mesmo refund com a **mesma** `X-Idempotency-Key` | `201` com o **mesmo** `REF...` — idempotente |
+   | Refund com chave **nova** em order já estornada | `409 order_already_refunded` → tratar como **sucesso** (já estornado) |
 3. `MP_BASE_URL` configurável (`https://api.mercadopago.com` em prod, `http://mp-stub:8090` no compose e no BDD).
 4. Timeout de 5 s, retry só em erro de rede/5xx (máx. 2), nunca em 4xx.
 
 **Critérios de aceite**
 - [ ] Teste do adaptador contra `httptest.Server` cobre 201, 400, 401, 5xx e timeout.
-- [ ] Aprovação real em sandbox devolve um link que abre o Checkout Pro.
+- [ ] Aprovação real em sandbox devolve um `checkout_url` que abre o Checkout Pro.
+- [ ] **A validar no D2:** status da order quando o cartão é recusado (`OTHE`) — se a order permite nova tentativa (ex.: `action_required`) ou falha (`failed`); isso define quando o Billing emite `PagamentoRecusado`.
 
 ---
 
@@ -653,7 +669,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 **Passo a passo**
 
 1. Rota pública `POST /billing/webhooks/mercadopago` (sem authorizer no Gateway — F4-6.5).
-2. **Validar `x-signature`** (formato `ts=<epoch>,v1=<hmac>`). O manifesto assinado é `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, com `data.id` vindo da **query string** (em minúsculas se alfanumérico):
+2. **Validar `x-signature`** (formato `ts=<epoch>,v1=<hmac>`). O manifesto assinado é `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, com `data.id` vindo da **query string** (em minúsculas se alfanumérico — **atenção:** com a API de Orders o `data.id` é o id da order, alfanumérico e maiúsculo, `ORDTST...`; a regra das minúsculas passa a importar de verdade):
 
    ```go
    func assinaturaValida(segredo, xSignature, xRequestID, dataID string, agora time.Time) bool {
@@ -684,28 +700,30 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    > Confira na documentação vigente se o `ts` vem em segundos ou milissegundos e ajuste a janela — o exemplo oficial já variou. Teste com uma notificação real do painel (*Simular notificação*) antes de confiar.
 
 3. Assinatura inválida → `401`.
-4. **Verificação ativa:** `ConsultarPagamento(data.id)`; usar `external_reference` para achar o orçamento e `status`:
+4. **Verificação ativa:** `ConsultarCobranca(data.id)` (`GET /v1/orders/{id}`); usar `external_reference` para achar o orçamento e `status`:
 
-   | `status` do MP | Ação |
+   | `status` da order | Ação |
    |---|---|
-   | `approved` | `pagamentos → aprovado` (`mp_payment_id` UNIQUE) + outbox `PagamentoConfirmado` |
-   | `rejected`, `cancelled` | `pagamentos → recusado` + outbox `PagamentoRecusado{status_detail}` |
-   | `pending`, `in_process` | nada; aguarda próxima notificação |
+   | `processed` (`accredited`) | `pagamentos → aprovado` (`mp_order_id` UNIQUE) + outbox `PagamentoConfirmado` |
+   | `failed`, `canceled`, `expired` | `pagamentos → recusado` + outbox `PagamentoRecusado{status_detail}` |
+   | `created`, `processing`, `action_required` | nada; aguarda próxima notificação |
    | `refunded` | conferência do estorno (F4-2.5) |
+
+   > Os status `processed` e `refunded` foram observados em 10/11; os demais vêm da referência da API de Orders — confirme com um pagamento `OTHE` no D2.
 
 5. **Ordem do handler (corrigida em 10/11)** — síncrono, nesta sequência:
    1. validar assinatura;
-   2. `ConsultarPagamento(data.id)` — se falhar, responder **`500`** e **não gravar nada**, para o reenvio do MP ser processado de verdade;
-   3. numa transação: atualizar `pagamentos` com `UPDATE ... WHERE mp_payment_id = $1 AND status = 'pendente'` (ou `INSERT` com `mp_payment_id` UNIQUE) **+** outbox **+** `notificacoes_mp` (`ON CONFLICT (x_request_id) DO NOTHING`, só auditoria);
+   2. `ConsultarCobranca(data.id)` — se falhar, responder **`500`** e **não gravar nada**, para o reenvio do MP ser processado de verdade;
+   3. numa transação: atualizar `pagamentos` com `UPDATE ... WHERE mp_order_id = $1 AND status = 'pendente'` **+** outbox **+** `notificacoes_mp` (`ON CONFLICT (x_request_id) DO NOTHING`, só auditoria);
    4. responder `200`.
 
-   A idempotência vem do **`mp_payment_id` + transição de status**: a segunda notificação do mesmo pagamento não encontra mais `pendente` e não gera outra mensagem. *(O desenho anterior gravava `notificacoes_mp` antes do `GET` e respondia "200 sem efeito" no conflito — um `GET` falho fazia o pagamento nunca ser processado.)*
+   A idempotência vem do **`mp_order_id` + transição de status**: a segunda notificação do mesmo pagamento não encontra mais `pendente` e não gera outra mensagem. *(O desenho anterior gravava `notificacoes_mp` antes do `GET` e respondia "200 sem efeito" no conflito — um `GET` falho fazia o pagamento nunca ser processado.)*
 6. Pagamento `approved` para orçamento `cancelado` → estorno imediato (F4-2.5 passo 4), sem `PagamentoConfirmado`.
 
 **Critérios de aceite**
 - [ ] Testes de assinatura: válida, `v1` errado, `ts` fora da janela, header ausente, `data.id` em maiúsculas.
 - [ ] Mesma notificação reenviada 3× → um `PagamentoConfirmado`.
-- [ ] `GET /v1/payments` falha (stub com 500) na primeira notificação e funciona no reenvio → um `PagamentoConfirmado`.
+- [ ] `GET /v1/orders/{id}` falha (stub com 500) na primeira notificação e funciona no reenvio → um `PagamentoConfirmado`.
 - [ ] Notificação com corpo forjado mas `data.id` de pagamento recusado → `PagamentoRecusado` (prova que a verdade vem do `GET`).
 
 ---
@@ -716,7 +734,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 **Passo a passo**
 
-1. **`EstornarPagamento`**: buscar o pagamento `aprovado` do orçamento; `POST /v1/payments/{id}/refunds` com corpo vazio (estorno total) e `X-Idempotency-Key = message_id` do comando; gravar `mp_refund_id`, `status = estornado` e outbox `PagamentoEstornado`.
+1. **`EstornarPagamento`**: buscar o pagamento `aprovado` do orçamento; `POST /v1/orders/{mp_order_id}/refund` sem corpo (estorno total) e `X-Idempotency-Key = message_id` do comando; `409 order_already_refunded` = sucesso; gravar `mp_refund_id` (`REF...`), `status = estornado` e outbox `PagamentoEstornado`.
 2. Sem pagamento aprovado (falha antes do pagamento, ou já estornado) → responde `PagamentoEstornado{refund_id: null}` — compensação de algo que não aconteceu é sucesso.
 3. Erro 5xx/rede do MP → **não** dá ack na mensagem: o SQS reentrega após o visibility timeout; após 5 tentativas vai para a DLQ e dispara alerta (F4-7.4). A chave de idempotência evita estorno duplo nas retentativas.
 4. **Pagamento aprovado chegando depois da compensação** — **não cortável** no plano de 4 dias (no Checkout Pro o cliente pode pagar de novo no mesmo link depois de um `PagamentoRecusado`): o webhook encontra o orçamento `cancelado` → estorna na hora e **não** envia `PagamentoConfirmado`.
@@ -734,8 +752,8 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 **Passo a passo**
 
-1. Binário `cmd/mp-stub` no repo do Billing (entra na mesma imagem): implementa `POST /checkout/preferences`, `GET /v1/payments/{id}`, `POST /v1/payments/{id}/refunds` em memória.
-2. Rota de controle `POST /_stub/pagar {preference_id, resultado: "approved"|"rejected"}`: cria o pagamento e **chama o webhook do Billing** com `x-signature` válido (mesmo segredo do compose).
+1. Binário `cmd/mp-stub` no repo do Billing (entra na mesma imagem): implementa `POST /v1/orders`, `GET /v1/orders/{id}`, `POST /v1/orders/{id}/refund` (com o `409 order_already_refunded`) e `POST /v1/orders/{id}/cancel` em memória, com os mesmos formatos de resposta registrados em F4-2.3.
+2. Rota de controle `POST /_stub/pagar {order_id, resultado: "processed"|"failed"}`: cria o pagamento e **chama o webhook do Billing** com `x-signature` válido (mesmo segredo do compose).
 3. **Nunca** habilitado em produção: o manifesto `k8s/overlays/prod` não referencia o stub, e o `MP_BASE_URL` de prod vem do ConfigMap.
 
 **Critérios de aceite**

@@ -28,7 +28,7 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 |---|---|
 | Repo Billing | `ProblemaTheu/oficina-billing-service` |
 | Repo Execution | `ProblemaTheu/oficina-execution-service` |
-| Aplicação Mercado Pago | `[id]` · vendedor de teste `[usuario]` · comprador de teste `[usuario]` |
+| Aplicação Mercado Pago | `7172532218475199` (Checkout Pro, conta pessoal) · vendedor de teste `TESTUSER38172746988478263` (id `3832864978`) · comprador de teste id `3832647366` |
 | Segredo do Billing | `oficina/prod/billing` (`db_password`, `mp_access_token`, `mp_webhook_secret`, `webhook_secret`) |
 | Token interno | `oficina/prod/internal` |
 | Filas | `[URLs]` |
@@ -55,6 +55,22 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 ---
 
 ## Registro
+
+## 10/11 — Mercado Pago validado
+
+**Entregável verificado:** cobrança, consulta e estorno do Checkout Pro funcionando por `curl` com credenciais de teste (order `ORDTST01M73RYFVR9787NCYPB515912X`: `processed` → `refunded`).
+
+### Ajustes em relação ao backlog
+| Escrito no backlog | O que foi feito | Por quê |
+|---|---|---|
+| Checkout Pro via **API de Preferences** | Checkout Pro via **API de Orders** (`/v1/orders`) | `POST /v1/payments/{id}/refunds` responde `401 Unauthorized use of live credentials` para pagamentos de conta de teste — com qualquer token testado. Com `/v1/orders/{id}/refund` o estorno funciona |
+| Usar as credenciais de produção do vendedor de teste | Usar as **credenciais de teste** de uma aplicação na conta pessoal | É o que a doc atual manda; o token termina com o id do vendedor de teste vinculado, o que é esperado |
+| Pagar em janela anônima | Pagar em **outro navegador / perfil Convidado** | Janelas anônimas do Chrome compartilham sessão: o checkout vê o vendedor pagando a si mesmo ("A transação não aceita este meio de pagamento") |
+
+### Achados que custaram tempo (~1h30)
+- Estorno: Preferences/Payments bloqueia com conta de teste; Orders funciona. Idempotência confirmada (mesma chave → mesmo `REF...`); chave nova em order estornada → `409 order_already_refunded`.
+- Os tokens de teste aparecem no histórico de conversa — **renovar as credenciais** no painel antes da gravação.
+- Pendentes para o D2: nome do evento de webhook para Orders no painel, formato do `x-signature` (`ts` em s ou ms) e status da order com cartão `OTHE`.
 
 ## 10/11 — Replanejamento
 

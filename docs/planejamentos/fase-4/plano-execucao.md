@@ -71,7 +71,7 @@ Requisito literal do enunciado. Cortar qualquer um destes custa mais nota que qu
 - **Nenhum acesso a banco alheio — inclusive a Lambda** (F4-1.5). Grifado em amarelo no PDF.
 - **Mensageria assíncrona** de verdade entre os serviços.
 - **Compensação demonstrável** com **estorno real** no Mercado Pago (cenário `FAL*`).
-- **Estorno do pagamento tardio** (F4-2.5 passo 4). No Checkout Pro um cartão recusado **não** encerra a preference: o cliente pode pagar de novo depois que a saga já compensou. Sem esse tratamento o dinheiro fica retido com a OS cancelada. *(No plano anterior este item era cortável — não é mais.)*
+- **Estorno do pagamento tardio** (F4-2.5 passo 4). No Checkout Pro um cartão recusado pode não encerrar a cobrança: o cliente pode pagar de novo no mesmo link depois que a saga já compensou (comportamento da order com `OTHE` a confirmar no D2). Sem esse tratamento o dinheiro fica retido com a OS cancelada. *(No plano anterior este item era cortável — não é mais.)*
 - **Integração com o Mercado Pago real** (sandbox) ao menos uma vez no vídeo; o stub é para teste.
 - **BDD** de um fluxo completo, **cobertura ≥ 80% em cada serviço** com gate no CI, **SonarCloud** no CI.
 - **Pipeline independente com deploy no EKS** em cada serviço, com o job de testes antes do deploy.
@@ -93,10 +93,10 @@ Legenda: 🔴 bloqueante · 🟡 caminho crítico · 🟢 paralelizável · 🔵
 | Trilha | Tarefas (em ordem) |
 |---|---|
 | **A** | 🔴 **F4-0.5** pacote `internal/infra/mensageria` (envelope, publisher, consumer, `outbox_pg`, `inbox_pg`, `trace.go` com os headers do New Relic) com testes — **push até 16 h** para B e C copiarem · F4-1.2 migration `000007` ([DDL corrigido](backlog.md#f4-12--status-cancelada-e-reserva-de-estoque)) + `Reservar/Liberar/Baixar` · F4-1.3 `UnitOfWork` e `CriarOS` transacional (OS + reserva + saga + outbox) · relay e consumidor rodando no `cmd/api` |
-| **B** | 🔴 **11:45–13:30 D0 do Mercado Pago (F4-0.3):** aplicação Checkout Pro, vendedor e comprador de teste, `MP_ACCESS_TOKEN` e assinatura secreta em `oficina/prod/billing`, **uma preference criada por `curl`** · F4-2.1 esqueleto do Billing (cópia do `oficina-app`), migration `000001_billing`, `Centavos int64` · às 16 h copiar a mensageria · consumidor `GerarOrcamento` respondendo `OrcamentoGerado` (já gravando orçamento e itens) |
+| **B** | 🔴 **11:45–13:30 D0 do Mercado Pago (F4-0.3):** ✅ **feito em 10/11** — Checkout Pro via **API de Orders**, credenciais de teste da aplicação, vendedor e comprador de teste; cobrança, consulta e estorno validados por `curl` (falta só a assinatura secreta do webhook) · F4-2.1 esqueleto do Billing (cópia do `oficina-app`), migration `000001_billing`, `Centavos int64` · às 16 h copiar a mensageria · consumidor `GerarOrcamento` respondendo `OrcamentoGerado` (já gravando orçamento e itens) |
 | **C** | 🔴 **11:45–13:30 D0 de plataforma (F4-0.2/0.3):** `aws eks list-clusters` / quota de vCPU / Budgets · criar os 2 repos com o ruleset exportado, `soat-architecture`, projetos no SonarCloud, repositórios no Docker Hub, roles OIDC no `bootstrap/` + access entries · F4-0.4 `docker-compose.saga.yml` + `localstack-init.sh` (**decidir LocalStack × ElasticMQ até 15 h**) · F4-3.1 esqueleto do Execution com DynamoDB: consumidor `IniciarDiagnostico` → tarefa; `POST .../concluir-diagnostico` → `DiagnosticoConcluido` pela outbox · **20 h:** `terraform apply` do `oficina-infra-k8s` (3 nós + addon Pod Identity, F4-6.4) e do `oficina-infra-db` **em background** — erros de conta (quota, ELBv2) aparecem hoje, não na quinta |
 
-**Sincronização 13 h:** MP com preference criada? AWS e repos ok? Se o MP travou, B continua no esqueleto com o stub e alguém reabre o MP às 18 h.
+**Sincronização 13 h:** Webhook do MP chegando no ngrok? AWS e repos ok? Se o MP travou, B continua no esqueleto com o stub e alguém reabre o MP às 18 h.
 
 **Marco do dia (21 h):** no compose, criar uma OS faz `IniciarDiagnostico` chegar ao Execution e `DiagnosticoConcluido` voltar ao OS, que registra a etapa T2 em `sagas_os_etapas`. **Se não fechar, D2 começa com A e C juntos nisso.**
 
@@ -107,7 +107,7 @@ Legenda: 🔴 bloqueante · 🟡 caminho crítico · 🟢 paralelizável · 🔵
 | Trilha | Tarefas (em ordem) |
 |---|---|
 | **A** | F4-4.4 orquestrador como tabela pura, com teste de tabela `estado × tipo` (100% no pacote `saga`) · F4-4.5 compensações (pilha inversa, `cancelada`, `LiberarReserva`) · F4-1.1 recorte (remover approve/reject, `PATCH` só `finalizada → entregue`) · F4-1.4 bloco `saga` no `GET` + `estoque_reservado` no `GET /v1/parts` · F4-1.5 lado OS: `GET /internal/clientes/por-cpf/{cpf}` |
-| **B** | F4-2.2 aprovar (cria preference) / recusar / `CancelarOrcamento` · F4-2.3 adaptador do MP com testes `httptest` · F4-2.6 stub (`POST /_stub/pagar`) · F4-2.4 webhook ([fluxo corrigido](backlog.md#f4-24--webhook-do-mercado-pago)) — testar a assinatura com *Simular notificação* do painel via ngrok · F4-2.5 estorno **e pagamento tardio** · cobertura ≥ 80% no fim do dia |
+| **B** | F4-2.2 aprovar (cria a order) / recusar / `CancelarOrcamento` · F4-2.3 adaptador do MP com testes `httptest` · F4-2.6 stub (`POST /_stub/pagar`) · F4-2.4 webhook ([fluxo corrigido](backlog.md#f4-24--webhook-do-mercado-pago)) — testar a assinatura com *Simular notificação* do painel via ngrok · F4-2.5 estorno **e pagamento tardio** · cobertura ≥ 80% no fim do dia |
 | **C** | F4-3.2/3.3/3.4 tarefas `REPARO`, `iniciar`, `concluir`, `CancelarTarefas` · F4-4.7 falha `FAL*` · **a partir das 15 h:** F4-6.2 `infra/` dos 3 serviços (filas + DLQ + alarme, RDS do Billing, tabela DynamoDB, roles e associações do Pod Identity, SSM) aplicados · F4-6.3 manifestos `k8s/` dos 3 |
 
 **Sincronização 13 h:** caminho feliz chega a `AGUARDANDO_APROVACAO` no compose.
