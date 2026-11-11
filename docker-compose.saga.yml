@@ -1,0 +1,144 @@
+# Ambiente local da saga da Fase 4 (F4-0.4): os 3 serviços + Postgres × 2 +
+# LocalStack (SQS FIFO + DynamoDB) + Mailpit + stub do Mercado Pago.
+# Roda inteiro sem nuvem — inclusive no CI (BDD, F4-5.2).
+#
+#   cp .env.example .env
+#   docker compose -f docker-compose.saga.yml up -d --build              # OS + infra
+#   docker compose -f docker-compose.saga.yml --profile saga up -d --build  # + Billing, Execution, stub MP
+#
+# Billing e Execution são buildados das pastas irmãs (../oficina-billing e
+# ../oficina-execution); troque com BILLING_DIR / EXECUTION_DIR.
+# O docker-compose.yml continua servindo para o OS isolado.
+
+x-aws: &aws
+  # O SDK v2 respeita AWS_ENDPOINT_URL: nenhum `if local` no código.
+  AWS_ENDPOINT_URL: http://aws:4566
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+
+x-filas: &filas
+  FILA_RESPOSTAS_URL: http://aws:4566/000000000000/os-saga-replies.fifo
+  FILA_BILLING_URL: http://aws:4566/000000000000/billing-commands.fifo
+  FILA_EXECUTION_URL: http://aws:4566/000000000000/execution-commands.fifo
+
+services:
+  # ── Infra ───────────────────────────────────────────────────────────────────
+  os-db:
+    image: postgres:15.7
+    environment:
+      POSTGRES_USER: ${DB_USER:?copie .env.example para .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?copie .env.example para .env}
+      POSTGRES_DB: ${DB_NAME:?copie .env.example para .env}
+    ports: ["5433:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  billing-db:
+    image: postgres:15.7
+    profiles: [saga]
+    environment:
+      POSTGRES_USER: ${BILLING_DB_USER:?copie .env.example para .env}
+      POSTGRES_PASSWORD: ${BILLING_DB_PASSWORD:?copie .env.example para .env}
+      POSTGRES_DB: ${BILLING_DB_NAME:?copie .env.example para .env}
+    ports: ["5434:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BILLING_DB_USER}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  aws:
+    image: localstack/localstack:4
+    environment:
+      SERVICES: sqs,dynamodb
+      AWS_DEFAULT_REGION: us-east-1
+    ports: ["4566:4566"]
+    volumes:
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      # Só fica saudável depois que o init criou a última tabela.
+      test: ["CMD", "awslocal", "dynamodb", "describe-table", "--table-name", "execution-tarefas"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # UI web
+
+  # ── Serviços ────────────────────────────────────────────────────────────────
+  os:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      <<: [*aws, *filas]
+      DB_HOST: os-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET:?copie .env.example para .env}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?copie .env.example para .env}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-token-interno-local}
+      NOTIFIER: ${NOTIFIER:-smtp}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      EMAIL_FROM: ${EMAIL_FROM:-oficina@tech-challenge.local}
+    depends_on:
+      os-db: { condition: service_healthy }
+      aws: { condition: service_healthy }
+      mailpit: { condition: service_started }
+    restart: on-failure
+
+  execution:
+    profiles: [saga]
+    build: ${EXECUTION_DIR:-../oficina-execution}
+    ports: ["8082:8080"]
+    environment:
+      <<: [*aws, *filas]
+      DYNAMODB_TABELA: execution-tarefas
+      JWT_SECRET: ${JWT_SECRET}
+      PERMITIR_FALHA_SIMULADA: "true"
+    depends_on:
+      aws: { condition: service_healthy }
+    restart: on-failure
+
+  billing:
+    profiles: [saga]
+    build: ${BILLING_DIR:-../oficina-billing}
+    ports: ["8081:8080"]
+    environment:
+      <<: [*aws, *filas]
+      DB_HOST: billing-db
+      DB_PORT: 5432
+      DB_USER: ${BILLING_DB_USER}
+      DB_PASSWORD: ${BILLING_DB_PASSWORD}
+      DB_NAME: ${BILLING_DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      MP_BASE_URL: http://mp-stub:8090
+      MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN:-stub}
+      MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET:?copie .env.example para .env}
+      MP_RECONCILIAR_INTERVALO: 2s
+      NOTIFIER: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+    depends_on:
+      billing-db: { condition: service_healthy }
+      aws: { condition: service_healthy }
+      mp-stub: { condition: service_started }
+    restart: on-failure
+
+  mp-stub:
+    profiles: [saga]
+    build: ${BILLING_DIR:-../oficina-billing}
+    entrypoint: ["./mp-stub"]
+    ports: ["8090:8090"]
+    environment:
+      MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET}
+      BILLING_WEBHOOK_URL: http://billing:8080/billing/webhooks/mercadopago
