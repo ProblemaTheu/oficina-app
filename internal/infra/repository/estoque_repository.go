@@ -29,15 +29,22 @@ type itemEstoque struct {
 	nome       string
 }
 
+// estadoReservada é o reserva_estado dos itens que Liberar e Baixar consomem.
+var estadoReservada = "reservada"
+
 // itens lista os itens de peça da OS num estado de reserva, em ordem de peça —
 // a ordem fixa evita deadlock entre duas OS que reservam as mesmas peças.
-func itens(ctx context.Context, tx *sql.Tx, osID uuid.UUID, condicaoEstado string) ([]itemEstoque, error) {
+//
+// estado nil seleciona os itens ainda não reservados (reserva_estado NULL).
+// IS NOT DISTINCT FROM compara NULL como valor, o que mantém a query estática
+// e parametrizada (sem concatenar SQL — gosec G202 / Sonar).
+func itens(ctx context.Context, tx *sql.Tx, osID uuid.UUID, estado *string) ([]itemEstoque, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT iop.id, iop.peca_id, iop.quantidade, p.nome
 		FROM itens_os_pecas iop
 		JOIN pecas p ON p.id = iop.peca_id
-		WHERE iop.os_id = $1 AND `+condicaoEstado+`
-		ORDER BY iop.peca_id`, osID)
+		WHERE iop.os_id = $1 AND iop.reserva_estado IS NOT DISTINCT FROM $2::varchar
+		ORDER BY iop.peca_id`, osID, estado)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +75,7 @@ func marcarItem(ctx context.Context, tx *sql.Tx, itemID uuid.UUID, estado string
 // duas OS disputando a última unidade não passam ambas (a segunda espera o lock
 // da linha, reavalia a condição e não encontra saldo).
 func (EstoqueRepository) Reservar(ctx context.Context, tx *sql.Tx, osID uuid.UUID) error {
-	lista, err := itens(ctx, tx, osID, "iop.reserva_estado IS NULL")
+	lista, err := itens(ctx, tx, osID, nil)
 	if err != nil {
 		return fmt.Errorf("EstoqueRepository.Reservar itens: %w", err)
 	}
@@ -96,7 +103,7 @@ func (EstoqueRepository) Reservar(ctx context.Context, tx *sql.Tx, osID uuid.UUI
 
 // Liberar desfaz a reserva (compensação de T1).
 func (EstoqueRepository) Liberar(ctx context.Context, tx *sql.Tx, osID uuid.UUID) error {
-	lista, err := itens(ctx, tx, osID, "iop.reserva_estado = 'reservada'")
+	lista, err := itens(ctx, tx, osID, &estadoReservada)
 	if err != nil {
 		return fmt.Errorf("EstoqueRepository.Liberar itens: %w", err)
 	}
@@ -116,7 +123,7 @@ func (EstoqueRepository) Liberar(ctx context.Context, tx *sql.Tx, osID uuid.UUID
 // Baixar converte a reserva em saída (início do reparo, pivô T6):
 // estoque_atual -= n e estoque_reservado -= n.
 func (EstoqueRepository) Baixar(ctx context.Context, tx *sql.Tx, osID uuid.UUID) error {
-	lista, err := itens(ctx, tx, osID, "iop.reserva_estado = 'reservada'")
+	lista, err := itens(ctx, tx, osID, &estadoReservada)
 	if err != nil {
 		return fmt.Errorf("EstoqueRepository.Baixar itens: %w", err)
 	}

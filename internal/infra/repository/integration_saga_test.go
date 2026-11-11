@@ -25,7 +25,9 @@ func emTx(t *testing.T, fn func(tx *sql.Tx) error) error {
 	t.Helper()
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
-		t.Fatalf("begin: %v", err)
+		// Devolve em vez de t.Fatalf: emTx também roda em goroutines (teste de
+		// concorrência), onde FailNow não é permitido.
+		return err
 	}
 	if err := fn(tx); err != nil {
 		_ = tx.Rollback()
@@ -134,6 +136,28 @@ func TestIntegracaoEstoque_InsuficienteFazRollbackDeTudo(t *testing.T) {
 	}
 	if _, res := saldo(t, pecaID); res != 0 {
 		t.Errorf("reserva parcial persistida: reservado=%d", res)
+	}
+}
+
+// Convivência com o fluxo antigo (até o F4-1.1): deduzir uma peça já reservada
+// por outra OS é estoque insuficiente (422), não violação do CHECK (500).
+func TestIntegracaoDeduzirEstoque_RespeitaReservaDeOutraOS(t *testing.T) {
+	estoque := repository.NovoEstoqueRepository()
+	repo := repository.NovoOrdemServicoRepository(db)
+	pecaID := criarPeca(t, 1, 10)
+	osSaga, osAntiga := osComPeca(t, pecaID, 1), osComPeca(t, pecaID, 1)
+
+	if err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(context.Background(), tx, osSaga) }); err != nil {
+		t.Fatal(err)
+	}
+	err := repo.DeduzirEstoquePecas(context.Background(), osAntiga)
+
+	var np *domainerros.ErrNaoProcessavel
+	if !errors.As(err, &np) || np.Codigo != "INSUFFICIENT_STOCK" {
+		t.Fatalf("esperava INSUFFICIENT_STOCK (422), veio %v", err)
+	}
+	if atual, res := saldo(t, pecaID); atual != 1 || res != 1 {
+		t.Errorf("saldo alterado: atual=%d reservado=%d", atual, res)
 	}
 }
 
