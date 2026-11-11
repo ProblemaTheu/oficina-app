@@ -140,5 +140,7 @@ services:
     entrypoint: ["./mp-stub"]
     ports: ["8090:8090"]
     environment:
+      # O HEALTHCHECK da imagem do Billing usa ${PORTA:-8080}; o stub escuta na 8090.
+      PORTA: "8090"
       MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET}
       BILLING_WEBHOOK_URL: http://billing:8080/billing/webhooks/mercadopago
