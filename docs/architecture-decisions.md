@@ -315,3 +315,191 @@ A notificação é disparada numa goroutine com timeout próprio. Falha de envio
 **3. Escolha para a demonstração**
 
 No vídeo, a notificação é demonstrada com **Mailpit** local capturando o e-mail — evita depender da saída de porta 25/verificação de domínio do SES no momento da gravação, mantendo o mesmo caminho de código de produção.
+
+---
+
+# Fase 4 — Microsserviços e Saga
+
+> ADRs 009–016. As decisões de maior alcance (decomposição e estratégia de saga) estão nas [RFC-005](rfcs/RFC-005-decomposicao-em-microsservicos.md) e [RFC-006](rfcs/RFC-006-saga-e-consistencia-distribuida.md).
+
+---
+
+## ADR-009 — Banco por serviço: PostgreSQL (OS, Billing) e DynamoDB (Execution)
+
+### Contexto
+
+Cada microsserviço precisa de banco próprio, sem acesso ao banco dos outros, com pelo menos um relacional e um NoSQL.
+
+### Alternativas consideradas
+
+| Alternativa | Prós | Contras |
+|---|---|---|
+| **PostgreSQL no OS e no Billing, DynamoDB no Execution** | Relacional onde há dinheiro e integridade referencial; NoSQL onde o acesso é por chave | Dois modelos de outbox/inbox para manter |
+| PostgreSQL nos três (schemas separados) | Um só modelo | Não atende ao requisito de NoSQL; schema separado na mesma instância isola mal |
+| DynamoDB no Billing | Sem servidor | Orçamento com itens, valores em centavos e conciliação pedem transações e consultas relacionais |
+| MongoDB/DocumentDB no Execution | Flexível | Mais um servidor para operar; DocumentDB não tem free tier |
+
+### Decisão
+
+- **OS Service:** o PostgreSQL da Fase 3, acrescido de `sagas_os`, `sagas_os_etapas`, `outbox`, `mensagens_processadas` e da reserva de estoque (migration `000007`).
+- **Billing:** instância PostgreSQL **própria**, credencial própria. Dinheiro sempre em centavos (`bigint`), nunca `float`.
+- **Execution:** DynamoDB *single-table* (`execution-tarefas`): tarefa, ponteiro OS→tarefa, inbox e outbox na mesma tabela, para caberem no mesmo `TransactWriteItems`. GSI para a fila por tipo e estado.
+
+### Consequências
+
+O isolamento é por **credencial e role**: cada pod recebe só o segredo ou a permissão do próprio banco. Os três serviços dividem os nós do EKS, então a rede ainda alcança os dois RDS. *Security Groups for Pods* fica como evolução.
+
+---
+
+## ADR-010 — Mensageria: Amazon SQS FIFO
+
+### Contexto
+
+A saga troca comandos e respostas entre os três serviços. As mensagens de uma mesma OS precisam chegar **em ordem**; reentregas precisam ser toleradas; falhas repetidas precisam ser isoladas.
+
+### Alternativas consideradas
+
+| Alternativa | Prós | Contras |
+|---|---|---|
+| **SQS FIFO** | Gerenciado, ordem por `MessageGroupId`, deduplicação, DLQ nativa, custo ≈ 0, IAM | Throughput limitado por grupo (irrelevante aqui); não é *pub/sub* |
+| SNS + SQS | *Fan-out* | Sem consumidor múltiplo no desenho orquestrado; mais um recurso |
+| RabbitMQ (Amazon MQ ou in-cluster) | Roteamento rico | Broker para operar e pagar 24/7 |
+| Kafka / MSK | Log replay, alto throughput | Custo e operação desproporcionais para 3 serviços |
+
+### Decisão
+
+Três filas FIFO — `execution-commands.fifo`, `billing-commands.fifo`, `os-saga-replies.fifo` — cada uma com DLQ após **5 recebimentos**. `MessageGroupId = saga_id` (ordem por saga, paralelismo entre sagas) e `MessageDeduplicationId = message_id`. Envelope comum (`message_id`, `tipo`, `saga_id`, `os_id`, `correlation_id`, `origem`, `ocorrido_em`, `payload`) e contexto de trace do New Relic nos atributos da mensagem. Localmente, LocalStack.
+
+### Consequências
+
+Ordem e deduplicação ficam com a fila; idempotência de negócio continua necessária (a deduplicação do SQS vale só por 5 minutos — ADR-012).
+
+---
+
+## ADR-011 — Saga orquestrada no OS Service
+
+### Contexto
+
+O enunciado pede o Saga Pattern com a escolha entre orquestração e coreografia justificada. A comparação completa está na [RFC-006](rfcs/RFC-006-saga-e-consistencia-distribuida.md).
+
+### Decisão
+
+Saga **orquestrada**, com o orquestrador **dentro do OS Service** (`internal/application/saga`):
+
+- `Decidir(saga, tipo, dados, agora) → Decisão` é uma **função pura**: recebe a saga e a resposta e devolve o novo estado, as etapas a registrar, os comandos a enviar e a mudança de status da OS. Sem I/O, 100% coberta por testes de tabela.
+- O adaptador aplica a decisão numa **única transação**: inbox, saga (com lock otimista em `versao`), etapas, status da OS, estoque e outbox.
+- Compensações **sequenciais em ordem inversa**; pivô em T6 (início do reparo).
+
+### Alternativas consideradas
+
+Coreografia (rejeitada: fluxo implícito em 3 serviços, sem lugar natural para as esperas humanas) e orquestrador como serviço próprio (rejeitado: o estado da saga precisa estar na mesma transação que a OS).
+
+### Consequências
+
+O OS Service conhece o catálogo de comandos dos outros dois. Qualquer mudança de fluxo é uma edição em duas tabelas (`fluxo` e `falhas`) do orquestrador.
+
+---
+
+## ADR-012 — Transactional Outbox + inbox idempotente; relay com líder único
+
+### Contexto
+
+Mudar o banco **e** publicar na fila não é atômico. Se o processo cai entre um e outro, a saga para (mudou, mas não avisou) ou diverge (avisou, mas não mudou). O SQS entrega *at-least-once*.
+
+### Decisão
+
+- **Outbox:** a mensagem é gravada na tabela `outbox` na mesma transação do efeito. Um **relay** lê os pendentes em ordem (`seq`), publica e marca como enviados; falha de envio registra `falhou_em` e tenta de novo.
+- **Inbox:** `mensagens_processadas(message_id)` é gravada na transação do efeito; uma reentrega encontra a marca e vira *ack* sem efeito.
+- **Líder único do relay:** no Postgres, `pg_try_advisory_lock` garante que só uma réplica publique, preservando a ordem. O Execution (DynamoDB, sem lock equivalente) roda com **uma réplica**.
+- **No DynamoDB:** efeito, inbox e outbox no mesmo `TransactWriteItems` com `attribute_not_exists(pk)`.
+- **Erros:** `Permanente` (payload inválido) vai direto para a DLQ; o resto é reentregue.
+
+### Consequências
+
+Entrega *at-least-once* com efeito *exactly-once*. Latência extra do intervalo de *polling* do relay (500 ms por padrão). Billing e Execution limitados a uma réplica de relay nesta entrega.
+
+---
+
+## ADR-013 — Código de mensageria duplicado nos repositórios
+
+### Contexto
+
+Os três serviços usam o mesmo envelope, publisher, consumer e relay. A alternativa natural seria um módulo Go compartilhado.
+
+### Decisão
+
+O pacote `mensageria` (e, no Billing, outbox/inbox e UnitOfWork) é **copiado** em cada repositório.
+
+| Alternativa | Por que não |
+|---|---|
+| Módulo Go compartilhado (repositório próprio, versionado) | Mais um repositório, CI e versionamento; toda mudança vira PR em cadeia (lib → 3 serviços) — no prazo de 4 dias, o acoplamento de release custaria mais do que a duplicação |
+| *Monorepo* | Contraria a exigência de um repositório por serviço |
+
+### Consequências
+
+~400 linhas duplicadas, cobertas por testes em cada repositório. O **contrato** (envelope e catálogo) é a fonte da verdade e está documentado; o código pode divergir internamente sem quebrar ninguém. Evolução: extrair o módulo quando o contrato estabilizar.
+
+---
+
+## ADR-014 — Mercado Pago Checkout Pro: API de Orders, verificação ativa e estorno
+
+### Contexto
+
+O pagamento real precisa de link de checkout, confirmação confiável e estorno (compensação T5). No sandbox, validamos em 10/11/2026 que: (1) a API de *Preferences* não estorna pagamentos de teste (`401`); (2) o sandbox **não envia webhook** para orders de teste; (3) após uma recusa, a order aceita novas tentativas (`action_required`), mesmo com `retries.allowed: false`.
+
+### Decisão
+
+- **API de Orders** do Checkout Pro (`POST /v1/orders`, `GET /v1/orders/{id}`, `/refund`, `/cancel`), com idempotência por `X-Idempotency-Key`.
+- **Webhook com `x-signature` validada** (HMAC-SHA256 do manifesto `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`). O webhook nunca é confiado pelo corpo: ele só dispara a **consulta ativa** da order.
+- **Reconciliador** consulta periodicamente os pagamentos pendentes — é o mecanismo primário de confirmação no sandbox e a rede de segurança em produção.
+- **Recusa:** o Billing cancela a order antes de emitir `PagamentoRecusado`, fechando a porta a uma nova tentativa no mesmo link.
+- **Estorno total** como compensação; pagamento que chega para orçamento cancelado é estornado automaticamente.
+- Localmente, um **stub** (`oficina-billing/cmd/mp-stub`) imita a API de Orders e a página de checkout, permitindo BDD sem rede.
+
+### Consequências
+
+Confirmação em até um ciclo do reconciliador (≈ 10 s) quando o webhook não chega. Credenciais do MP ficam no segredo do Billing.
+
+---
+
+## ADR-015 — Lambda de autenticação passa a usar REST interno
+
+> **Status:** aceita — **implementação pendente** (depende da recriação da conta AWS).
+
+### Contexto
+
+Na Fase 3 a Lambda `auth-token` lia o RDS do OS para validar o CPF. Na Fase 4 nenhum componente pode ler o banco de outro.
+
+### Decisão
+
+A Lambda consulta o OS Service por **REST interno** (`GET /internal/clientes/por-cpf`), autenticada por um segredo de serviço, e perde a configuração de VPC, o SG de acesso ao RDS e o DSN.
+
+### Consequências
+
+A emissão do token passa a depender da disponibilidade do OS Service (que já é pré-requisito de qualquer operação do cliente). A Lambda fica mais simples e sem credencial de banco.
+
+---
+
+## ADR-016 — EKS Pod Identity para acesso dos pods à AWS
+
+> **Status:** aceita — **implementação pendente** (depende da recriação da conta AWS).
+
+### Contexto
+
+Os pods precisam de SQS, DynamoDB e Secrets Manager. Credencial estática em Secret do Kubernetes é rotacionável só manualmente e vaza fácil.
+
+### Alternativas consideradas
+
+| Alternativa | Contras |
+|---|---|
+| Access key em Secret | Credencial de longa duração |
+| IRSA (OIDC do cluster) | Funciona, mas exige anotação por ServiceAccount e *trust policy* por cluster |
+| **EKS Pod Identity** | — (addon gerenciado, associação role ↔ ServiceAccount via API) |
+
+### Decisão
+
+Uma role por serviço, associada à ServiceAccount do seu namespace, com **mínimo privilégio**: consumir só a própria fila de comandos, publicar só nas filas de destino, DynamoDB só em `table/execution-tarefas*`, segredos só `oficina/prod/<serviço>`.
+
+### Consequências
+
+Sem credencial estática nos pods; o SDK da AWS resolve credenciais sozinho. A política IAM de cada role é a prova do isolamento entre serviços.

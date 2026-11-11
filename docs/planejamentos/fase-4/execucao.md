@@ -59,6 +59,31 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 
 ## Registro
 
+## 11/11 — Código da saga e documentação concluídos (conta AWS perdida)
+
+**Entregável verificado:** saga completa nos 3 serviços reais, no `docker-compose.saga.yml`, nos 4 cenários — caminho feliz (estoque 10→8), falha no reparo com estorno (`refunded`, reserva liberada), orçamento recusado e cartão recusado (order `canceled`, nova tentativa bloqueada). Verificado por: BDD (`go test -tags bdd`, 4 cenários, também no CI), `scripts/demo-saga.sh todos` e a coleção Postman (`docs/postman/fase-4-saga.json`, Postman CLI, 0 falhas).
+
+| Repositório | Entregue | Cobertura unitária |
+|---|---|---|
+| `oficina-app` | Mensageria (outbox/relay/consumer), migration `000007`, `CriarOS` transacional, orquestrador (100%), BDD | gate ≥ 80% mantido |
+| `oficina-billing` | Orçamento, Orders API do MP, webhook com `x-signature`, reconciliador, estorno, stub do MP | 97,9% |
+| `oficina-execution` | Fila em DynamoDB single-table, API do mecânico, falha simulada | 98,8% |
+
+Documentação: seção Fase 4 + "Saga Pattern — por que orquestrada" no README, RFC-005, RFC-006, ADRs 009–016, `docs/arquitetura.md` e `docs/openapi.yaml` nos dois serviços novos.
+
+### Ajustes em relação ao backlog
+| Escrito no backlog | O que foi feito | Por quê |
+|---|---|---|
+| Deploy na AWS ao fim de cada trilha | **Bloqueado**: a conta AWS foi encerrada ao fim do crédito gratuito | Toda a infra (E0/E6) será refeita numa conta nova; o CD do `oficina-app` só faz deploy com `DEPLOY_ENABLED=true` |
+| `infra-k8s` #3 e #4 | Ficam obsoletos (apontam para a conta antiga) | Serão refeitos com o novo account ID |
+| ADR-015 (Lambda via REST) e ADR-016 (Pod Identity) implementadas | Registradas como **aceitas, implementação pendente** | Dependem da conta nova |
+| `GET /v1/work-orders/{id}` com bloco `saga` | Não implementado; o estado é consultado em `sagas_os`/`sagas_os_etapas` | Corte de escopo; evolução |
+
+### Achados que custaram tempo
+- Healthcheck do stub do MP em porta errada no compose (corrigido em #26).
+- Quality gate do Sonar em projeto novo (`None` na `main`) reprovava com `qualitygate.wait=true` → espera só em PR.
+- `DeduzirEstoquePecas` legado ignorava a reserva e violava o `CHECK` → passa a comparar com o disponível.
+
 ## 10/11 — Mercado Pago validado
 
 **Entregável verificado:** cobrança, consulta e estorno do Checkout Pro funcionando por `curl` com credenciais de teste (order `ORDTST01M73RYFVR9787NCYPB515912X`: `processed` → `refunded`).
