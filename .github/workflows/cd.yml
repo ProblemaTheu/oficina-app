@@ -87,6 +87,11 @@ jobs:
   deploy:
     name: Deploy no EKS
     needs: build-and-push
+    # Liga/desliga o deploy sem mexer no workflow: a conta AWS da Fase 3 foi
+    # encerrada (fim do crédito) e não há cluster. A imagem continua sendo
+    # publicada no Docker Hub a cada merge; com o cluster de volta, basta criar
+    # a variable DEPLOY_ENABLED=true no repo.
+    if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: prod
     permissions:
