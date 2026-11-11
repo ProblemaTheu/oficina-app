@@ -369,7 +369,8 @@ func (r *OrdemServicoRepository) AtualizarStatus(
 	finalizadoEm *time.Time,
 	entregueEm *time.Time,
 ) error {
-	_, err := r.db.ExecContext(ctx, `
+	// Participa da transação do contexto quando há uma (orquestrador da saga).
+	_, err := execDe(ctx, r.db).ExecContext(ctx, `
 		UPDATE ordens_servico SET
 			status_id    = $1,
 			diagnostico  = COALESCE($2, diagnostico),
@@ -540,4 +541,17 @@ func (r *OrdemServicoRepository) RelatorioTempoMedio(ctx context.Context, params
 	}
 
 	return resultado, nil
+}
+
+// CancelarPelaSaga marca a OS como cancelada pela compensação da saga, com o
+// instante e o motivo. Participa da transação do contexto.
+func (r *OrdemServicoRepository) CancelarPelaSaga(ctx context.Context, osID, statusCanceladaID uuid.UUID, motivo string) error {
+	_, err := execDe(ctx, r.db).ExecContext(ctx, `
+		UPDATE ordens_servico
+		SET status_id = $1, cancelado_em = now(), motivo_cancelamento = $2, atualizado_em = now()
+		WHERE id = $3`, statusCanceladaID, motivo, osID)
+	if err != nil {
+		return fmt.Errorf("OrdemServicoRepository.CancelarPelaSaga: %w", err)
+	}
+	return nil
 }

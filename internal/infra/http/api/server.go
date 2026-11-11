@@ -66,6 +66,10 @@ func NovoServer(db *sql.DB, osOpts ...usecase.OSUseCaseOption) *Server {
 	}
 }
 
+// CasoDeUsoOS expõe o caso de uso de OS para os consumidores de mensagens da
+// saga (o orquestrador processa as respostas pelo mesmo caso de uso).
+func (s *Server) CasoDeUsoOS() *usecase.OrdemServicoUseCase { return s.osUseCase }
+
 // InicializarCaches pré-carrega os caches internos (ex: status_ordens) na inicialização.
 func (s *Server) InicializarCaches(ctx context.Context) error {
 	return s.osUseCase.InicializarStatusCache(ctx)

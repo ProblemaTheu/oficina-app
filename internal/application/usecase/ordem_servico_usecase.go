@@ -43,6 +43,9 @@ type DependenciasSaga struct {
 	Estoque  estoqueSaga
 	Sagas    sagaRepo
 	Comandos filaComandos
+	// Inbox e Cancelamento são usados pelo orquestrador (respostas da saga).
+	Inbox        inboxSaga
+	Cancelamento cancelamentoOS
 	// Agora é o relógio da saga; nil = time.Now.
 	Agora func() time.Time
 }

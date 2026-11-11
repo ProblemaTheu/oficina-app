@@ -143,7 +143,12 @@ func (c *Consumer) Processar(ctx context.Context, msg types.Message) Resultado {
 		return c.confirmar(ctx, log, msg, Descartada)
 	}
 
-	ctx, fim := c.cfg.Tracer.IniciarConsumo(logging.ComLogger(ctx, log), env.Tipo, headersDeTrace(msg))
+	ctx = logging.ComLogger(ctx, log)
+	if env.CorrelationID != "" {
+		// A resposta que o handler gravar na outbox sai com o mesmo correlation_id.
+		ctx = logging.ComCorrelacao(ctx, env.CorrelationID)
+	}
+	ctx, fim := c.cfg.Tracer.IniciarConsumo(ctx, env.Tipo, headersDeTrace(msg))
 	err = handler(ctx, env)
 	fim(err)
 
