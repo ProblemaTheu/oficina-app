@@ -19,3 +19,12 @@ func TestComLogger_RoundTrip(t *testing.T) {
 		t.Fatal("Log não devolveu o logger colocado por ComLogger")
 	}
 }
+
+func TestCorrelacao_RoundTrip(t *testing.T) {
+	if Correlacao(context.Background()) != "" {
+		t.Error("fora de uma requisição o correlation_id é vazio")
+	}
+	if got := Correlacao(ComCorrelacao(context.Background(), "req-1")); got != "req-1" {
+		t.Errorf("Correlacao = %q", got)
+	}
+}

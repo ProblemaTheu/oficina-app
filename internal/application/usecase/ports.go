@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/application/saga"
 	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
 	"github.com/google/uuid"
 )
@@ -132,4 +133,28 @@ type osRepo interface {
 	DeduzirEstoquePecas(ctx context.Context, osID uuid.UUID) error
 	RelatorioTempoMedio(ctx context.Context, params RelatorioTempoMedioParams) ([]ItemTempoMedio, error)
 	PrecarregarStatusCache(ctx context.Context) error
+}
+
+// ── Saga (Fase 4) ─────────────────────────────────────────────────────────────
+
+// unidadeDeTrabalho executa fn numa transação: tudo o que os repositórios
+// fizerem com o contexto recebido é confirmado ou desfeito junto (F4-1.3).
+type unidadeDeTrabalho interface {
+	Executar(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// estoqueSaga reserva as peças da OS sem retirá-las do estoque (T1).
+type estoqueSaga interface {
+	Reservar(ctx context.Context, osID uuid.UUID) error
+}
+
+// sagaRepo persiste o estado e o histórico de etapas da saga.
+type sagaRepo interface {
+	Criar(ctx context.Context, s saga.Saga) error
+	RegistrarEtapa(ctx context.Context, sagaID uuid.UUID, etapa saga.Etapa, resultado saga.Resultado, messageID *uuid.UUID, detalhe any) error
+}
+
+// filaComandos grava um comando da saga na outbox, na transação do contexto.
+type filaComandos interface {
+	Enfileirar(ctx context.Context, c saga.Comando) error
 }

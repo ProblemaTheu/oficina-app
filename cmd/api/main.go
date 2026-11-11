@@ -4,12 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/database"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/http/api"
 	apimiddleware "github.com/ProblemaTheu/oficina-app/internal/infra/http/middleware"
@@ -31,9 +35,18 @@ func main() {
 	}
 	slog.Info("migrations executadas com sucesso")
 
-	server := api.NovoServer(db)
+	// SIGTERM do Kubernetes: para de aceitar requisições, deixa o relay
+	// terminar o envio em curso e só então sai (F4-4.3).
+	ctx, parar := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer parar()
 
-	ctx := context.Background()
+	osOpts, err := iniciarSaga(ctx, db, nrApp)
+	if err != nil {
+		slog.Error("falha ao configurar a saga", "error", err)
+		os.Exit(1)
+	}
+	server := api.NovoServer(db, osOpts...)
+
 	if err := server.InicializarCaches(ctx); err != nil {
 		slog.Warn("falha ao pré-carregar caches", "error", err)
 	}
@@ -78,11 +91,48 @@ func main() {
 		api.HandlerFromMuxWithBaseURL(strictHandler, r, "/v1")
 	})
 
-	slog.Info("servidor rodando na porta 8080")
-	if err := http.ListenAndServe(":8080", r); err != nil {
-		slog.Error("falha ao iniciar servidor", "error", err)
-		os.Exit(1)
+	srv := &http.Server{
+		Addr:              ":8080",
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
+	go func() {
+		slog.Info("servidor rodando na porta 8080")
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("falha ao iniciar servidor", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("sinal de término recebido; encerrando")
+	desligar, cancelar := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelar()
+	if err := srv.Shutdown(desligar); err != nil {
+		slog.Warn("shutdown do servidor HTTP com erro", "error", err)
+	}
+}
+
+// iniciarSaga liga a saga da Fase 4 quando as filas estão configuradas
+// (FILA_EXECUTION_URL); sem elas o OS roda como na Fase 3. Também sobe o relay
+// da outbox, que vive até ctx ser cancelado.
+func iniciarSaga(ctx context.Context, db *sql.DB, nrApp *newrelic.Application) ([]usecase.OSUseCaseOption, error) {
+	filas := lerFilas()
+	if filas.Execution == "" {
+		slog.Info("saga desligada: FILA_EXECUTION_URL não definida")
+		return nil, nil
+	}
+	sagaOpt, relay, err := montarSaga(ctx, db, nrApp, filas)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		if err := relay.Executar(ctx); err != nil {
+			slog.Error("relay da outbox parou", "error", err)
+		}
+	}()
+	slog.Info("saga ligada", "fila_execution", filas.Execution, "fila_billing", filas.Billing)
+	return []usecase.OSUseCaseOption{sagaOpt}, nil
 }
 
 // novoAppNewRelic inicializa o APM do New Relic quando a licença está presente.

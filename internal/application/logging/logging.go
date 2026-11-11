@@ -29,3 +29,18 @@ func Log(ctx context.Context) *slog.Logger {
 func ComLogger(ctx context.Context, logger *slog.Logger) context.Context {
 	return context.WithValue(ctx, chave, logger)
 }
+
+type ctxCorrelacao struct{}
+
+// ComCorrelacao guarda o correlation_id da requisição no contexto — além de
+// decorar o logger, ele viaja no envelope das mensagens da saga e é restaurado
+// no consumidor (F4-7.2).
+func ComCorrelacao(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, ctxCorrelacao{}, id)
+}
+
+// Correlacao devolve o correlation_id do contexto ("" fora de uma requisição).
+func Correlacao(ctx context.Context) string {
+	id, _ := ctx.Value(ctxCorrelacao{}).(string)
+	return id
+}

@@ -12,9 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/application/saga"
+	"github.com/ProblemaTheu/oficina-app/internal/application/usecase"
 	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
 	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/mensageria"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/orquestracao"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/repository"
 	"github.com/google/uuid"
 )
@@ -79,7 +82,7 @@ func TestIntegracaoEstoque_ReservarLiberarIdempotente(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 2; i++ { // 2ª chamada não pode reservar de novo
-		if err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(ctx, tx, osID) }); err != nil {
+		if err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(repository.ComTx(ctx, tx), osID) }); err != nil {
 			t.Fatalf("Reservar #%d: %v", i+1, err)
 		}
 	}
@@ -88,7 +91,7 @@ func TestIntegracaoEstoque_ReservarLiberarIdempotente(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ {
-		if err := emTx(t, func(tx *sql.Tx) error { return estoque.Liberar(ctx, tx, osID) }); err != nil {
+		if err := emTx(t, func(tx *sql.Tx) error { return estoque.Liberar(repository.ComTx(ctx, tx), osID) }); err != nil {
 			t.Fatalf("Liberar #%d: %v", i+1, err)
 		}
 	}
@@ -103,11 +106,11 @@ func TestIntegracaoEstoque_BaixarConverteReservaEmSaida(t *testing.T) {
 	osID := osComPeca(t, pecaID, 2)
 	ctx := context.Background()
 
-	if err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(ctx, tx, osID) }); err != nil {
+	if err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(repository.ComTx(ctx, tx), osID) }); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 2; i++ {
-		if err := emTx(t, func(tx *sql.Tx) error { return estoque.Baixar(ctx, tx, osID) }); err != nil {
+		if err := emTx(t, func(tx *sql.Tx) error { return estoque.Baixar(repository.ComTx(ctx, tx), osID) }); err != nil {
 			t.Fatalf("Baixar #%d: %v", i+1, err)
 		}
 	}
@@ -115,7 +118,7 @@ func TestIntegracaoEstoque_BaixarConverteReservaEmSaida(t *testing.T) {
 		t.Errorf("após baixar 2×: atual=%d reservado=%d, esperava 3 e 0", atual, res)
 	}
 	// Liberar depois da baixa não devolve nada: a peça já saiu.
-	if err := emTx(t, func(tx *sql.Tx) error { return estoque.Liberar(ctx, tx, osID) }); err != nil {
+	if err := emTx(t, func(tx *sql.Tx) error { return estoque.Liberar(repository.ComTx(ctx, tx), osID) }); err != nil {
 		t.Fatal(err)
 	}
 	if atual, _ := saldo(t, pecaID); atual != 3 {
@@ -128,7 +131,7 @@ func TestIntegracaoEstoque_InsuficienteFazRollbackDeTudo(t *testing.T) {
 	pecaID := criarPeca(t, 1, 10)
 	osID := osComPeca(t, pecaID, 2)
 
-	err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(context.Background(), tx, osID) })
+	err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(repository.ComTx(context.Background(), tx), osID) })
 
 	var np *domainerros.ErrNaoProcessavel
 	if !errors.As(err, &np) || np.Codigo != "INSUFFICIENT_STOCK" {
@@ -147,7 +150,7 @@ func TestIntegracaoDeduzirEstoque_RespeitaReservaDeOutraOS(t *testing.T) {
 	pecaID := criarPeca(t, 1, 10)
 	osSaga, osAntiga := osComPeca(t, pecaID, 1), osComPeca(t, pecaID, 1)
 
-	if err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(context.Background(), tx, osSaga) }); err != nil {
+	if err := emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(repository.ComTx(context.Background(), tx), osSaga) }); err != nil {
 		t.Fatal(err)
 	}
 	err := repo.DeduzirEstoquePecas(context.Background(), osAntiga)
@@ -179,7 +182,7 @@ func TestIntegracaoEstoque_DuasOSDisputamAUltimaUnidade(t *testing.T) {
 		go func(i int, osID uuid.UUID) {
 			defer wg.Done()
 			<-inicio
-			erros[i] = emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(context.Background(), tx, osID) })
+			erros[i] = emTx(t, func(tx *sql.Tx) error { return estoque.Reservar(repository.ComTx(context.Background(), tx), osID) })
 		}(i, osID)
 	}
 	close(inicio)
@@ -231,14 +234,14 @@ func TestIntegracaoOutbox_GravarNaTxEPendentesEmOrdem(t *testing.T) {
 
 	// a e b na MESMA transação (mesmo now()): a ordem tem de vir do seq.
 	if err := emTx(t, func(tx *sql.Tx) error {
-		if err := outbox.Gravar(ctx, tx, "execution", a, map[string]string{"traceparent": "00-x-y-01"}); err != nil {
+		if err := outbox.Gravar(repository.ComTx(ctx, tx), "execution", a, map[string]string{"traceparent": "00-x-y-01"}); err != nil {
 			return err
 		}
-		return outbox.Gravar(ctx, tx, "billing", b, nil)
+		return outbox.Gravar(repository.ComTx(ctx, tx), "billing", b, nil)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := emTx(t, func(tx *sql.Tx) error { return outbox.Gravar(ctx, tx, "execution", c, nil) }); err != nil {
+	if err := emTx(t, func(tx *sql.Tx) error { return outbox.Gravar(repository.ComTx(ctx, tx), "execution", c, nil) }); err != nil {
 		t.Fatal(err)
 	}
 
@@ -261,7 +264,7 @@ func TestIntegracaoOutbox_RollbackNaoDeixaMensagem(t *testing.T) {
 	limparOutbox(t)
 	outbox := repository.NovoOutboxRepository(db)
 	_ = emTx(t, func(tx *sql.Tx) error {
-		if err := outbox.Gravar(context.Background(), tx, "execution", envTeste(t, "A"), nil); err != nil {
+		if err := outbox.Gravar(repository.ComTx(context.Background(), tx), "execution", envTeste(t, "A"), nil); err != nil {
 			return err
 		}
 		return errors.New("efeito falhou")
@@ -277,7 +280,7 @@ func TestIntegracaoOutbox_EnviadaEDesistidaSaemDosPendentes(t *testing.T) {
 	ctx := context.Background()
 	for _, tipo := range []string{"A", "B", "C"} {
 		env := envTeste(t, tipo)
-		if err := emTx(t, func(tx *sql.Tx) error { return outbox.Gravar(ctx, tx, "execution", env, nil) }); err != nil {
+		if err := emTx(t, func(tx *sql.Tx) error { return outbox.Gravar(repository.ComTx(ctx, tx), "execution", env, nil) }); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -334,7 +337,7 @@ func TestIntegracaoOutbox_RelayPublicaTudoEmOrdem(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		env := envTeste(t, "Cmd")
 		gravadas = append(gravadas, env.MessageID)
-		if err := emTx(t, func(tx *sql.Tx) error { return outbox.Gravar(ctx, tx, "execution", env, nil) }); err != nil {
+		if err := emTx(t, func(tx *sql.Tx) error { return outbox.Gravar(repository.ComTx(ctx, tx), "execution", env, nil) }); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -369,10 +372,16 @@ func TestIntegracaoInbox_SegundaEntregaEhDuplicata(t *testing.T) {
 	ctx := context.Background()
 
 	var primeira, segunda bool
-	if err := emTx(t, func(tx *sql.Tx) (err error) { primeira, err = inbox.Marcar(ctx, tx, id, "IniciarDiagnostico"); return }); err != nil {
+	if err := emTx(t, func(tx *sql.Tx) (err error) {
+		primeira, err = inbox.Marcar(repository.ComTx(ctx, tx), id, "IniciarDiagnostico")
+		return
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := emTx(t, func(tx *sql.Tx) (err error) { segunda, err = inbox.Marcar(ctx, tx, id, "IniciarDiagnostico"); return }); err != nil {
+	if err := emTx(t, func(tx *sql.Tx) (err error) {
+		segunda, err = inbox.Marcar(repository.ComTx(ctx, tx), id, "IniciarDiagnostico")
+		return
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if !primeira || segunda {
@@ -386,16 +395,152 @@ func TestIntegracaoInbox_RollbackDoEfeitoPermiteReprocessar(t *testing.T) {
 	ctx := context.Background()
 
 	_ = emTx(t, func(tx *sql.Tx) error {
-		if _, err := inbox.Marcar(ctx, tx, id, "T"); err != nil {
+		if _, err := inbox.Marcar(repository.ComTx(ctx, tx), id, "T"); err != nil {
 			return err
 		}
 		return errors.New("efeito falhou") // a reentrega tem de processar de novo
 	})
 	var nova bool
-	if err := emTx(t, func(tx *sql.Tx) (err error) { nova, err = inbox.Marcar(ctx, tx, id, "T"); return }); err != nil {
+	if err := emTx(t, func(tx *sql.Tx) (err error) { nova, err = inbox.Marcar(repository.ComTx(ctx, tx), id, "T"); return }); err != nil {
 		t.Fatal(err)
 	}
 	if !nova {
 		t.Error("marca da inbox não pode sobreviver ao rollback do efeito")
+	}
+}
+
+// ── CriarOS com saga (F4-1.3) — caso de uso real sobre os repositórios reais ──
+
+type enfileiradorQuebrado struct{}
+
+func (enfileiradorQuebrado) Enfileirar(context.Context, saga.Comando) error {
+	return errors.New("outbox indisponível")
+}
+
+func ucComSaga(comandos interface {
+	Enfileirar(context.Context, saga.Comando) error
+}) *usecase.OrdemServicoUseCase {
+	return usecase.NewOrdemServicoUseCase(
+		repository.NovoOrdemServicoRepository(db), repository.NovoClienteRepository(db),
+		repository.NovoVeiculoRepository(db), repository.NovoServicoRepository(db),
+		repository.NovoPecaRepository(db), nil,
+		usecase.ComSaga(usecase.DependenciasSaga{
+			UoW:      repository.NovaUnitOfWork(db),
+			Estoque:  repository.NovoEstoqueRepository(),
+			Sagas:    repository.NovoSagaRepository(db),
+			Comandos: comandos,
+		}),
+	)
+}
+
+func contar(t *testing.T, query string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(query, args...).Scan(&n); err != nil {
+		t.Fatalf("contar: %v", err)
+	}
+	return n
+}
+
+func TestIntegracaoCriarOSComSaga_TudoNaMesmaTransacao(t *testing.T) {
+	limparOutbox(t)
+	clienteID, veiculoID := criarClienteVeiculo(t)
+	pecaID := criarPeca(t, 5, 30)
+	outbox := repository.NovoOutboxRepository(db)
+	uc := ucComSaga(orquestracao.NovoEnfileirador(outbox, nil))
+
+	os, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(), VeiculoID: veiculoID.String(),
+		Pecas: []usecase.ItemPecaOSInput{{PecaID: pecaID.String(), Quantidade: 2}},
+	})
+	if err != nil {
+		t.Fatalf("CriarOS: %v", err)
+	}
+
+	if _, res := saldo(t, pecaID); res != 2 {
+		t.Errorf("reserva = %d, esperava 2", res)
+	}
+	s, err := repository.NovoSagaRepository(db).BuscarPorOS(context.Background(), os.ID)
+	if err != nil || s.Estado != saga.DiagnosticoPendente {
+		t.Fatalf("saga = %+v (%v); esperava DIAGNOSTICO_PENDENTE", s, err)
+	}
+	etapas, _ := repository.NovoSagaRepository(db).Etapas(context.Background(), s.ID)
+	if len(etapas) != 1 || etapas[0].Etapa != saga.EtapaAbertura || etapas[0].Resultado != saga.ResultadoOK {
+		t.Errorf("etapas = %+v; esperava só T1 ok", etapas)
+	}
+	if n := contar(t, `SELECT count(*) FROM historicos_status WHERE os_id = $1`, os.ID); n != 1 {
+		t.Errorf("histórico inicial = %d linhas (o erro era descartado com `_ =` no fluxo antigo)", n)
+	}
+
+	// Critério do F4-1.3: exatamente 1 linha pendente na outbox para a OS.
+	pend, _ := outbox.Pendentes(context.Background(), 10)
+	if len(pend) != 1 || pend[0].Destino != saga.DestinoExecution ||
+		pend[0].Envelope.Tipo != saga.TipoIniciarDiagnostico || pend[0].Envelope.OsID != os.ID || pend[0].Envelope.SagaID != s.ID {
+		t.Fatalf("outbox = %+v; esperava 1 IniciarDiagnostico para a OS", pend)
+	}
+}
+
+// Critério do F4-1.3: falha forçada na outbox → nenhuma OS, reserva ou saga.
+func TestIntegracaoCriarOSComSaga_FalhaNaOutboxNaoPersisteNada(t *testing.T) {
+	clienteID, veiculoID := criarClienteVeiculo(t)
+	pecaID := criarPeca(t, 5, 30)
+
+	_, err := ucComSaga(enfileiradorQuebrado{}).CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(), VeiculoID: veiculoID.String(),
+		Pecas: []usecase.ItemPecaOSInput{{PecaID: pecaID.String(), Quantidade: 2}},
+	})
+	if err == nil {
+		t.Fatal("esperava erro")
+	}
+
+	if n := contar(t, `SELECT count(*) FROM ordens_servico WHERE cliente_id = $1`, clienteID); n != 0 {
+		t.Errorf("OS persistida apesar da falha: %d", n)
+	}
+	if _, res := saldo(t, pecaID); res != 0 {
+		t.Errorf("reserva persistida apesar da falha: %d", res)
+	}
+	if n := contar(t, `SELECT count(*) FROM sagas_os s JOIN ordens_servico o ON o.id = s.os_id WHERE o.cliente_id = $1`, clienteID); n != 0 {
+		t.Errorf("saga persistida apesar da falha: %d", n)
+	}
+}
+
+func TestIntegracaoCriarOSComSaga_EstoqueInsuficienteEh422(t *testing.T) {
+	clienteID, veiculoID := criarClienteVeiculo(t)
+	pecaID := criarPeca(t, 1, 30)
+	outra := osComPeca(t, pecaID, 1) // a última unidade já reservada por outra OS
+	if err := emTx(t, func(tx *sql.Tx) error {
+		return repository.NovoEstoqueRepository().Reservar(repository.ComTx(context.Background(), tx), outra)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ucComSaga(orquestracao.NovoEnfileirador(repository.NovoOutboxRepository(db), nil)).CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(), VeiculoID: veiculoID.String(),
+		Pecas: []usecase.ItemPecaOSInput{{PecaID: pecaID.String(), Quantidade: 1}},
+	})
+
+	var np *domainerros.ErrNaoProcessavel
+	if !errors.As(err, &np) || np.Codigo != "INSUFFICIENT_STOCK" {
+		t.Fatalf("esperava INSUFFICIENT_STOCK, veio %v", err)
+	}
+	if n := contar(t, `SELECT count(*) FROM ordens_servico WHERE cliente_id = $1`, clienteID); n != 0 {
+		t.Errorf("OS persistida sem reserva: %d", n)
+	}
+}
+
+func TestIntegracaoUnitOfWork_ReentranteECriarSemTxContinuaFuncionando(t *testing.T) {
+	uow := repository.NovaUnitOfWork(db)
+	ctx := context.Background()
+	chamadas := 0
+	err := uow.Executar(ctx, func(ctx context.Context) error {
+		return uow.Executar(ctx, func(context.Context) error { chamadas++; return nil }) // reaproveita a tx
+	})
+	if err != nil || chamadas != 1 {
+		t.Fatalf("unidade aninhada: %v, %d chamadas", err, chamadas)
+	}
+
+	// Sem transação no contexto, as operações que a exigem falham claramente.
+	if err := repository.NovoEstoqueRepository().Reservar(ctx, uuid.New()); !errors.Is(err, repository.ErrSemTransacao) {
+		t.Errorf("esperava ErrSemTransacao, veio %v", err)
 	}
 }

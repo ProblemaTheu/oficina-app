@@ -87,24 +87,30 @@ func (r *OrdemServicoRepository) GerarNumeroOS(ctx context.Context) (string, err
 	return fmt.Sprintf("OS-%d-%05d", ano, seq), nil
 }
 
-// Criar persiste uma nova OS e seus itens dentro de uma transação.
+// Criar persiste uma nova OS e seus itens dentro de uma transação. Se já
+// houver uma no contexto (UnitOfWork da saga), participa dela e não faz commit:
+// quem abriu a unidade decide.
 func (r *OrdemServicoRepository) Criar(
 	ctx context.Context,
 	os *entity.OrdemServico,
 	itensServico []entity.ItemOsServico,
 	itensPeca []entity.ItemOsPeca,
 ) (*entity.OrdemServico, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("OrdemServicoRepository.Criar begin: %w", err)
+	tx, externa := txDe(ctx)
+	if !externa {
+		var err error
+		tx, err = r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, fmt.Errorf("OrdemServicoRepository.Criar begin: %w", err)
+		}
+		defer tx.Rollback() //nolint:errcheck
 	}
-	defer tx.Rollback() //nolint:errcheck
 
 	os.ID = uuid.New()
 	os.CriadoEm = time.Now()
 	os.AtualizadoEm = time.Now()
 
-	_, err = tx.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO ordens_servico
 			(id, numero, cliente_id, veiculo_id, status_id, descricao, valor_total, criado_em, atualizado_em)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -152,8 +158,10 @@ func (r *OrdemServicoRepository) Criar(
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("OrdemServicoRepository.Criar commit: %w", err)
+	if !externa {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("OrdemServicoRepository.Criar commit: %w", err)
+		}
 	}
 
 	return os, nil
@@ -399,7 +407,7 @@ func (r *OrdemServicoRepository) RegistrarHistorico(
 	id := uuid.New()
 	now := time.Now()
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := execDe(ctx, r.db).ExecContext(ctx, `
 		INSERT INTO historicos_status
 			(id, os_id, status_anterior_id, status_novo_id, observacao, alterado_em, criado_em, atualizado_em)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
