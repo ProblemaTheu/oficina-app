@@ -13,6 +13,9 @@ type Peca struct {
 	Preco         float64
 	EstoqueAtual  int
 	EstoqueMinimo int
-	CriadoEm      time.Time
-	AtualizadoEm  time.Time
+	// EstoqueReservado: unidades seguras por OS em andamento (saga da Fase 4).
+	// Disponível = EstoqueAtual - EstoqueReservado.
+	EstoqueReservado int
+	CriadoEm         time.Time
+	AtualizadoEm     time.Time
 }

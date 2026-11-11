@@ -943,17 +943,20 @@ func servicoParaResponse(s *entity.Servico) ServicoResponse {
 func pecaParaResponse(p *entity.Peca) PecaResponse {
 	id := openapi_types.UUID(p.ID)
 	estoqueBaixo := p.EstoqueAtual < p.EstoqueMinimo
+	disponivel := p.EstoqueAtual - p.EstoqueReservado
 
 	return PecaResponse{
-		Id:            &id,
-		Nome:          &p.Nome,
-		Codigo:        &p.Codigo,
-		Preco:         &p.Preco,
-		EstoqueAtual:  &p.EstoqueAtual,
-		EstoqueMinimo: &p.EstoqueMinimo,
-		EstoqueBaixo:  &estoqueBaixo,
-		CriadoEm:      &p.CriadoEm,
-		AtualizadoEm:  &p.AtualizadoEm,
+		Id:                &id,
+		Nome:              &p.Nome,
+		Codigo:            &p.Codigo,
+		Preco:             &p.Preco,
+		EstoqueAtual:      &p.EstoqueAtual,
+		EstoqueMinimo:     &p.EstoqueMinimo,
+		EstoqueBaixo:      &estoqueBaixo,
+		EstoqueReservado:  &p.EstoqueReservado,
+		EstoqueDisponivel: &disponivel,
+		CriadoEm:          &p.CriadoEm,
+		AtualizadoEm:      &p.AtualizadoEm,
 	}
 }
 

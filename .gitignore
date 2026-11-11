@@ -46,3 +46,4 @@ crash.log
 k8s/**/secret.yaml
 # Kubeconfig gerado pelo provider kind
 infra/**/oficina-config
+features/bdd-relatorio.json

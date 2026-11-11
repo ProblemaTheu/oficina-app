@@ -1439,3 +1439,10 @@ func TestQuantidadeOuPadrao(t *testing.T) {
 		})
 	}
 }
+
+func TestPecaParaResponse_ExpoeReservaEDisponivel(t *testing.T) {
+	r := pecaParaResponse(&entity.Peca{EstoqueAtual: 10, EstoqueReservado: 3, EstoqueMinimo: 2})
+	if *r.EstoqueReservado != 3 || *r.EstoqueDisponivel != 7 || *r.EstoqueBaixo {
+		t.Errorf("reservado=%d disponível=%d baixo=%v", *r.EstoqueReservado, *r.EstoqueDisponivel, *r.EstoqueBaixo)
+	}
+}

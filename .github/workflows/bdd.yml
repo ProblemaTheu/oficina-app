@@ -1,0 +1,89 @@
+# BDD da saga (F4-5.2): os 4 cenários de features/saga_os.feature contra os
+# três serviços reais no docker-compose.saga.yml — OS buildado deste PR,
+# Billing e Execution da main de cada repo, LocalStack (SQS + DynamoDB),
+# dois Postgres e o stub do Mercado Pago. É o teste de integração entre serviços.
+name: BDD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  bdd:
+    name: BDD — saga
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Mesmo layout de pastas que o compose espera: repos irmãos.
+      - name: Checkout oficina-app
+        uses: actions/checkout@v7
+        with:
+          path: oficina-app
+
+      - name: Checkout oficina-billing (main)
+        uses: actions/checkout@v7
+        with:
+          repository: ProblemaTheu/oficina-billing
+          path: oficina-billing
+
+      - name: Checkout oficina-execution (main)
+        uses: actions/checkout@v7
+        with:
+          repository: ProblemaTheu/oficina-execution
+          path: oficina-execution
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: oficina-app/go.mod
+          cache-dependency-path: oficina-app/go.sum
+
+      - name: Subir a saga (compose)
+        working-directory: oficina-app
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.saga.yml --profile saga up -d --build --wait --wait-timeout 300
+
+      - name: Cenários BDD
+        working-directory: oficina-app
+        env:
+          BDD_FORMATO: pretty,cucumber:bdd-relatorio.json
+        run: go test -tags bdd -count=1 -v ./features/
+
+      - name: Logs dos serviços (falha)
+        if: failure()
+        working-directory: oficina-app
+        run: docker compose -f docker-compose.saga.yml --profile saga logs --no-color os execution billing mp-stub aws | tail -n 400
+
+      - name: Relatório do BDD
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bdd-relatorio
+          path: oficina-app/features/bdd-relatorio.json
+          if-no-files-found: ignore
+
+      - name: Resumo
+        if: always()
+        working-directory: oficina-app
+        run: |
+          {
+            echo "### BDD — saga da OS"
+            echo "Cenários de \`features/saga_os.feature\` contra OS (este commit), Billing e Execution (main) no compose."
+            if [ -f features/bdd-relatorio.json ]; then
+              python3 - <<'EOF'
+          import json
+          r = json.load(open("features/bdd-relatorio.json"))
+          for f in r:
+              for c in f.get("elements", []):
+                  ok = all(s.get("result", {}).get("status") == "passed" for s in c.get("steps", []))
+                  print(f"- {'✅' if ok else '❌'} {c['name']}")
+          EOF
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

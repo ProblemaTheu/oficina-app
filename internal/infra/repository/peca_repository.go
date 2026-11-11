@@ -54,7 +54,7 @@ func (r *PecaRepository) Salvar(peca *entity.Peca) (*entity.Peca, error) {
 
 func (r *PecaRepository) BuscarTodos() ([]*entity.Peca, error) {
 	rows, err := r.db.QueryContext(context.Background(), `
-		SELECT id, nome, codigo, preco, estoque_atual, estoque_minimo, criado_em, atualizado_em
+		SELECT id, nome, codigo, preco, estoque_atual, estoque_minimo, estoque_reservado, criado_em, atualizado_em
 		FROM pecas
 		ORDER BY criado_em DESC
 	`)
@@ -75,6 +75,7 @@ func (r *PecaRepository) BuscarTodos() ([]*entity.Peca, error) {
 			&p.Preco,
 			&p.EstoqueAtual,
 			&p.EstoqueMinimo,
+			&p.EstoqueReservado,
 			&p.CriadoEm,
 			&p.AtualizadoEm,
 		); err != nil {
@@ -91,7 +92,7 @@ func (r *PecaRepository) BuscarPorID(id string) (*entity.Peca, error) {
 	var peca entity.Peca
 
 	err := r.db.QueryRowContext(context.Background(), `
-		SELECT id, nome, codigo, preco, estoque_atual, estoque_minimo, criado_em, atualizado_em
+		SELECT id, nome, codigo, preco, estoque_atual, estoque_minimo, estoque_reservado, criado_em, atualizado_em
 		FROM pecas
 		WHERE id = $1
 	`, id).Scan(
@@ -101,6 +102,7 @@ func (r *PecaRepository) BuscarPorID(id string) (*entity.Peca, error) {
 		&peca.Preco,
 		&peca.EstoqueAtual,
 		&peca.EstoqueMinimo,
+		&peca.EstoqueReservado,
 		&peca.CriadoEm,
 		&peca.AtualizadoEm,
 	)
@@ -123,7 +125,7 @@ func (r *PecaRepository) Atualizar(peca *entity.Peca) (*entity.Peca, error) {
 		    estoque_minimo = $3,
 		    atualizado_em = now()
 		WHERE id = $4
-		RETURNING id, nome, codigo, preco, estoque_atual, estoque_minimo, criado_em, atualizado_em
+		RETURNING id, nome, codigo, preco, estoque_atual, estoque_minimo, estoque_reservado, criado_em, atualizado_em
 	`,
 		peca.Nome,
 		peca.Preco,
@@ -136,6 +138,7 @@ func (r *PecaRepository) Atualizar(peca *entity.Peca) (*entity.Peca, error) {
 		&peca.Preco,
 		&peca.EstoqueAtual,
 		&peca.EstoqueMinimo,
+		&peca.EstoqueReservado,
 		&peca.CriadoEm,
 		&peca.AtualizadoEm,
 	)
@@ -156,7 +159,7 @@ func (r *PecaRepository) AtualizarEstoque(peca *entity.Peca) (*entity.Peca, erro
 		SET estoque_atual = $1,
 		    atualizado_em = now()
 		WHERE id = $2
-		RETURNING id, nome, codigo, preco, estoque_atual, estoque_minimo, criado_em, atualizado_em
+		RETURNING id, nome, codigo, preco, estoque_atual, estoque_minimo, estoque_reservado, criado_em, atualizado_em
 	`,
 		peca.EstoqueAtual,
 		peca.ID,
@@ -167,6 +170,7 @@ func (r *PecaRepository) AtualizarEstoque(peca *entity.Peca) (*entity.Peca, erro
 		&peca.Preco,
 		&peca.EstoqueAtual,
 		&peca.EstoqueMinimo,
+		&peca.EstoqueReservado,
 		&peca.CriadoEm,
 		&peca.AtualizadoEm,
 	)

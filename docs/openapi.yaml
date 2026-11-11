@@ -474,6 +474,14 @@ components:
           type: boolean
           description: true quando estoque_atual < estoque_minimo
           example: false
+        estoque_reservado:
+          type: integer
+          description: Unidades reservadas por OS em andamento (saga) — ainda no estoque, mas comprometidas
+          example: 2
+        estoque_disponivel:
+          type: integer
+          description: estoque_atual - estoque_reservado — o que uma OS nova consegue reservar
+          example: 13
         criado_em:
           type: string
           format: date-time
