@@ -7,7 +7,7 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 ## Checklist antes de submeter
 
 ### Repositórios (um por microsserviço)
-- [ ] `oficina-app` (OS Service), `oficina-billing-service` e `oficina-execution-service` públicos, com `soat-architecture` **aceito** (print guardado)
+- [ ] `oficina-app` (OS Service), `oficina-billing` e `oficina-execution` públicos, com `soat-architecture` **aceito** (print guardado)
 - [ ] Cada um contém: código-fonte, `Dockerfile`, `k8s/` (base + overlay prod), `infra/` Terraform, `.github/workflows/`
 - [ ] `main` protegida com PR obrigatório e checks obrigatórios — comprovado por um `git push origin main` rejeitado
 - [ ] CI verde no último commit de cada `main`
@@ -29,15 +29,15 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 
 ### Qualidade
 - [ ] Cobertura ≥ 80% nos 3 serviços, com gate no CI
-- [ ] BDD (godog) verde no CI, relatório anexado
+- [ ] BDD (godog) com os 2 cenários obrigatórios verdes (CI ou local), relatório anexado
 - [ ] Quality gate do SonarCloud verde nos 3
 
 ### Observabilidade
 - [ ] APM dos 3 serviços no New Relic e *service map* ligando os três
 - [ ] Um trace distribuído com spans dos 3 serviços para a mesma OS
 - [ ] Logs filtráveis por `saga_id`
-- [ ] Dashboard da saga com dados reais (≥ 20 sagas, com falhas)
-- [ ] Alerta de compensação **disparado e recebido**; alarme da DLQ testado
+- [ ] Dashboard da saga com dados reais (~15 sagas por script + 3–5 pagas no sandbox, 2 com `FAL*` — corte 25)
+- [ ] Alerta de compensação **disparado e recebido**; alarme da DLQ testado (se não sacrificado — item 1)
 
 ### Encerramento
 - [ ] Vídeo ≤ 15 min publicado (público ou não listado)
@@ -67,7 +67,7 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 | Tempo | Bloco | O que mostrar |
 |---|---|---|
 | **0:00–1:30** | Abertura e arquitetura | Integrantes e o problema (rede nacional de filiais). Diagrama de componentes: *"três serviços, três bancos — dois PostgreSQL e um DynamoDB —, conversando por SQS; o OS Service orquestra a saga"*. Uma frase sobre **por que orquestrada**. Mostrar rápido os 3 repos e a `main` protegida. |
-| **1:30–6:00** | **Fluxo completo de uma OS** | No Postman: atendente cria OS (`ABC1D23`) → mostrar a OS `recebida` e a peça **reservada**. Mecânico pega a próxima tarefa e conclui o diagnóstico (Execution). OS vai sozinha para `aguardando_aprovacao`; mostrar o e-mail do orçamento. Cliente autentica por CPF e aprova (Billing) → link do Mercado Pago → **pagar no sandbox** com `APRO`. OS segue para execução; mecânico inicia e conclui. `GET /v1/work-orders/{id}` com o bloco `saga` mostrando todas as etapas `ok`. |
+| **1:30–6:00** | **Fluxo completo de uma OS** | No Postman: atendente cria OS (`ABC1D23`) → mostrar a OS `recebida` e a peça **reservada**. Mecânico vê a fila, inicia e conclui o diagnóstico (Execution). OS vai sozinha para `aguardando_aprovacao`; mostrar o e-mail do orçamento. Cliente autentica por CPF e aprova (Billing) → link do Mercado Pago → **pagar no sandbox** com `APRO` (confirmação chega pelo reconciliador em ≤ 10 s — no sandbox o MP não notifica orders de teste; mostre o webhook com *Simular notificação* + log de assinatura válida). OS segue para execução; mecânico inicia e conclui. `GET /v1/work-orders/{id}` com o bloco `saga` mostrando todas as etapas `ok`. |
 | **6:00–9:00** | **Saga e tratamento de falhas** | Repetir com o veículo `FAL1A23` até o pagamento. Ao enviar para execução, o Execution falha → mostrar a OS virando `cancelada`, as etapas `compensada` **em ordem inversa** e o **estorno no painel do Mercado Pago**. Mostrar o estoque de volta ao valor inicial. Em 30 s: uma recusa de pagamento (`OTHE`) e uma recusa de orçamento. Mencionar em uma frase a idempotência (inbox) e a DLQ. |
 | **9:00–11:30** | **Deploy automatizado com validação de testes** | Mergear a PR preparada. No Actions: job de testes (cobertura ≥ 80% no Summary) → Sonar → build → deploy no EKS → `rollout status` → smoke test. `kubectl get pods -n billing-prod -w` no rolling update. Mostrar que **só aquele serviço** foi implantado. Marcador de deploy no New Relic. Citar o BDD rodando nos PRs (abrir o relatório por 10 s). |
 | **11:30–14:00** | **Monitoramento e rastreamento distribuído** | *Service map* com os 3 serviços. **Abrir o trace** da OS do bloco 2: `POST /v1/work-orders` → span de produção SQS → consumo no Execution → … Logs filtrados por `saga_id` mostrando os 3 serviços em sequência. Dashboard da saga: desfechos, taxa de compensação, onde as sagas falham, tempo por etapa. Mostrar o **incidente do alerta de compensação** aberto pelas falhas do bloco 3. Encerrar recapitulando os requisitos. |
@@ -96,8 +96,8 @@ Checklist de fechamento, roteiro do vídeo e conteúdo do PDF do portal.
 | # | Repositório | Papel | Link |
 |---|---|---|---|
 | 1 | `oficina-app` | **OS Service** — atendimento, catálogo, estoque, ciclo de vida da OS e orquestrador da saga (PostgreSQL) | `https://github.com/ProblemaTheu/oficina-app` |
-| 2 | `oficina-billing-service` | **Billing Service** — orçamentos e pagamentos via Mercado Pago (PostgreSQL) | `https://github.com/ProblemaTheu/oficina-billing-service` |
-| 3 | `oficina-execution-service` | **Execution Service** — fila de diagnóstico e reparo (DynamoDB) | `https://github.com/ProblemaTheu/oficina-execution-service` |
+| 2 | `oficina-billing` | **Billing Service** — orçamentos e pagamentos via Mercado Pago (PostgreSQL) | `https://github.com/ProblemaTheu/oficina-billing` |
+| 3 | `oficina-execution` | **Execution Service** — fila de diagnóstico e reparo (DynamoDB) | `https://github.com/ProblemaTheu/oficina-execution` |
 | 4 | `oficina-lambda-auth` | Autenticação por CPF e rotas do API Gateway (Fase 3, atualizado) | `https://github.com/ProblemaTheu/oficina-lambda-auth` |
 | 5 | `oficina-infra-k8s` | VPC, EKS, API Gateway (Fase 3, atualizado) | `https://github.com/ProblemaTheu/oficina-infra-k8s` |
 | 6 | `oficina-infra-db` | RDS do OS Service (Fase 3) | `https://github.com/ProblemaTheu/oficina-infra-db` |
@@ -127,7 +127,7 @@ Nenhum serviço possui credencial ou rota de rede para o banco de outro.
 
 - **Fluxo:** abertura da OS com reserva de peças → diagnóstico (Execution) → orçamento (Billing) → aprovação do cliente → pagamento no Mercado Pago → reparo (Execution) → finalização.
 - **Compensações**, em ordem inversa: estorno do pagamento → cancelamento do orçamento → cancelamento das tarefas → liberação da reserva de peças. A OS termina `cancelada`.
-- **Garantias:** estado da saga persistido na mesma transação da OS e da mensagem (*Transactional Outbox*); consumidores idempotentes (*inbox* por `message_id`); SQS FIFO ordenado por saga; DLQ com alerta; prazos para as etapas com espera humana.
+- **Garantias:** estado da saga persistido na mesma transação da OS e da mensagem (*Transactional Outbox*); consumidores idempotentes (*inbox* por `message_id`); SQS FIFO ordenado por saga; DLQ com alarme; pagamento aprovado após a compensação é estornado automaticamente.
 - **Por que não coreografia:** `[resumo da tabela da RFC-006 — fluxo linear com espera humana, compensação decidida em um lugar, estado consultável em uma tabela]`.
 
 ### 5. Justificativa da divisão e das tecnologias
@@ -143,7 +143,7 @@ Nenhum serviço possui credencial ou rota de rede para o banco de outro.
 | New Relic | Mantido da Fase 3; traces distribuídos atravessando as filas |
 | godog, SonarCloud, GitHub Actions | BDD no ecossistema Go; qualidade e cobertura no CI; pipelines independentes por repositório |
 
-**Simplificações assumidas e registradas em ADR** *(remova as que não se aplicarem)*: repositório do OS mantém o nome `oficina-app`; apenas SQS, sem SNS; compensações sequenciais; ambiente único de produção (orientação do fórum, `[LINK]`); estorno apenas total.
+**Simplificações assumidas e registradas em ADR** *(remova as que não se aplicarem)*: repositório do OS mantém o nome `oficina-app`; apenas SQS, sem SNS; compensações sequenciais; sem timeouts automáticos de aprovação/pagamento (evolução na RFC-006); Billing e Execution com réplica única; ambiente único de produção (orientação do fórum, `[LINK]`); estorno apenas total.
 
 ### 6. Documentação
 

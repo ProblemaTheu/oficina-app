@@ -2,11 +2,13 @@
 
 > Cada tarefa tem **objetivo**, **passo a passo** e **critérios de aceite**. Os IDs (`F4-x.y`) são referenciados no [roadmap](roadmap.md) e no [plano de execução](plano-execucao.md). Decisões de fundo estão no [README](README.md#decisões-técnicas-recomendadas); desenho em [arquitetura.md](arquitetura.md).
 
+> **Revisão de 10/11 — plano de 4 dias.** O backlog continua descrevendo o desenho completo; o que **não** será feito nesta entrega está marcado com ✂️ e o número do corte no [plano de execução](plano-execucao.md#os-cortes). Correções de desenho feitas nesta revisão: DDL da migration `000007` (coluna `nome_status`, `reserva_estado`, `ignorada`, `falhou_em`), fluxo do webhook do Mercado Pago (F4-2.4), relay do DynamoDB com réplica única (F4-3.1), numeração das etapas no orquestrador (F4-4.4) e exposição real de `/internal/*` (F4-1.5).
+
 Convenções usadas em todo o backlog:
 
 | Item | Convenção |
 |---|---|
-| Repositórios | `ProblemaTheu/oficina-app` (OS), `ProblemaTheu/oficina-billing-service`, `ProblemaTheu/oficina-execution-service` |
+| Repositórios | `ProblemaTheu/oficina-app` (OS), `ProblemaTheu/oficina-billing`, `ProblemaTheu/oficina-execution` |
 | Namespaces K8s | `oficina-prod` (OS — mantido da Fase 3), `billing-prod`, `execution-prod` |
 | Imagens | `problematheu/oficina-api` (já existe), `problematheu/oficina-billing`, `problematheu/oficina-execution` |
 | Filas | `os-saga-replies.fifo`, `billing-commands.fifo`, `execution-commands.fifo` + `*-dlq.fifo` |
@@ -25,7 +27,7 @@ Convenções usadas em todo o backlog:
 **Passo a passo**
 
 1. Revisar a tabela de [decisões](README.md#decisões-técnicas-recomendadas). Qualquer troca (ex.: RabbitMQ no lugar de SQS) muda F4-4.1, F4-6.2 e o compose local — decida agora.
-2. Criar `docs/mensagens/` no `oficina-app` com um JSON Schema por tipo de mensagem do [catálogo](arquitetura.md#52-catálogo) e um `envelope.schema.json`:
+2. ✂️ *(corte 18 — o contrato fica no catálogo em Markdown da arquitetura §5)* Criar `docs/mensagens/` no `oficina-app` com um JSON Schema por tipo de mensagem do [catálogo](arquitetura.md#52-catálogo) e um `envelope.schema.json`:
 
    ```json
    {
@@ -51,7 +53,7 @@ Convenções usadas em todo o backlog:
 3. Abrir rascunho da **RFC-005 (decomposição)** e da **RFC-006 (saga)** em `docs/rfcs/` — o contexto está fresco agora; finalizar em F4-8.2.
 
 **Critérios de aceite**
-- [ ] `docs/mensagens/*.schema.json` cobre as 21 mensagens do catálogo.
+- [ ] ~~`docs/mensagens/*.schema.json` cobre as 21 mensagens do catálogo.~~ ✂️ corte 18 — catálogo da arquitetura §5 revisado pelas 3 trilhas no D1.
 - [ ] Máquina de estados da saga ([arquitetura §3.2](arquitetura.md#32-máquina-de-estados-da-saga)) revisada e sem transição ambígua.
 - [ ] RFC-005 e RFC-006 em rascunho com contexto e alternativas.
 
@@ -72,7 +74,7 @@ Convenções usadas em todo o backlog:
 2. Criar os repos novos a partir de um esqueleto comum:
 
    ```bash
-   for r in oficina-billing-service oficina-execution-service; do
+   for r in oficina-billing oficina-execution; do
      gh repo create "ProblemaTheu/$r" --public --description "Oficina — ${r#oficina-} (Tech Challenge Fase 4)"
      gh api -X PUT "repos/ProblemaTheu/$r/collaborators/soat-architecture" -f permission=pull
    done
@@ -110,17 +112,17 @@ Convenções usadas em todo o backlog:
      ]
    }
    EOF
-   gh api -X POST repos/ProblemaTheu/oficina-billing-service/rulesets --input /tmp/ruleset.json
+   gh api -X POST repos/ProblemaTheu/oficina-billing/rulesets --input /tmp/ruleset.json
    ```
 
    > `required_approving_review_count: 0` mantém o PR obrigatório sem travar um time pequeno (mesma decisão da Fase 3). Os nomes em `required_status_checks` precisam bater **exatamente** com o `name:` dos jobs — confira depois do primeiro PR.
 
-5. **OIDC para os repos novos.** No `bootstrap/` (Fase 3), acrescentar as roles `gha-oficina-billing-service` e `gha-oficina-execution-service` (+ as `-plan` read-only), com `sub` restrito a `repo:ProblemaTheu/<repo>:environment:prod` e `pull_request`. Cada role precisa de **access entry** no EKS com `AmazonEKSEditPolicy` limitada ao namespace do serviço:
+5. **OIDC para os repos novos.** No `bootstrap/` (Fase 3), acrescentar as roles `gha-oficina-billing` e `gha-oficina-execution` (+ as `-plan` read-only), com `sub` restrito a `repo:ProblemaTheu/<repo>:environment:prod` e `pull_request`. Cada role precisa de **access entry** no EKS com `AmazonEKSEditPolicy` limitada ao namespace do serviço:
 
    ```hcl
    access_entries = {
      gha_billing = {
-       principal_arn = "arn:aws:iam::706215605178:role/gha-oficina-billing-service"
+       principal_arn = "arn:aws:iam::706215605178:role/gha-oficina-billing"
        policy_associations = {
          edit = {
            policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
@@ -150,9 +152,13 @@ Convenções usadas em todo o backlog:
 **Passo a passo**
 
 1. **Mercado Pago**
-   - Criar a aplicação no [painel de desenvolvedores](https://www.mercadopago.com.br/developers/panel/app) (produto: Checkout Pro).
-   - Em *Contas de teste*, criar um **vendedor** e um **comprador** de teste. Use as credenciais **do vendedor de teste**; pague logado como **comprador de teste** em janela anônima.
-   - Em *Webhooks*, cadastrar a URL `https://<api-gateway>/billing/webhooks/mercadopago`, evento **Pagamentos**, e copiar a **assinatura secreta** (valida o `x-signature`).
+   > **Validado em 10/11** (ver [diário](execucao.md#1011--mercado-pago-validado)). O que funcionou — e o que **não** funciona:
+   - Criar a aplicação na **conta pessoal** de um integrante, no [painel](https://www.mercadopago.com.br/developers/panel/app): solução **Checkout Pro**, tipo de API **API de Orders**.
+   - Em *Contas de teste*, criar **vendedor** e **comprador** (ambos Brasil). Código de verificação no login = o que aparece em *Credenciais → Conta de teste*.
+   - Usar as **Credenciais de teste** da aplicação (o Access Token começa com `APP_USR-` e termina com o id do **vendedor de teste** vinculado — é normal). ❌ **Não** usar credenciais de produção de uma aplicação criada *dentro* do vendedor de teste: cobram, mas o estorno responde `401 Unauthorized use of live credentials`.
+   - ❌ A **API de Preferences** (`/checkout/preferences` + `/v1/payments/{id}/refunds`) cobra, mas **não estorna** com conta de teste (mesmo 401). Com a **API de Orders** cobrança, consulta e estorno funcionam (F4-2.3).
+   - Pagar como **comprador de teste em outro navegador ou no perfil Convidado** — janelas anônimas do Chrome compartilham a sessão do vendedor e o checkout responde "A transação não aceita este meio de pagamento". Cartão gerado no painel (*Cartões de teste*), titular `APRO`/`OTHE`, CPF `12345678909`.
+   - Em *Webhooks*, cadastrar a URL `https://<api-gateway>/billing/webhooks/mercadopago` (ngrok no D2), evento **Order (Mercado Pago)** — *confirmar o nome do evento no painel ao configurar* — e copiar a **assinatura secreta** (valida o `x-signature`).
    - Guardar `MP_ACCESS_TOKEN` e `MP_WEBHOOK_SECRET` em `oficina/prod/billing` no Secrets Manager — nunca no repo.
    - Anotar os [cartões de teste](https://www.mercadopago.com.br/developers/pt/docs/checkout-pro/additional-content/your-integrations/test/cards) e os nomes de titular que forçam resultado (`APRO` aprovado, `OTHE` recusado). **Confira na documentação vigente** — o painel muda com frequência.
 2. **AWS:** conferir o pedido de quota de vCPU (32) que estava `CASE_OPENED` e o estado do ambiente (`aws eks list-clusters`, `aws rds describe-db-instances`). Se destruído, o `apply` completo leva ~25 min — agende.
@@ -160,7 +166,7 @@ Convenções usadas em todo o backlog:
 4. Confirmar no fórum se a dispensa de homologação continua valendo na Fase 4 e guardar o print.
 
 **Critérios de aceite**
-- [ ] Uma preference criada via `curl` com o token de teste devolve `init_point`, e um pagamento `APRO` aparece no painel.
+- [x] Uma order criada via `curl` com o token de teste devolve `checkout_url`, um pagamento `APRO` deixa a order `processed` e o estorno via API deixa a order `refunded` (10/11).
 - [ ] Quota de vCPU ≥ 8 confirmada (3 × `t3.small` = 6).
 - [ ] Chaves do New Relic rotacionadas.
 
@@ -353,8 +359,14 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 1. Migration `000007_fase4_saga.up.sql`:
 
    ```sql
-   INSERT INTO status_ordens (id, nome) VALUES (gen_random_uuid(), 'cancelada')
-   ON CONFLICT (nome) DO NOTHING;
+   -- a coluna é nome_status (000001_initial_schema); id fixo segue o padrão do seed 000002
+   INSERT INTO status_ordens (id, nome_status, descricao) VALUES
+     ('660e8400-e29b-41d4-a716-446655440007', 'cancelada',
+      'OS cancelada pela compensação da saga (recusa, pagamento recusado ou falha na execução).')
+   ON CONFLICT (nome_status) DO NOTHING;
+
+   -- 'finalizada' deixa de significar "rejeitada"
+   UPDATE status_ordens SET descricao = 'Serviço concluído.' WHERE nome_status = 'finalizada';
 
    ALTER TABLE ordens_servico
      ADD COLUMN cancelado_em         timestamptz,
@@ -364,6 +376,13 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
      ADD COLUMN estoque_reservado integer NOT NULL DEFAULT 0,
      ADD CONSTRAINT pecas_reserva_valida
        CHECK (estoque_reservado >= 0 AND estoque_reservado <= estoque_atual);
+
+   -- idempotência de Liberar/Baixar por item (critério de aceite abaixo)
+   ALTER TABLE itens_os_pecas
+     ADD COLUMN reserva_estado text NOT NULL DEFAULT 'baixada'
+       CHECK (reserva_estado IN ('reservada', 'liberada', 'baixada'));
+   -- DEFAULT 'baixada' para as OS antigas, cujo estoque já foi deduzido;
+   -- o CriarOS grava 'reservada' explicitamente.
 
    CREATE TABLE sagas_os (
      id             uuid PRIMARY KEY,
@@ -385,7 +404,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
      id          uuid PRIMARY KEY,
      saga_id     uuid NOT NULL REFERENCES sagas_os(id),
      etapa       text NOT NULL,
-     resultado   text NOT NULL CHECK (resultado IN ('ok', 'falha', 'compensada')),
+     resultado   text NOT NULL CHECK (resultado IN ('ok', 'falha', 'compensada', 'ignorada')),
      message_id  uuid,
      detalhe     jsonb,
      ocorrido_em timestamptz NOT NULL DEFAULT now()
@@ -400,9 +419,11 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
      trace_headers jsonb NOT NULL DEFAULT '{}',
      criado_em     timestamptz NOT NULL DEFAULT now(),
      enviado_em    timestamptz,
-     tentativas    integer NOT NULL DEFAULT 0
+     tentativas    integer NOT NULL DEFAULT 0,
+     falhou_em     timestamptz          -- preenchido após 10 tentativas (F4-4.2)
    );
-   CREATE INDEX outbox_pendentes_idx ON outbox (criado_em) WHERE enviado_em IS NULL;
+   CREATE INDEX outbox_pendentes_idx ON outbox (criado_em)
+     WHERE enviado_em IS NULL AND falhou_em IS NULL;
 
    CREATE TABLE mensagens_processadas (
      message_id    uuid PRIMARY KEY,
@@ -426,7 +447,8 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
    A reserva é um `UPDATE ... WHERE estoque_atual - estoque_reservado >= $n` por peça; `RowsAffected() == 0` → `ErrEstoqueInsuficiente`. Sem `SELECT` antes (evita a corrida).
 
-4. `DeduzirEstoquePecas` sai de cena; testes de integração (`integration.yml`) cobrem as três operações contra Postgres real, incluindo a corrida de duas reservas para a última peça.
+4. Expor `estoque_reservado` (e `estoque_disponivel = atual - reservado`) no schema `Peca` do `GET /v1/parts/{id}` — o BDD (F4-5.2) verifica a reserva **só por HTTP**.
+5. `DeduzirEstoquePecas` sai de cena; testes de integração (`integration.yml`) cobrem as três operações contra Postgres real, incluindo a corrida de duas reservas para a última peça.
 
 **Critérios de aceite**
 - [ ] Duas OS concorrentes para a última unidade: uma cria, a outra recebe `422 ESTOQUE_INSUFICIENTE` (teste de integração).
@@ -453,7 +475,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    	if err := uc.estoque.Reservar(ctx, tx, os.ID); err != nil {
    		return err // nenhuma saga nasce se a reserva falhar (T1)
    	}
-   	saga := saga.Nova(os.ID, uc.relogio.Agora())
+   	saga := saga.Nova(os.ID, uc.relogio.Agora()) // nasce em DIAGNOSTICO_PENDENTE, etapa T1 ok
    	if err := uc.sagas.Criar(ctx, tx, saga); err != nil {
    		return err
    	}
@@ -514,6 +536,8 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    ```
 
    Middleware compara o token com `subtle.ConstantTimeCompare`. Rota responde 404 (não 401) sem o header, para não revelar que existe.
+
+   > **Atenção:** "fora do API Gateway" não é "privada". A Lambda sai da VPC e chama o **CLB público** do OS, então `/internal/*` é alcançável pela internet e o token é a única proteção. Assuma isso na ADR-015 (evolução: CLB interno + Lambda na VPC sem rota para o RDS).
 2. No `oficina-lambda-auth`:
    - trocar a query em `clientes` por um cliente HTTP com timeout de 2 s para `OS_INTERNAL_URL` (DNS do CLB do OS Service);
    - **remover a configuração de VPC da Lambda** e o SG de acesso ao RDS — a Lambda não precisa mais da rede privada. Bônus: some o cold start de ENI;
@@ -523,7 +547,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 **Critérios de aceite**
 - [ ] A role da Lambda não tem nenhuma permissão nem rota de rede para o RDS (`terraform plan` mostra a remoção).
 - [ ] Os 4 cenários de `/auth/token` da Fase 3 continuam passando.
-- [ ] `curl` em `/internal/...` sem o header → 404.
+- [ ] `curl` em `/internal/...` pelo DNS do CLB, sem o header → 404; com token errado → 404.
 
 ---
 
@@ -531,7 +555,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 ### F4-2.1 — Esqueleto do serviço
 
-**Objetivo:** repo `oficina-billing-service` no mesmo padrão do `oficina-app` (Go 1.26, Clean Architecture, API-first com `oapi-codegen`, chi, `golang-migrate`, `slog` JSON + New Relic).
+**Objetivo:** repo `oficina-billing` no mesmo padrão do `oficina-app` (Go 1.26, Clean Architecture, API-first com `oapi-codegen`, chi, `golang-migrate`, `slog` JSON + New Relic).
 
 **Passo a passo**
 
@@ -567,11 +591,11 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 1. **`GerarOrcamento`** (consumidor): numa transação — inbox, `orcamentos` + `itens_orcamento` com `expira_em = now() + PRAZO_ORCAMENTO` (default 48 h; 2 min na demo), outbox `OrcamentoGerado`. Depois do commit, e-mail ao cliente (porta `Notifier`, mesmo SMTP/Mailpit da Fase 2) com o link `GET /billing/v1/orcamentos/{id}`.
    - Orçamento já existente para a OS → reenvia `OrcamentoGerado` com o mesmo `orcamento_id` (idempotência de negócio, além da inbox).
-2. **Aprovar:** `gerado → aprovado`; cria a preference no Mercado Pago (F4-2.3) **fora** da transação; grava `pagamentos(status=pendente, mp_preference_id)` e outbox `OrcamentoAprovado{link_pagamento}`. Se o MP falhar, a aprovação **não** é gravada e o cliente recebe `502` — pode tentar de novo.
+2. **Aprovar:** `gerado → aprovado`; cria a **order** no Mercado Pago (F4-2.3) **fora** da transação; grava `pagamentos(status=pendente, mp_order_id)` e outbox `OrcamentoAprovado{link_pagamento}`. Se o MP falhar, a aprovação **não** é gravada e o cliente recebe `502` — pode tentar de novo.
 3. **Recusar:** `gerado → recusado` + outbox `OrcamentoRecusado`.
 4. **Webhook `budget-response`** migrado: mesma validação HMAC da Fase 2 (`internal/infra/http/middleware/webhook.go`), traduzido em aprovar/recusar.
 5. **Expiração:** o timeout de aprovação é do **orquestrador** (F4-4.6), não do Billing. O Billing só recusa aprovar um orçamento vencido (`422 ORCAMENTO_EXPIRADO`).
-6. **`CancelarOrcamento`** (compensação): qualquer status não terminal → `cancelado`; se houver pagamento `aprovado` desse orçamento, **estorna antes** (F4-2.5). Responde `OrcamentoCancelado` mesmo se já estava cancelado.
+6. **`CancelarOrcamento`** (compensação): qualquer status não terminal → `cancelado`; se houver pagamento `aprovado` desse orçamento, **estorna antes** (F4-2.5); se houver order ainda não paga, **cancela-a** (`POST /v1/orders/{id}/cancel` — confira na referência quais status aceitam cancelamento; falha aqui só gera log, porque o passo 4 de F4-2.5 cobre o pagamento tardio). Responde `OrcamentoCancelado` mesmo se já estava cancelado.
 
 **Critérios de aceite**
 - [ ] Mesmo `GerarOrcamento` entregue duas vezes → um orçamento, duas respostas iguais.
@@ -590,39 +614,52 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
    ```go
    type gatewayPagamento interface {
-   	CriarCobranca(ctx context.Context, c Cobranca) (ResultadoCobranca, error)
-   	ConsultarPagamento(ctx context.Context, mpPaymentID int64) (Pagamento, error)
-   	Estornar(ctx context.Context, mpPaymentID int64, chaveIdempotencia string) (Estorno, error)
+   	CriarCobranca(ctx context.Context, c Cobranca) (ResultadoCobranca, error)       // POST /v1/orders
+   	ConsultarCobranca(ctx context.Context, mpOrderID string) (Cobranca, error)      // GET  /v1/orders/{id}
+   	Estornar(ctx context.Context, mpOrderID, chaveIdempotencia string) (Estorno, error) // POST /v1/orders/{id}/refund
+   	Cancelar(ctx context.Context, mpOrderID string) error                           // POST /v1/orders/{id}/cancel
    }
    ```
 
-2. Adaptador HTTP `internal/infra/mercadopago` (sem SDK — são 3 chamadas; o SDK Go oficial é pouco mantido):
+2. Adaptador HTTP `internal/infra/mercadopago` sobre a **API de Orders** (decisão de 10/11 — a API de Preferences não estorna com conta de teste; ver F4-0.3). Sem SDK — são 4 chamadas:
 
    ```go
-   // POST {MP_BASE_URL}/checkout/preferences
+   // POST {MP_BASE_URL}/v1/orders — valores como STRING decimal ("89.90"), não float
    corpo := map[string]any{
-   	"items": []map[string]any{{
-   		"title":       "Orçamento " + c.NumeroOS,
-   		"quantity":    1,
-   		"currency_id": "BRL",
-   		"unit_price":  c.Valor.Reais(), // float só na fronteira do JSON do MP
-   	}},
+   	"type":               "online",
+   	"processing_mode":    "manual", // como no exemplo oficial do Checkout Pro (Orders)
+   	"total_amount":       c.Valor.String(),
    	"external_reference": c.OrcamentoID.String(),
-   	"notification_url":   c.URLNotificacao,
-   	"expires":            true,
-   	"expiration_date_to": c.ExpiraEm.Format(time.RFC3339),
+   	"payer":              map[string]any{"email": c.ClienteEmail},
+   	"items": []map[string]any{{
+   		"title":      "Orçamento " + c.NumeroOS,
+   		"unit_price": c.Valor.String(),
+   		"quantity":   1,
+   	}},
+   	// config: URLs de retorno/notificação e restrições — conferir os campos na referência
    }
    req.Header.Set("Authorization", "Bearer "+a.accessToken)
    req.Header.Set("X-Idempotency-Key", c.OrcamentoID.String())
    ```
 
-   Resposta: usar `init_point` (com credenciais de vendedor de teste o link já é de sandbox; se a sua conta devolver `sandbox_init_point`, prefira-o — confira na doc vigente).
+   Resposta (`201`, validado): `id` (`ORDTST...` com credencial de teste) → `pagamentos.mp_order_id`; **`checkout_url`** → `link_pagamento`; `status: created`.
+
+   Respostas observadas em 10/11:
+
+   | Chamada | Resultado |
+   |---|---|
+   | `GET /v1/orders/{id}` após pagar | `status: processed`, `status_detail: accredited`, `total_paid_amount`, `transactions.payments[0].id` (`PAY...`) e `reference_id` (id numérico em `/v1/payments`) |
+   | `POST /v1/orders/{id}/refund` sem corpo | `201`, `status: refunded`, `transactions.refunds[0].id` (`REF...`) |
+   | Mesmo refund com a **mesma** `X-Idempotency-Key` | `201` com o **mesmo** `REF...` — idempotente |
+   | Refund com chave **nova** em order já estornada | `409 order_already_refunded` → tratar como **sucesso** (já estornado) |
 3. `MP_BASE_URL` configurável (`https://api.mercadopago.com` em prod, `http://mp-stub:8090` no compose e no BDD).
 4. Timeout de 5 s, retry só em erro de rede/5xx (máx. 2), nunca em 4xx.
 
 **Critérios de aceite**
 - [ ] Teste do adaptador contra `httptest.Server` cobre 201, 400, 401, 5xx e timeout.
-- [ ] Aprovação real em sandbox devolve um link que abre o Checkout Pro.
+- [ ] Aprovação real em sandbox devolve um `checkout_url` que abre o Checkout Pro.
+- [x] **Validado em 10/11 — cartão recusado:** a tentativa fica `failed / rejected_by_issuer`, mas a **order continua aberta** (`action_required / waiting_retry`) e aceita nova tentativa no mesmo link — até 20. `config.online.retries.allowed: false` na criação é **ignorado** pelo Checkout Pro (volta `true`, `max_attempts: 20`).
+- [x] **Validado em 10/11 — cancelamento:** `POST /v1/orders/{id}/cancel` numa order `action_required` → `200`, order `canceled`; o checkout passa a mostrar "O que você queria pagar não está disponível" e não aceita pagamento.
 
 ---
 
@@ -633,7 +670,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 **Passo a passo**
 
 1. Rota pública `POST /billing/webhooks/mercadopago` (sem authorizer no Gateway — F4-6.5).
-2. **Validar `x-signature`** (formato `ts=<epoch>,v1=<hmac>`). O manifesto assinado é `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, com `data.id` vindo da **query string** (em minúsculas se alfanumérico):
+2. **Validar `x-signature`** (formato `ts=<epoch>,v1=<hmac>`; **validado em 10/11** com notificações do painel: `ts` em **segundos** (10 dígitos), query `?data.id=<id>&type=order`, mesmo segredo para `order` e `payment`). O manifesto assinado é `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, com `data.id` vindo da **query string** (em minúsculas se alfanumérico — **atenção:** com a API de Orders o `data.id` é o id da order, alfanumérico e maiúsculo, `ORDTST...`; a regra das minúsculas passa a importar de verdade):
 
    ```go
    func assinaturaValida(segredo, xSignature, xRequestID, dataID string, agora time.Time) bool {
@@ -661,23 +698,40 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    }
    ```
 
-   > Confira na documentação vigente se o `ts` vem em segundos ou milissegundos e ajuste a janela — o exemplo oficial já variou. Teste com uma notificação real do painel (*Simular notificação*) antes de confiar.
+   > Responder `200` em até **22 s** (senão o MP reenvia a cada 15 min). **Limitação do sandbox (10/11):** a aplicação só tem webhook de **produção** (`webhooks?env=production`) e o painel mostra *"Notificações enviadas: nenhuma"* para os 5 pagamentos de orders `ORDTST...` — **orders de teste não disparam webhook**. O handler só é exercitável por *Simular notificação* (validado) e pelo stub. Por isso existe o **reconciliador** (passo 7).
 
-3. Assinatura inválida → `401`. Válida → grava `notificacoes_mp` (PK `x_request_id`; conflito = duplicata → `200` sem efeito) e responde **`200` imediatamente**.
-4. **Verificação ativa:** `ConsultarPagamento(data.id)`; usar `external_reference` para achar o orçamento e `status`:
+3. Assinatura inválida → `401`.
+4. **Verificação ativa:** `ConsultarCobranca(data.id)` (`GET /v1/orders/{id}`); usar `external_reference` para achar o orçamento e `status`:
 
-   | `status` do MP | Ação |
+   | `status` da order | Ação |
    |---|---|
-   | `approved` | `pagamentos → aprovado` (`mp_payment_id` UNIQUE) + outbox `PagamentoConfirmado` |
-   | `rejected`, `cancelled` | `pagamentos → recusado` + outbox `PagamentoRecusado{status_detail}` |
-   | `pending`, `in_process` | nada; aguarda próxima notificação |
+   | `processed` (`accredited`) | `pagamentos → aprovado` (`mp_order_id` UNIQUE) + outbox `PagamentoConfirmado` |
+   | **`action_required` / `waiting_retry`** (tentativa recusada) | **`POST /v1/orders/{id}/cancel`** → se `200`/`canceled`: `pagamentos → recusado` + outbox `PagamentoRecusado{status_detail da tentativa}`. Se o cancel falhar porque a order já foi paga (corrida com uma 2ª tentativa), reconsultar e tratar como `processed` |
+   | `failed`, `canceled`, `expired` | `pagamentos → recusado` + outbox `PagamentoRecusado` (idempotente se já recusado) |
+   | `created`, `processing` | nada; aguarda próxima notificação |
    | `refunded` | conferência do estorno (F4-2.5) |
 
-5. O processamento pode ser síncrono no handler (rápido) — mas se o `GET` ao MP falhar, responda `500` para o MP reenviar.
+   > Observados em 10/11: `processed`, `refunded`, `action_required/waiting_retry` e `canceled`. **Por que cancelar antes de recusar:** a order recusada continua pagável e o Checkout Pro ignora `retries.allowed: false`; sem o cancel, o cliente paga depois que a saga já compensou.
+
+5. **Ordem do handler (corrigida em 10/11)** — síncrono, nesta sequência:
+   1. validar assinatura;
+   2. `ConsultarCobranca(data.id)` — se falhar, responder **`500`** e **não gravar nada**, para o reenvio do MP ser processado de verdade;
+   3. numa transação: atualizar `pagamentos` com `UPDATE ... WHERE mp_order_id = $1 AND status = 'pendente'` **+** outbox **+** `notificacoes_mp` (`ON CONFLICT (x_request_id) DO NOTHING`, só auditoria);
+   4. responder `200`.
+
+   A idempotência vem do **`mp_order_id` + transição de status**: a segunda notificação do mesmo pagamento não encontra mais `pendente` e não gera outra mensagem. *(O desenho anterior gravava `notificacoes_mp` antes do `GET` e respondia "200 sem efeito" no conflito — um `GET` falho fazia o pagamento nunca ser processado.)*
+6. Pagamento `approved` para orçamento `cancelado` → estorno imediato (F4-2.5 passo 4), sem `PagamentoConfirmado`.
+7. **Reconciliador (mecanismo principal de confirmação — decisão de 10/11).** Goroutine no Billing que, a cada `MP_RECONCILIAR_INTERVALO` (default 10 s), lista `pagamentos` com `status = 'pendente'` e chama a **mesma** função do handler a partir do passo 2 (`ConsultarCobranca` → tabela de status → transação). Sem líder único necessário: o Billing roda com 1 réplica (corte 7′), e a idempotência por `mp_order_id` + transição de status torna inofensiva a corrida com o webhook.
+   - O webhook vira **acelerador**: quando chega (produção, ou *Simular notificação*), o processamento é imediato; quando não chega (sandbox), o reconciliador resolve em ≤ 10 s.
+   - Parar de reconciliar um pagamento quando o orçamento sair de `aprovado` (pago, recusado, cancelado) — a consulta é só para pendentes.
+   - Justificativa para a ADR-014: o webhook diz "algo mudou"; a verdade vem da API — o reconciliador é a mesma verificação ativa, sem depender da entrega.
 
 **Critérios de aceite**
 - [ ] Testes de assinatura: válida, `v1` errado, `ts` fora da janela, header ausente, `data.id` em maiúsculas.
 - [ ] Mesma notificação reenviada 3× → um `PagamentoConfirmado`.
+- [ ] `GET /v1/orders/{id}` falha (stub com 500) na primeira notificação e funciona no reenvio → um `PagamentoConfirmado`.
+- [ ] **Sem nenhum webhook**, pagar uma order em sandbox → `PagamentoConfirmado` em ≤ 10 s (reconciliador).
+- [ ] Webhook e reconciliador processando o mesmo pagamento ao mesmo tempo → um `PagamentoConfirmado`.
 - [ ] Notificação com corpo forjado mas `data.id` de pagamento recusado → `PagamentoRecusado` (prova que a verdade vem do `GET`).
 
 ---
@@ -688,10 +742,10 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 **Passo a passo**
 
-1. **`EstornarPagamento`**: buscar o pagamento `aprovado` do orçamento; `POST /v1/payments/{id}/refunds` com corpo vazio (estorno total) e `X-Idempotency-Key = message_id` do comando; gravar `mp_refund_id`, `status = estornado` e outbox `PagamentoEstornado`.
+1. **`EstornarPagamento`**: buscar o pagamento `aprovado` do orçamento; `POST /v1/orders/{mp_order_id}/refund` sem corpo (estorno total) e `X-Idempotency-Key = message_id` do comando; `409 order_already_refunded` = sucesso; gravar `mp_refund_id` (`REF...`), `status = estornado` e outbox `PagamentoEstornado`.
 2. Sem pagamento aprovado (falha antes do pagamento, ou já estornado) → responde `PagamentoEstornado{refund_id: null}` — compensação de algo que não aconteceu é sucesso.
 3. Erro 5xx/rede do MP → **não** dá ack na mensagem: o SQS reentrega após o visibility timeout; após 5 tentativas vai para a DLQ e dispara alerta (F4-7.4). A chave de idempotência evita estorno duplo nas retentativas.
-4. **Pagamento aprovado chegando depois da compensação** (cliente pagou após o prazo): o webhook encontra o orçamento `cancelado` → estorna na hora e **não** envia `PagamentoConfirmado`.
+4. **Pagamento aprovado chegando depois da compensação** — **não cortável** no plano de 4 dias. A 1ª defesa é cancelar a order antes de emitir `PagamentoRecusado` (F4-2.4) e no `CancelarOrcamento` (F4-2.2); esta é a 2ª, para a corrida entre o cancel e uma nova tentativa: o webhook encontra o orçamento `cancelado` → estorna na hora e **não** envia `PagamentoConfirmado`.
 
 **Critérios de aceite**
 - [ ] Estorno visível no painel do MP para a OS de teste.
@@ -706,8 +760,8 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 **Passo a passo**
 
-1. Binário `cmd/mp-stub` no repo do Billing (entra na mesma imagem): implementa `POST /checkout/preferences`, `GET /v1/payments/{id}`, `POST /v1/payments/{id}/refunds` em memória.
-2. Rota de controle `POST /_stub/pagar {preference_id, resultado: "approved"|"rejected"}`: cria o pagamento e **chama o webhook do Billing** com `x-signature` válido (mesmo segredo do compose).
+1. Binário `cmd/mp-stub` no repo do Billing (entra na mesma imagem): implementa `POST /v1/orders`, `GET /v1/orders/{id}`, `POST /v1/orders/{id}/refund` (com o `409 order_already_refunded`) e `POST /v1/orders/{id}/cancel` em memória, com os mesmos formatos de resposta registrados em F4-2.3.
+2. Rota de controle `POST /_stub/pagar {order_id, resultado: "processed"|"failed"}`: cria o pagamento (a order passa a `processed` ou `action_required`); o reconciliador do Billing encontra sozinho. Opcional: `?notificar=true` também **chama o webhook do Billing** com `x-signature` válido (mesmo segredo do compose), para exercitar o handler no BDD.
 3. **Nunca** habilitado em produção: o manifesto `k8s/overlays/prod` não referencia o stub, e o `MP_BASE_URL` de prod vem do ConfigMap.
 
 **Critérios de aceite**
@@ -719,7 +773,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 ### F4-3.1 — Esqueleto com DynamoDB
 
-**Objetivo:** repo `oficina-execution-service` no mesmo padrão, com persistência em DynamoDB via `aws-sdk-go-v2`.
+**Objetivo:** repo `oficina-execution` no mesmo padrão, com persistência em DynamoDB via `aws-sdk-go-v2`.
 
 **Passo a passo**
 
@@ -747,6 +801,7 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
    ```
 
 4. Relay da outbox: `Query gsi1 gsi1pk = OUTBOX#PENDENTE` em ordem de `gsi1sk`, publica, e `UpdateItem REMOVE gsi1pk, gsi1sk` (item sai do índice esparso). Item de inbox com `ttl` de 7 dias.
+   **O relay do DynamoDB não tem líder único** — por isso o Execution roda com **1 réplica fixa** (corte 7′). Com 2+ réplicas, mensagens da mesma saga podem sair fora de ordem; a evolução é um *lease* em `RELAY#LIDER` (`UpdateItem` condicional em `expira_em < :agora`).
 
 **Critérios de aceite**
 - [ ] Testes do repositório contra DynamoDB Local/LocalStack no CI (job de integração, como o `integration.yml` do OS).
@@ -762,10 +817,11 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 
 1. Entidade `Tarefa{ID, OsID, SagaID, Tipo(DIAGNOSTICO|REPARO), Estado, Mecanico, Prioridade, ...}` com máquina de estados: `AGUARDANDO → EM_ANDAMENTO → CONCLUIDA`, e `AGUARDANDO|EM_ANDAMENTO → CANCELADA`.
 2. Prioridade: `REPARO` antes de `DIAGNOSTICO` (carro já pago esperando é o pior cenário para a oficina); dentro do mesmo tipo, FIFO por `criado_em`. `gsi1sk = <prioridade>#<criado_em>`.
-3. **Pegar a próxima** sem dois mecânicos pegarem a mesma: `Query` no GSI + `UpdateItem` condicional `estado = AGUARDANDO`; se falhar a condição, tenta a próxima (máx. 3).
+3. ✂️ *(corte 19)* **Pegar a próxima** sem dois mecânicos pegarem a mesma: `Query` no GSI + `UpdateItem` condicional `estado = AGUARDANDO`; se falhar a condição, tenta a próxima (máx. 3).
 
 **Critérios de aceite**
-- [ ] Teste concorrente: 2 goroutines pedem a próxima tarefa de uma fila com 1 item → uma recebe, outra recebe "fila vazia".
+- [ ] `GET /execution/v1/fila?tipo=REPARO` lista as tarefas na ordem do GSI (prioridade, `criado_em`).
+- [ ] ~~Teste concorrente de `fila/proxima`~~ ✂️ corte 19.
 
 ---
 
@@ -774,9 +830,9 @@ func (p *Publisher) Publicar(ctx context.Context, filaURL string, env Envelope, 
 | Método | Rota | Efeito | Resposta à saga |
 |---|---|---|---|
 | GET | `/execution/v1/fila?tipo=` | Lista tarefas aguardando, em ordem | — |
-| POST | `/execution/v1/fila/proxima` | Atribui a próxima ao mecânico do JWT | `DiagnosticoIniciado` (se diagnóstico) |
+| POST | ✂️ `/execution/v1/fila/proxima` *(corte 19)* | Atribui a próxima ao mecânico do JWT | — |
 | POST | `/execution/v1/tarefas/{id}/concluir-diagnostico` | `{diagnostico}` → `CONCLUIDA` | `DiagnosticoConcluido` |
-| POST | `/execution/v1/tarefas/{id}/iniciar` | Reparo → `EM_ANDAMENTO` | `ExecucaoIniciada` |
+| POST | `/execution/v1/tarefas/{id}/iniciar` | Tarefa → `EM_ANDAMENTO`, mecânico do JWT | `DiagnosticoIniciado` (diagnóstico) · `ExecucaoIniciada` (reparo) |
 | POST | `/execution/v1/tarefas/{id}/concluir` | Reparo → `CONCLUIDA` | `ExecucaoConcluida` |
 | GET | `/execution/v1/tarefas?os_id=` | Tarefas de uma OS | — |
 
@@ -810,7 +866,7 @@ Autorização: `tipo=usuario` com papel `mecanico` ou `administrador`. `diagnost
 **Objetivo:** cada serviço provisiona a **sua fila de entrada** no próprio `infra/`.
 
 ```hcl
-# oficina-billing-service/infra/filas.tf
+# oficina-billing/infra/filas.tf
 resource "aws_sqs_queue" "comandos_dlq" {
   name                      = "billing-commands-dlq.fifo"
   fifo_queue                = true
@@ -891,10 +947,12 @@ data "aws_iam_policy_document" "os_pod" {
 
    	linhas, err := conn.QueryContext(ctx, `
    		SELECT id, destino, envelope, trace_headers FROM outbox
-   		WHERE enviado_em IS NULL ORDER BY criado_em LIMIT 50`)
+   		WHERE enviado_em IS NULL AND falhou_em IS NULL ORDER BY criado_em LIMIT 50`)
    	// ... para cada linha: Publicar; em sucesso UPDATE enviado_em = now();
    	//     em erro UPDATE tentativas = tentativas + 1 e PARA o ciclo
    	//     (não pula mensagem: pular quebraria a ordem da saga)
+   	//     com tentativas >= 10: UPDATE falhou_em = now() + log error com saga_id —
+   	//     a linha sai do índice e deixa de travar as OUTRAS sagas (head-of-line)
    }
    ```
 
@@ -947,12 +1005,14 @@ data "aws_iam_policy_document" "os_pod" {
    // fluxo é a saga inteira em uma tabela. Ler esta tabela é ler o processo.
    var fluxo = map[chave]passo{
    	{DiagnosticoPendente, "DiagnosticoConcluido"}: {para: OrcamentoPendente, comando: "GerarOrcamento", etapaOK: "T2"},
-   	{OrcamentoPendente, "OrcamentoGerado"}:         {para: AguardandoAprovacao, statusOS: entity.StatusAguardandoAprovacao, etapaOK: "T3", prazo: prazoAprovacao},
-   	{AguardandoAprovacao, "OrcamentoAprovado"}:     {para: AguardandoPagamento, etapaOK: "T4", prazo: prazoPagamento},
+   	{OrcamentoPendente, "OrcamentoGerado"}:         {para: AguardandoAprovacao, statusOS: entity.StatusAguardandoAprovacao, etapaOK: "T3"},
+   	{AguardandoAprovacao, "OrcamentoAprovado"}:     {para: AguardandoPagamento, etapaOK: "T4"},
    	{AguardandoPagamento, "PagamentoConfirmado"}:   {para: ExecucaoPendente, comando: "ExecutarReparo", etapaOK: "T5"},
-   	{ExecucaoPendente, "ExecucaoIniciada"}:         {para: EmExecucao, statusOS: entity.StatusEmExecucao, baixarReserva: true},
-   	{EmExecucao, "ExecucaoConcluida"}:              {para: Concluida, statusOS: entity.StatusFinalizada, etapaOK: "T6"},
+   	{ExecucaoPendente, "ExecucaoIniciada"}:         {para: EmExecucao, statusOS: entity.StatusEmExecucao, baixarReserva: true, etapaOK: "T6"}, // pivô
+   	{EmExecucao, "ExecucaoConcluida"}:              {para: Concluida, statusOS: entity.StatusFinalizada, etapaOK: "T7"},
    }
+   // A saga nasce em DiagnosticoPendente com T1 ok (F4-1.3) — não há estado INICIADA.
+   // prazo: só documentação nesta entrega (corte 5); o campo existe para o watchdog futuro.
 
    // falhas leva cada resposta de falha ao início da compensação.
    var falhas = map[chave]string{ // valor = etapa que falhou
@@ -990,14 +1050,15 @@ data "aws_iam_policy_document" "os_pod" {
 2. **Uma compensação por vez**: envia a próxima só quando chega a resposta da anterior. Mais lento, mas mantém a regra "no máximo uma mensagem pendente por saga" de que o relay depende para garantir ordem.
 3. Status da OS vai para `cancelada` **no início** da compensação (o cliente não deve ver "aguardando pagamento" enquanto o estorno corre); `cancelado_em` e `motivo_cancelamento` preenchidos.
 4. `COMPENSADA` só após a última resposta + `LiberarReserva`. Notificação ao cliente por e-mail ("OS cancelada — pagamento estornado", se for o caso).
+5. Pilha por estado (para conferência rápida): T2 falhou → [`LiberarReserva`]; T3 → [`CancelarTarefas`, `LiberarReserva`]; T4/T5 → [`CancelarOrcamento`, `CancelarTarefas`, `LiberarReserva`]; T6 → [`EstornarPagamento`, `CancelarOrcamento`, `CancelarTarefas`, `LiberarReserva`]. Não existe `DevolverEstoque`: a baixa só acontece no pivô (T6 ok), depois do qual não se compensa.
 
 **Critérios de aceite**
-- [ ] Os 5 cenários da [tabela de falhas](arquitetura.md#33-etapas-e-compensações) testados no pacote `saga` e os 4 principais no BDD.
+- [ ] Os 5 cenários da [tabela de falhas](arquitetura.md#33-etapas-e-compensações) testados no pacote `saga`; no BDD, a falha T6 (`FAL*`) com estorno (corte 20).
 - [ ] Estoque igual ao inicial e pagamento `estornado` ao fim do cenário T6.
 
 ---
 
-### F4-4.6 — Timeouts e watchdog
+### F4-4.6 — Timeouts e watchdog ✂️ *(corte 5 — evolução registrada na RFC-006)*
 
 **Passo a passo**
 
@@ -1074,6 +1135,8 @@ data "aws_iam_policy_document" "os_pod" {
 
 **Objetivo:** "pelo menos um fluxo completo testado com BDD" — a saga de ponta a ponta, contra os 3 serviços reais.
 
+> **Plano de 4 dias (corte 20):** obrigatórios só o 1º (caminho feliz) e o 4º (falha no reparo com estorno). Os outros dois entram se sobrar tempo no D3.
+
 **Passo a passo**
 
 1. `go get github.com/cucumber/godog` no `oficina-app`; `features/saga_os.feature`:
@@ -1131,12 +1194,12 @@ data "aws_iam_policy_document" "os_pod" {
 5. Nos repos de Billing e Execution, o mesmo workflow roda com **eles** buildados do PR e os outros em `latest` — o BDD vira o teste de integração entre serviços nos três.
 
 **Critérios de aceite**
-- [ ] 4 cenários verdes no CI, em < 5 min.
+- [ ] 2 cenários obrigatórios verdes (no CI ou, no pior caso, localmente com o relatório anexado — sacrifício 5), em < 5 min.
 - [ ] Relatório do BDD linkado no README.
 
 ---
 
-### F4-5.3 — Testes de contrato das mensagens
+### F4-5.3 — Testes de contrato das mensagens ✂️ *(corte 13)*
 
 **Passo a passo**
 
@@ -1208,8 +1271,8 @@ Pontos de atenção no `cd.yml` (base: o do `oficina-app`, que já funciona):
 | Repo | `infra/` provisiona |
 |---|---|
 | `oficina-app` | `os-saga-replies.fifo` + DLQ, role do pod (Pod Identity) com SQS + Secrets, associação ao namespace `oficina-prod`, parâmetros SSM |
-| `oficina-billing-service` | `billing-commands.fifo` + DLQ, **RDS PostgreSQL `billing`** (`db.t4g.micro`, criptografado, subnet privada, SG aceitando só o SG dos nós), segredo `oficina/prod/billing`, role do pod, SSM |
-| `oficina-execution-service` | `execution-commands.fifo` + DLQ, **tabela DynamoDB** (on-demand, PITR, TTL), role do pod com acesso só à tabela, SSM |
+| `oficina-billing` | `billing-commands.fifo` + DLQ, **RDS PostgreSQL `billing`** (`db.t4g.micro`, criptografado, subnet privada, SG aceitando só o SG dos nós), segredo `oficina/prod/billing`, role do pod, SSM |
+| `oficina-execution` | `execution-commands.fifo` + DLQ, **tabela DynamoDB** (on-demand, PITR, TTL), role do pod com acesso só à tabela, SSM |
 
 Backend: o mesmo bucket `oficina-tfstate-706215605178`, chave `<repo>/terraform.tfstate`, `use_lockfile = true`. Rede e cluster lidos da SSM publicada pelo `oficina-infra-k8s`.
 
@@ -1272,7 +1335,7 @@ resource "aws_eks_pod_identity_association" "execution" {
 
 1. Em cada repo, `k8s/base` (Namespace, ServiceAccount, Deployment, Service `LoadBalancer`, HPA, ConfigMap) + `k8s/overlays/prod` — mesmo formato do `oficina-app`.
 2. Deployment: probes `/health/live` e `/health/ready` (ready inclui banco **e** SQS), `terminationGracePeriodSeconds: 90` (F4-4.3), `resources.requests` modestos (`cpu: 50m`, `memory: 64Mi`) — o cluster é pequeno.
-3. HPA: OS 2–5 (como na Fase 3); Billing e Execution **1–3** (corte 7).
+3. HPA: OS 2–5 (como na Fase 3); Billing e Execution com **1 réplica fixa, sem HPA** (corte 7′ — garante a ordem do relay do DynamoDB, ver F4-3.1).
 4. **Manter o OS no namespace `oficina-prod`** da Fase 3 em vez de criar `os-prod`: trocar o namespace troca o Service e, com ele, o DNS do CLB para o qual o API Gateway aponta. Os serviços novos usam `billing-prod` e `execution-prod`.
 
 **Critérios de aceite**
@@ -1325,7 +1388,7 @@ O DNS de cada CLB vem da SSM (`/oficina/prod/<servico>/lb-dns`), publicado pelo 
 
 **Critérios de aceite**
 - [ ] `curl https://<gateway>/billing/v1/orcamentos/x` sem token → 401 no Gateway.
-- [ ] Webhook simulado pelo painel do MP chega ao Billing (log com `x-request-id`).
+- [ ] Webhook simulado pelo painel do MP chega ao Billing (log com `x-request-id`) e passa na validação do `x-signature` (orders de teste não disparam webhook real — F4-2.4).
 
 ---
 
@@ -1409,6 +1472,8 @@ O DNS de cada CLB vem da SSM (`/oficina/prod/<servico>/lb-dns`), publicado pelo 
 
 ### F4-7.3 — Dashboard da saga
 
+> **Plano de 4 dias (corte 21):** pela UI, só os 4 primeiros painéis (desfechos, taxa de compensação, onde falham, tempo por etapa) + os 2 de latência/erro por serviço. Dados: corte 25.
+
 Dashboard como código (JSON versionado em `oficina-app/observability/dashboard-saga.json`, aplicado via NerdGraph ou Terraform `newrelic_one_dashboard_json`):
 
 | Painel | NRQL |
@@ -1430,6 +1495,8 @@ Dashboard como código (JSON versionado em `oficina-app/observability/dashboard-
 ---
 
 ### F4-7.4 — Alertas
+
+> **Plano de 4 dias (corte 21/22):** só a **taxa de compensação** (New Relic) e o **alarme da DLQ** (CloudWatch + SNS). As demais linhas são evolução.
 
 | Condição | Fonte | Limite |
 |---|---|---|
@@ -1512,4 +1579,4 @@ Modelo em [entrega.md](entrega.md#conteúdo-do-pdf): participantes, links dos re
 
 ### F4-9.3 — Teardown e custo
 
-Ordem de destroy (inversa): `lambda-auth` (rotas) → `oficina-execution-service/infra` ∥ `oficina-billing-service/infra` ∥ `oficina-app/infra` → apagar os Services `LoadBalancer` dos 3 namespaces (os CLBs são do Kubernetes, não do Terraform — lição da Fase 3) → `infra-db` → `infra-k8s`. Conferir órfãos: CLBs, ENIs, snapshots finais do RDS billing (`skip_final_snapshot = true` na demo), filas, chaves KMS em `PendingDeletion`.
+Ordem de destroy (inversa): `lambda-auth` (rotas) → `oficina-execution/infra` ∥ `oficina-billing/infra` ∥ `oficina-app/infra` → apagar os Services `LoadBalancer` dos 3 namespaces (os CLBs são do Kubernetes, não do Terraform — lição da Fase 3) → `infra-db` → `infra-k8s`. Conferir órfãos: CLBs, ENIs, snapshots finais do RDS billing (`skip_final_snapshot = true` na demo), filas, chaves KMS em `PendingDeletion`.

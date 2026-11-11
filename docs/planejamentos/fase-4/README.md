@@ -13,7 +13,7 @@ Este diretório traduz o enunciado (`SOAT - Fase 4 - Tech challenge.pdf`) em ép
 | [README.md](README.md) | Este arquivo — resumo executivo, decisões, mapa de entregáveis, achados do estado atual, épicos e DoD |
 | [arquitetura.md](arquitetura.md) | Arquitetura-alvo: componentes, posse de dados, catálogo de mensagens, máquina de estados da saga, sequências (caminho feliz e compensação) e topologia dos repositórios |
 | [backlog.md](backlog.md) | Backlog detalhado — **é aqui que está o "como fazer"**, com código, comandos e critérios de aceite |
-| **[plano-execucao.md](plano-execucao.md)** | ⏱️ **Documento de trabalho** — **7 dias (05/11 → 11/11)** em 3 trilhas paralelas, code freeze na qua 11/11, entrega no sáb 14/11 (prazo 15/11). Cortes e ordem de sacrifício. **Comece por aqui.** |
+| **[plano-execucao.md](plano-execucao.md)** | ⏱️ **Documento de trabalho** — **replanejado em 10/11: 4 dias (ter 10/11 → sex 13/11)** em 3 trilhas paralelas, code freeze na qui 12/11 às 22 h, **submissão na sex 13/11 até 18 h** (prazo do portal 15/11). Cortes e ordem de sacrifício. **Comece por aqui.** |
 | [roadmap.md](roadmap.md) | Sprints, grafo de dependências, caminho crítico, riscos, custo e divisão por integrante |
 | [entrega.md](entrega.md) | Checklist de entrega, roteiro do vídeo e conteúdo do PDF do portal |
 | [execucao.md](execucao.md) | 📋 Diário de execução — valores herdados da Fase 3 e espaço para registrar o que for feito |
@@ -43,7 +43,7 @@ Cada linha vira uma ADR ou RFC (ver [F4-8.2](backlog.md#f4-82--rfcs-e-adrs-da-fa
 
 | Tema | Decisão | Racional |
 |------|---------|----------|
-| **Divisão** | **OS Service** (`oficina-app`), **Billing Service** (`oficina-billing-service`), **Execution Service** (`oficina-execution-service`) — exatamente os três sugeridos no enunciado | São os três momentos da OS com donos diferentes no negócio (atendimento, cobrança, oficina) e com ritmos de mudança distintos. Ir além de 3 aumenta o trabalho de costura sem aumentar a nota. |
+| **Divisão** | **OS Service** (`oficina-app`), **Billing Service** (`oficina-billing`), **Execution Service** (`oficina-execution`) — exatamente os três sugeridos no enunciado | São os três momentos da OS com donos diferentes no negócio (atendimento, cobrança, oficina) e com ritmos de mudança distintos. Ir além de 3 aumenta o trabalho de costura sem aumentar a nota. |
 | **O que fica no OS Service** | Clientes, veículos, usuários/login de funcionário, catálogo de serviços, **peças e estoque**, OS, histórico, relatórios e o **orquestrador da saga** | Estoque é consultado e reservado na abertura da OS; separá-lo criaria um quarto serviço e uma etapa remota a mais na saga. Fica registrado como evolução na RFC-005. |
 | **Nome do repo do OS Service** | **Manter `oficina-app`** 🔁 | O rename da Fase 3 tocou 8 pontos e deixou a chave do Sonar pendente. O README do repo declara "OS Service" logo no título. |
 | **Banco do OS Service** | PostgreSQL — o RDS que já existe (`oficina-infra-db`) | Zero migração de dados; o modelo é relacional e transacional. |
@@ -53,9 +53,9 @@ Cada linha vira uma ADR ou RFC (ver [F4-8.2](backlog.md#f4-82--rfcs-e-adrs-da-fa
 | **Estilo da saga** | **Orquestrada**, com o orquestrador **dentro do OS Service** | O fluxo é linear, tem uma espera humana (aprovação/pagamento) e compensações em cadeia. Com orquestração, o estado da saga está em **uma tabela**, a compensação é decidida em **um lugar** e a demonstração no vídeo é uma query. Coreografia espalharia "quem desfaz o quê" pelos três serviços. Justificativa completa na RFC-006. |
 | **Atomicidade estado × mensagem** | **Transactional Outbox** em todos os serviços (tabela `outbox` no Postgres; item de outbox no mesmo `TransactWriteItems` no DynamoDB) + relay | Sem outbox, "gravei e não publiquei" ou "publiquei e não gravei" acontece no primeiro deploy durante uma saga. É o defeito que já existe hoje em `AprovarOrcamento` (ver achado 1). |
 | **Entrega** | *At-least-once* + **consumidor idempotente** (inbox por `message_id`) | A deduplicação do FIFO vale por 5 minutos; reentrega após isso (visibility timeout, redrive) tem de ser inofensiva. |
-| **Pagamento** | **Mercado Pago Checkout Pro** (Preferences API) em sandbox, com usuários de teste | O cliente abre o link e paga com cartão de teste — o nome do titular decide o resultado (`APRO` aprova, `OTHE` recusa), o que **demonstra a falha sem truque**. Pix exigiria QR e app; Checkout Transparente exigiria front-end. |
-| **Confirmação do pagamento** | Webhook com validação de `x-signature` **e** `GET /v1/payments/{id}` antes de agir | Nunca confiar no corpo da notificação. O webhook só diz "algo mudou"; a verdade vem da API. |
-| **Compensação de pagamento** | **Estorno** (`POST /v1/payments/{id}/refunds`) com `X-Idempotency-Key` | É a compensação mais "real" da saga e a melhor cena de falha do vídeo. |
+| **Pagamento** | **Mercado Pago Checkout Pro via API de Orders** (`POST /v1/orders` → `checkout_url`), com credenciais de teste e usuários de teste. *Validado em 10/11: a API de Preferences cobra mas não estorna com conta de teste* | O cliente abre o link e paga com cartão de teste — o nome do titular decide o resultado (`APRO` aprova, `OTHE` recusa), o que **demonstra a falha sem truque**. Pix exigiria QR e app; Checkout Transparente exigiria front-end. |
+| **Confirmação do pagamento** | `GET /v1/orders/{id}` antes de agir, disparado por **webhook** (validação de `x-signature`) **ou** por um **reconciliador** a cada 10 s | Nunca confiar no corpo da notificação. O webhook só diz "algo mudou"; a verdade vem da API. O reconciliador garante a confirmação mesmo sem entrega do webhook — no sandbox, orders de teste não notificam (validado em 10/11) |
+| **Compensação de pagamento** | **Estorno** (`POST /v1/orders/{id}/refund`) com `X-Idempotency-Key` — idempotência e `409 order_already_refunded` validados em 10/11 | É a compensação mais "real" da saga e a melhor cena de falha do vídeo. |
 | **Comunicação síncrona** | REST apenas onde a resposta é necessária na hora: **Lambda auth → OS Service** (cliente por CPF) e consultas de leitura entre serviços | Tudo o que muda estado entre serviços vai por mensagem. |
 | **Autenticação entre serviços** | O mesmo JWT HS256 (segredo `oficina/prod/app`) validado por cada serviço; rotas internas (`/internal/*`) protegidas por header compartilhado e **fora** do API Gateway | Reaproveita o contrato da Fase 3 sem introduzir mTLS/service mesh. |
 | **Exposição** | Um `Service type: LoadBalancer` (CLB) por serviço; o API Gateway roteia por prefixo (`/v1/*`, `/billing/*`, `/execution/*`) | A conta **não cria ELBv2** (achado da Fase 3); um CLB por serviço preserva a independência de deploy. Webhook do Mercado Pago é rota pública sem authorizer. |
@@ -74,11 +74,11 @@ Cada linha vira uma ADR ou RFC (ver [F4-8.2](backlog.md#f4-82--rfcs-e-adrs-da-fa
 | ≥ 3 microsserviços independentes | OS, Billing, Execution | 3 repos | E1, E2, E3 |
 | Cada um com repositório, infraestrutura e banco próprios | `infra/` por repo + RDS (OS), RDS (Billing), DynamoDB (Execution) | 3 repos | F4-0.2, F4-6.2 |
 | OS Service: abertura, atualização e consulta de status/histórico | `POST/GET /v1/work-orders`, histórico com etapas da saga | `oficina-app` | F4-1.1, F4-1.7 |
-| Billing: gerar e enviar orçamento para aprovação | Comando `GerarOrcamento` + e-mail com link | `oficina-billing-service` | F4-2.2 |
-| Billing: registrar e verificar pagamentos — **Mercado Pago** | Preference + webhook `x-signature` + `GET /payments/{id}` | `oficina-billing-service` | F4-2.3, F4-2.4 |
+| Billing: gerar e enviar orçamento para aprovação | Comando `GerarOrcamento` + e-mail com link | `oficina-billing` | F4-2.2 |
+| Billing: registrar e verificar pagamentos — **Mercado Pago** | Preference + webhook `x-signature` + `GET /payments/{id}` | `oficina-billing` | F4-2.3, F4-2.4 |
 | Billing: atualizar status da OS após pagamento | Resposta `PagamentoConfirmado` → orquestrador | billing → app | F4-2.6 |
-| Execution: fila de execução | Tabela DynamoDB + GSI por fila/estado | `oficina-execution-service` | F4-3.2 |
-| Execution: status durante diagnóstico e reparo | API do mecânico (`iniciar`, `concluir-diagnostico`, `concluir`) | `oficina-execution-service` | F4-3.3 |
+| Execution: fila de execução | Tabela DynamoDB + GSI por fila/estado | `oficina-execution` | F4-3.2 |
+| Execution: status durante diagnóstico e reparo | API do mecânico (`iniciar`, `concluir-diagnostico`, `concluir`) | `oficina-execution` | F4-3.3 |
 | Execution: comunicar finalização ao OS Service | Resposta `ExecucaoConcluida` | execution → app | F4-3.4 |
 | ≥ 1 banco SQL e ≥ 1 NoSQL | PostgreSQL × 2 + DynamoDB | — | F4-0.1 |
 | REST síncrono quando necessário | Lambda → `GET /internal/clientes/por-cpf/{cpf}` | app + lambda | F4-1.6 |
@@ -147,24 +147,26 @@ Levantamento feito sobre o código e a infraestrutura ao fim da Fase 3 (`main` e
 
 11. **O ambiente AWS provavelmente foi destruído após a entrega da Fase 3** (o `kubeconfig` local não tem contexto). O `apply` completo leva ~25 min e o pedido de quota de vCPU para 32 estava `CASE_OPENED`. Confirmar quota e estado no dia 1. → **F4-0.3**
 
+12. **(10/11) O plano de 7 dias não começou.** Em 10/11 — data do D6 no plano original — não existiam os 2 repositórios novos, a migration `000007` nem código de saga, e o diário estava vazio. O cronograma foi refeito para 4 dias, com os cortes 7′ e 18–25 ([plano](plano-execucao.md)), e a revisão corrigiu defeitos de desenho no webhook do Mercado Pago, no relay do DynamoDB, na migration e na máquina de estados ([arquitetura](arquitetura.md), [backlog](backlog.md)).
+
 ---
 
 ## Critérios de aceite globais (Definition of Done da fase)
 
 A Fase 4 só é considerada entregue quando:
 
-- [ ] Existem **3 repositórios de serviço** (`oficina-app`, `oficina-billing-service`, `oficina-execution-service`), cada um com código, `Dockerfile`, manifestos K8s, `infra/` Terraform, pipelines, `docs/arquitetura.md`, `docs/openapi.yaml` e README com evidência de cobertura.
+- [ ] Existem **3 repositórios de serviço** (`oficina-app`, `oficina-billing`, `oficina-execution`), cada um com código, `Dockerfile`, manifestos K8s, `infra/` Terraform, pipelines, `docs/arquitetura.md`, `docs/openapi.yaml` e README com evidência de cobertura.
 - [ ] Cada serviço tem **banco próprio**; há ao menos **um SQL** (PostgreSQL) e **um NoSQL** (DynamoDB); nenhum serviço — **nem a Lambda** — tem credencial para o banco de outro (comprovado pelas policies/usuários).
 - [ ] Uma OS criada percorre **OS → Execution (diagnóstico) → Billing (orçamento + pagamento Mercado Pago) → Execution (reparo) → OS (finalizada)** sem intervenção além das ações humanas (mecânico e cliente).
-- [ ] Os três cenários de falha compensam corretamente e deixam a OS `cancelada`, o estoque liberado e, quando houve pagamento, **o estorno registrado no Mercado Pago**: orçamento recusado · pagamento recusado · falha na execução. *(Aprovação expirada fica como evolução — corte 5 do [plano de 7 dias](plano-execucao.md#os-cortes).)*
+- [ ] Os três cenários de falha compensam corretamente e deixam a OS `cancelada`, o estoque liberado e, quando houve pagamento, **o estorno registrado no Mercado Pago**: orçamento recusado · pagamento recusado · falha na execução. *(Aprovação expirada fica como evolução — corte 5 do [plano de 4 dias](plano-execucao.md#os-cortes).)* Pagamento aprovado **depois** da compensação é estornado automaticamente.
 - [ ] Reprocessar qualquer mensagem (reentrega do SQS) não produz efeito duplicado — testado.
 - [ ] Mensagem venenosa vai para a **DLQ** após N tentativas e gera alerta.
 - [ ] Cobertura de testes unitários **≥ 80% em cada serviço**, com o CI **falhando** abaixo disso.
-- [ ] O fluxo completo da saga (feliz + ao menos uma compensação) roda em **BDD** no CI.
+- [ ] O fluxo completo da saga (feliz + falha no reparo com estorno) roda em **BDD** — no CI, ou localmente com o relatório anexado se o CI ficar instável (sacrifício 5).
 - [ ] SonarCloud com quality gate passando nos 3 repos de serviço.
 - [ ] Cada serviço tem pipeline **independente** que faz build, testes, Sonar e deploy no EKS a cada merge na `main`, com rollback automático.
 - [ ] `main` protegida com PR obrigatório e checks obrigatórios nos repos — comprovado por um push rejeitado.
-- [ ] No New Relic: APM dos 3 serviços, **um trace distribuído atravessando as filas**, logs com `saga_id`/`correlation_id`, dashboard da saga e alerta de compensação/DLQ.
+- [ ] No New Relic: APM dos 3 serviços, **um trace distribuído atravessando as filas**, logs com `saga_id`/`correlation_id`, dashboard da saga (4+ painéis) e alerta de compensação; alarme da DLQ no CloudWatch.
 - [ ] README do `oficina-app` documenta e **justifica** a escolha da saga orquestrada.
 - [ ] Vídeo ≤ 15 min publicado com os 4 itens pedidos; PDF submetido com os 6 itens pedidos.
 - [ ] Custo sob controle: `destroy` executado após a gravação (ver [F4-9.3](backlog.md#f4-93--teardown-e-custo)).
