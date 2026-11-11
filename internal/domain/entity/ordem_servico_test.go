@@ -45,3 +45,31 @@ func TestCanTransitionTo_StatusDesconhecido(t *testing.T) {
 		t.Error("transição para status desconhecido não deve ser permitida")
 	}
 }
+
+func TestStatus_PodeSerCancelada(t *testing.T) {
+	casos := map[Status]bool{
+		StatusRecebida:            true,
+		StatusEmDiagnostico:       true,
+		StatusAguardandoAprovacao: true,
+		StatusEmExecucao:          true,
+		StatusFinalizada:          false,
+		StatusEntregue:            false,
+		StatusCancelada:           false,
+	}
+	for s, esperado := range casos {
+		if got := s.PodeSerCancelada(); got != esperado {
+			t.Errorf("%s.PodeSerCancelada() = %v, esperava %v", s, got, esperado)
+		}
+	}
+}
+
+func TestStatus_CanceladaNaoEhTransicaoManual(t *testing.T) {
+	for _, s := range []Status{StatusRecebida, StatusEmDiagnostico, StatusAguardandoAprovacao, StatusEmExecucao, StatusFinalizada} {
+		if s.CanTransitionTo(StatusCancelada) {
+			t.Errorf("%s → cancelada não pode ser transição manual (é do orquestrador da saga)", s)
+		}
+	}
+	if StatusCancelada.CanTransitionTo(StatusEntregue) {
+		t.Error("cancelada é terminal")
+	}
+}
