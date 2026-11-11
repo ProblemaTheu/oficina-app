@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"regexp"
 	"testing"
@@ -72,9 +73,13 @@ func criarClienteVeiculo(t *testing.T) (clienteID, veiculoID uuid.UUID) {
 	clienteID, veiculoID = uuid.New(), uuid.New()
 
 	sufixo := clienteID.String()[:8]
+	// cpf_cnpj_digitos (UNIQUE) guarda só os dígitos: o antigo "it-"+hex virava
+	// poucos dígitos (ou string vazia) e colidia quando vários testes criavam
+	// clientes. 11 dígitos aleatórios: colisão desprezível.
+	cpf := fmt.Sprintf("%011d", rand.Int64N(100_000_000_000))
 	if _, err := db.Exec(
 		`INSERT INTO clientes (id, nome, cpf_cnpj) VALUES ($1, $2, $3)`,
-		clienteID, "Cliente Integração "+sufixo, "it-"+sufixo,
+		clienteID, "Cliente Integração "+sufixo, cpf,
 	); err != nil {
 		t.Fatalf("fixture cliente: %v", err)
 	}

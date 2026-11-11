@@ -411,6 +411,10 @@ func (r *OrdemServicoRepository) RegistrarHistorico(
 }
 
 // DeduzirEstoquePecas decrementa o estoque das peças dentro de uma transação.
+//
+// Fluxo anterior à saga (sai no F4-1.1). Enquanto convive com as reservas da
+// 000007, a checagem usa o DISPONÍVEL (atual - reservado): deduzir uma peça já
+// reservada por outra OS violaria chk_pecas_reserva_valida e viraria 500.
 func (r *OrdemServicoRepository) DeduzirEstoquePecas(ctx context.Context, osID uuid.UUID) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -419,7 +423,7 @@ func (r *OrdemServicoRepository) DeduzirEstoquePecas(ctx context.Context, osID u
 	defer tx.Rollback() //nolint:errcheck
 
 	rows, err := tx.QueryContext(ctx, `
-		SELECT iop.peca_id, iop.quantidade, p.estoque_atual, p.nome
+		SELECT iop.peca_id, iop.quantidade, p.estoque_atual - p.estoque_reservado, p.nome
 		FROM itens_os_pecas iop
 		JOIN pecas p ON p.id = iop.peca_id
 		WHERE iop.os_id = $1

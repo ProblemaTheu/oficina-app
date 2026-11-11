@@ -15,6 +15,10 @@ const (
 	StatusEmExecucao          Status = "em_execucao"
 	StatusFinalizada          Status = "finalizada"
 	StatusEntregue            Status = "entregue"
+	// StatusCancelada é o destino de uma saga compensada (Fase 4). Não está em
+	// validTransitions de propósito: aquele mapa é o das transições manuais, e
+	// cancelar uma OS é decisão do orquestrador da saga, não de um usuário.
+	StatusCancelada Status = "cancelada"
 )
 
 var validTransitions = map[Status][]Status{
@@ -23,6 +27,17 @@ var validTransitions = map[Status][]Status{
 	StatusAguardandoAprovacao: {StatusEmExecucao, StatusFinalizada},
 	StatusEmExecucao:          {StatusFinalizada},
 	StatusFinalizada:          {StatusEntregue},
+}
+
+// PodeSerCancelada informa se uma OS neste status ainda pode ser cancelada pela
+// compensação da saga: qualquer status antes da conclusão do serviço.
+func (s Status) PodeSerCancelada() bool {
+	switch s {
+	case StatusRecebida, StatusEmDiagnostico, StatusAguardandoAprovacao, StatusEmExecucao:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s Status) CanTransitionTo(next Status) bool {
