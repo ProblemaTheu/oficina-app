@@ -59,6 +59,40 @@ func (r *SagaRepository) RegistrarEtapa(ctx context.Context, sagaID uuid.UUID, e
 	return nil
 }
 
+// ErrSagaConcorrente indica que outra réplica avançou a saga entre a leitura e
+// a escrita (lock otimista). É transitório: a mensagem volta para a fila e,
+// reprocessada, encontra o estado novo.
+var ErrSagaConcorrente = errors.New("saga alterada por outra réplica")
+
+// Atualizar grava o novo estado se a versão no banco ainda for versaoAnterior.
+func (r *SagaRepository) Atualizar(ctx context.Context, s saga.Saga, versaoAnterior int) error {
+	tx, err := txObrigatoria(ctx)
+	if err != nil {
+		return err
+	}
+	var etapaFalha *string
+	if s.EtapaFalha != nil {
+		v := string(*s.EtapaFalha)
+		etapaFalha = &v
+	}
+	res, err := tx.ExecContext(ctx, `
+		UPDATE sagas_os
+		SET estado = $1, etapa_atual = $2, etapa_falha = $3, orcamento_id = $4, pagamento_id = $5,
+		    prazo_em = $6, versao = $7, atualizado_em = $8
+		WHERE id = $9 AND versao = $10`,
+		string(s.Estado), string(s.EtapaAtual), etapaFalha, s.OrcamentoID, s.PagamentoID,
+		s.PrazoEm, s.Versao, s.AtualizadoEm, s.ID, versaoAnterior)
+	if err != nil {
+		return fmt.Errorf("SagaRepository.Atualizar: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrSagaConcorrente
+	}
+	return nil
+}
+
 // BuscarPorOS devolve a saga de uma OS.
 func (r *SagaRepository) BuscarPorOS(ctx context.Context, osID uuid.UUID) (*saga.Saga, error) {
 	var (

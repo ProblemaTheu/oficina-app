@@ -42,6 +42,15 @@ func registrar(ctx context.Context, passo string) {
 
 type estoqueSagaFake struct{ err error }
 
+func (e *estoqueSagaFake) Liberar(ctx context.Context, _ uuid.UUID) error {
+	registrar(ctx, "liberar")
+	return nil
+}
+func (e *estoqueSagaFake) Baixar(ctx context.Context, _ uuid.UUID) error {
+	registrar(ctx, "baixar")
+	return nil
+}
+
 func (e *estoqueSagaFake) Reservar(ctx context.Context, _ uuid.UUID) error {
 	if e.err != nil {
 		return e.err
@@ -64,6 +73,14 @@ func (s *sagaRepoFake) Criar(ctx context.Context, sg saga.Saga) error {
 	registrar(ctx, "saga")
 	return nil
 }
+func (s *sagaRepoFake) BuscarPorOS(_ context.Context, _ uuid.UUID) (*saga.Saga, error) {
+	return &s.criada, nil
+}
+func (s *sagaRepoFake) Atualizar(_ context.Context, sg saga.Saga, _ int) error {
+	s.criada = sg
+	return nil
+}
+
 func (s *sagaRepoFake) RegistrarEtapa(ctx context.Context, _ uuid.UUID, e saga.Etapa, _ saga.Resultado, _ *uuid.UUID, _ any) error {
 	if s.errEtapa != nil {
 		return s.errEtapa

@@ -66,6 +66,9 @@ func TestProcessar_Classificacao(t *testing.T) {
 			cons := NovoConsumer(f, ConfigConsumer{FilaURL: filaExecution, Tracer: tr, Handlers: map[string]Handler{
 				"IniciarDiagnostico": func(ctx context.Context, e Envelope) error {
 					recebido = e
+					if logging.Correlacao(ctx) != "req-1" {
+						t.Errorf("correlation_id do envelope deve ir para o contexto, veio %q", logging.Correlacao(ctx))
+					}
 					if logging.Log(ctx) == nil {
 						t.Error("handler deve receber o logger correlacionado")
 					}

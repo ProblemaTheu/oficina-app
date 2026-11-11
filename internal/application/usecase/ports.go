@@ -143,15 +143,31 @@ type unidadeDeTrabalho interface {
 	Executar(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-// estoqueSaga reserva as peças da OS sem retirá-las do estoque (T1).
+// estoqueSaga reserva as peças da OS sem retirá-las do estoque (T1), libera a
+// reserva (compensação de T1) e a converte em saída (pivô T6).
 type estoqueSaga interface {
 	Reservar(ctx context.Context, osID uuid.UUID) error
+	Liberar(ctx context.Context, osID uuid.UUID) error
+	Baixar(ctx context.Context, osID uuid.UUID) error
 }
 
 // sagaRepo persiste o estado e o histórico de etapas da saga.
 type sagaRepo interface {
 	Criar(ctx context.Context, s saga.Saga) error
 	RegistrarEtapa(ctx context.Context, sagaID uuid.UUID, etapa saga.Etapa, resultado saga.Resultado, messageID *uuid.UUID, detalhe any) error
+	BuscarPorOS(ctx context.Context, osID uuid.UUID) (*saga.Saga, error)
+	// Atualizar grava o novo estado com lock otimista (falha se a versão mudou).
+	Atualizar(ctx context.Context, s saga.Saga, versaoAnterior int) error
+}
+
+// inboxSaga torna o consumo das respostas idempotente: false = já processada.
+type inboxSaga interface {
+	Marcar(ctx context.Context, messageID uuid.UUID, tipo string) (bool, error)
+}
+
+// cancelamentoOS grava o cancelamento da OS pela compensação da saga.
+type cancelamentoOS interface {
+	CancelarPelaSaga(ctx context.Context, osID, statusCanceladaID uuid.UUID, motivo string) error
 }
 
 // filaComandos grava um comando da saga na outbox, na transação do contexto.

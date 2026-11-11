@@ -7,7 +7,9 @@ package repository_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -425,10 +427,12 @@ func ucComSaga(comandos interface {
 		repository.NovoVeiculoRepository(db), repository.NovoServicoRepository(db),
 		repository.NovoPecaRepository(db), nil,
 		usecase.ComSaga(usecase.DependenciasSaga{
-			UoW:      repository.NovaUnitOfWork(db),
-			Estoque:  repository.NovoEstoqueRepository(),
-			Sagas:    repository.NovoSagaRepository(db),
-			Comandos: comandos,
+			UoW:          repository.NovaUnitOfWork(db),
+			Estoque:      repository.NovoEstoqueRepository(),
+			Sagas:        repository.NovoSagaRepository(db),
+			Comandos:     comandos,
+			Inbox:        repository.NovoInboxRepository(),
+			Cancelamento: repository.NovoOrdemServicoRepository(db),
 		}),
 	)
 }
@@ -542,5 +546,236 @@ func TestIntegracaoUnitOfWork_ReentranteECriarSemTxContinuaFuncionando(t *testin
 	// Sem transação no contexto, as operações que a exigem falham claramente.
 	if err := repository.NovoEstoqueRepository().Reservar(ctx, uuid.New()); !errors.Is(err, repository.ErrSemTransacao) {
 		t.Errorf("esperava ErrSemTransacao, veio %v", err)
+	}
+}
+
+// ── Orquestrador (F4-4.4/F4-4.5) — saga inteira contra Postgres real ──────────
+
+type sagaEmTeste struct {
+	t      *testing.T
+	uc     *usecase.OrdemServicoUseCase
+	outbox *repository.OutboxRepository
+	osID   uuid.UUID
+	sagaID uuid.UUID
+	pecaID uuid.UUID
+	email  string
+}
+
+func novaSagaEmTeste(t *testing.T) *sagaEmTeste {
+	t.Helper()
+	limparOutbox(t)
+	clienteID, veiculoID := criarClienteVeiculo(t)
+	email := "cliente-" + clienteID.String()[:8] + "@exemplo.com"
+	if _, err := db.Exec(`UPDATE clientes SET email = $1 WHERE id = $2`, email, clienteID); err != nil {
+		t.Fatal(err)
+	}
+	pecaID := criarPeca(t, 5, 30)
+	outbox := repository.NovoOutboxRepository(db)
+	uc := ucComSaga(orquestracao.NovoEnfileirador(outbox, nil))
+	os, err := uc.CriarOS(context.Background(), usecase.CriarOSInput{
+		ClienteID: clienteID.String(), VeiculoID: veiculoID.String(),
+		Pecas: []usecase.ItemPecaOSInput{{PecaID: pecaID.String(), Quantidade: 2}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := repository.NovoSagaRepository(db).BuscarPorOS(context.Background(), os.ID)
+	return &sagaEmTeste{t: t, uc: uc, outbox: outbox, osID: os.ID, sagaID: s.ID, pecaID: pecaID, email: email}
+}
+
+// responder entrega uma resposta ao orquestrador, como se viesse da fila.
+func (st *sagaEmTeste) responder(tipo string, payload map[string]string) uuid.UUID {
+	st.t.Helper()
+	corpo, _ := json.Marshal(payload)
+	id := uuid.New()
+	if err := st.uc.ProcessarRespostaSaga(context.Background(), usecase.RespostaSaga{
+		MessageID: id, Tipo: tipo, SagaID: st.sagaID, OsID: st.osID, Payload: corpo,
+	}); err != nil {
+		st.t.Fatalf("%s: %v", tipo, err)
+	}
+	return id
+}
+
+func (st *sagaEmTeste) estado() (saga.Estado, string) {
+	st.t.Helper()
+	s, err := repository.NovoSagaRepository(db).BuscarPorOS(context.Background(), st.osID)
+	if err != nil {
+		st.t.Fatal(err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT so.nome_status FROM ordens_servico o JOIN status_ordens so ON so.id = o.status_id WHERE o.id = $1`, st.osID).Scan(&status); err != nil {
+		st.t.Fatal(err)
+	}
+	return s.Estado, status
+}
+
+// comandos devolve, em ordem, os tipos enviados pela outbox desta OS.
+func (st *sagaEmTeste) comandos() ([]string, map[string]mensageria.Envelope) {
+	st.t.Helper()
+	pend, err := st.outbox.Pendentes(context.Background(), 100)
+	if err != nil {
+		st.t.Fatal(err)
+	}
+	var tipos []string
+	porTipo := map[string]mensageria.Envelope{}
+	for _, m := range pend {
+		if m.Envelope.OsID == st.osID {
+			tipos = append(tipos, m.Envelope.Tipo)
+			porTipo[m.Envelope.Tipo] = m.Envelope
+		}
+	}
+	return tipos, porTipo
+}
+
+func TestIntegracaoOrquestrador_CaminhoFelizAteFinalizada(t *testing.T) {
+	st := novaSagaEmTeste(t)
+	orc, pag := uuid.NewString(), uuid.NewString()
+
+	st.responder(saga.TipoDiagnosticoIniciado, map[string]string{"tarefa_id": uuid.NewString()})
+	if _, status := st.estado(); status != "em_diagnostico" {
+		t.Fatalf("DiagnosticoIniciado → OS em_diagnostico, veio %s", status)
+	}
+	st.responder(saga.TipoDiagnosticoConcluido, map[string]string{"diagnostico": "amortecedor vazando"})
+	st.responder(saga.TipoOrcamentoGerado, map[string]string{"orcamento_id": orc})
+	st.responder(saga.TipoOrcamentoAprovado, map[string]string{"orcamento_id": orc})
+	st.responder(saga.TipoPagamentoConfirmado, map[string]string{"pagamento_id": pag})
+	if atual, res := saldo(t, st.pecaID); atual != 5 || res != 2 {
+		t.Fatalf("antes do pivô o estoque só está reservado: atual=%d reservado=%d", atual, res)
+	}
+	st.responder(saga.TipoExecucaoIniciada, nil)
+	if atual, res := saldo(t, st.pecaID); atual != 3 || res != 0 {
+		t.Fatalf("no início do reparo (pivô) a reserva vira saída: atual=%d reservado=%d", atual, res)
+	}
+	st.responder(saga.TipoExecucaoConcluida, nil)
+
+	estado, status := st.estado()
+	if estado != saga.Concluida || status != "finalizada" {
+		t.Fatalf("fim: saga %s, OS %s", estado, status)
+	}
+	var diag string
+	_ = db.QueryRow(`SELECT diagnostico FROM ordens_servico WHERE id = $1`, st.osID).Scan(&diag)
+	if diag != "amortecedor vazando" {
+		t.Errorf("diagnóstico não gravado na OS: %q", diag)
+	}
+
+	tipos, env := st.comandos()
+	esperado := []string{saga.TipoIniciarDiagnostico, saga.TipoGerarOrcamento, saga.TipoExecutarReparo}
+	if strings.Join(tipos, ",") != strings.Join(esperado, ",") {
+		t.Fatalf("comandos = %v, esperava %v", tipos, esperado)
+	}
+	var orcamento struct {
+		Itens []struct {
+			Nome  string `json:"nome"`
+			Qtd   int    `json:"qtd"`
+			Preco string `json:"preco"`
+		} `json:"itens"`
+		Diagnostico string            `json:"diagnostico"`
+		Cliente     map[string]string `json:"cliente"`
+	}
+	if err := env[saga.TipoGerarOrcamento].LerPayload(&orcamento); err != nil {
+		t.Fatal(err)
+	}
+	if len(orcamento.Itens) != 1 || orcamento.Itens[0].Qtd != 2 || orcamento.Itens[0].Preco != "30.00" ||
+		orcamento.Diagnostico != "amortecedor vazando" || orcamento.Cliente["email"] != st.email {
+		t.Errorf("GerarOrcamento não é autossuficiente: %+v", orcamento)
+	}
+	var reparo struct {
+		Veiculo saga.Veiculo `json:"veiculo"`
+	}
+	_ = env[saga.TipoExecutarReparo].LerPayload(&reparo)
+	if reparo.Veiculo.Placa == "" {
+		t.Error("ExecutarReparo precisa da placa (falha simulada FAL*)")
+	}
+
+	etapas, _ := repository.NovoSagaRepository(db).Etapas(context.Background(), st.sagaID)
+	var ok []string
+	for _, e := range etapas {
+		if e.Resultado == saga.ResultadoOK {
+			ok = append(ok, string(e.Etapa))
+		}
+	}
+	if strings.Join(ok, ",") != "T1,T2,T3,T4,T5,T6,T7" {
+		t.Errorf("etapas ok = %v", ok)
+	}
+	if n := contar(t, `SELECT count(*) FROM historicos_status WHERE os_id = $1 AND observacao LIKE 'saga: %'`, st.osID); n != 4 {
+		t.Errorf("histórico da saga = %d linhas (em_diagnostico, aguardando_aprovacao, em_execucao, finalizada)", n)
+	}
+}
+
+// A cena do vídeo: falha ao iniciar o reparo depois do pagamento.
+func TestIntegracaoOrquestrador_FalhaNoReparoCompensaAteCompensada(t *testing.T) {
+	st := novaSagaEmTeste(t)
+	orc := uuid.NewString()
+	st.responder(saga.TipoDiagnosticoConcluido, map[string]string{"diagnostico": "x"})
+	st.responder(saga.TipoOrcamentoGerado, map[string]string{"orcamento_id": orc})
+	st.responder(saga.TipoOrcamentoAprovado, nil)
+	st.responder(saga.TipoPagamentoConfirmado, map[string]string{"pagamento_id": uuid.NewString()})
+
+	st.responder(saga.TipoExecucaoFalhou, map[string]string{"motivo": "falha_simulada"})
+
+	estado, status := st.estado()
+	if estado != saga.Compensando || status != "cancelada" {
+		t.Fatalf("após a falha: saga %s, OS %s (OS cancela já no início da compensação)", estado, status)
+	}
+	var motivo string
+	_ = db.QueryRow(`SELECT motivo_cancelamento FROM ordens_servico WHERE id = $1 AND cancelado_em IS NOT NULL`, st.osID).Scan(&motivo)
+	if !strings.Contains(motivo, "execucao_falhou") || !strings.Contains(motivo, "falha_simulada") {
+		t.Errorf("motivo do cancelamento = %q", motivo)
+	}
+
+	for _, r := range []string{saga.TipoPagamentoEstornado, saga.TipoOrcamentoCancelado, saga.TipoTarefasCanceladas} {
+		st.responder(r, map[string]string{})
+	}
+
+	if estado, status = st.estado(); estado != saga.Compensada || status != "cancelada" {
+		t.Fatalf("fim: saga %s, OS %s", estado, status)
+	}
+	if atual, res := saldo(t, st.pecaID); atual != 5 || res != 0 {
+		t.Errorf("estoque deve voltar ao inicial: atual=%d reservado=%d", atual, res)
+	}
+	tipos, env := st.comandos()
+	compensacoes := tipos[len(tipos)-3:]
+	if strings.Join(compensacoes, ",") != "EstornarPagamento,CancelarOrcamento,CancelarTarefas" {
+		t.Fatalf("compensações fora da ordem inversa: %v", tipos)
+	}
+	var estorno map[string]string
+	_ = env[saga.TipoEstornarPagamento].LerPayload(&estorno)
+	if estorno["orcamento_id"] != orc {
+		t.Errorf("EstornarPagamento sem o orçamento: %v", estorno)
+	}
+}
+
+func TestIntegracaoOrquestrador_RespostaRepetidaNaoTemEfeitoDuplo(t *testing.T) {
+	st := novaSagaEmTeste(t)
+	corpo, _ := json.Marshal(map[string]string{"diagnostico": "x"})
+	r := usecase.RespostaSaga{MessageID: uuid.New(), Tipo: saga.TipoDiagnosticoConcluido, SagaID: st.sagaID, OsID: st.osID, Payload: corpo}
+	for i := 0; i < 3; i++ {
+		if err := st.uc.ProcessarRespostaSaga(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tipos, _ := st.comandos()
+	if strings.Count(strings.Join(tipos, ","), saga.TipoGerarOrcamento) != 1 {
+		t.Errorf("reentrega gerou orçamento repetido: %v", tipos)
+	}
+	s, _ := repository.NovoSagaRepository(db).BuscarPorOS(context.Background(), st.osID)
+	if s.Versao != 2 {
+		t.Errorf("a saga avançou %d vezes (versão %d)", s.Versao-1, s.Versao)
+	}
+}
+
+func TestIntegracaoOrquestrador_RespostaSemSaga(t *testing.T) {
+	st := novaSagaEmTeste(t)
+	err := st.uc.ProcessarRespostaSaga(context.Background(), usecase.RespostaSaga{
+		MessageID: uuid.New(), Tipo: saga.TipoOrcamentoGerado, SagaID: uuid.New(), OsID: st.osID,
+	})
+	if !errors.Is(err, usecase.ErrRespostaSemSaga) {
+		t.Fatalf("saga_id divergente: %v", err)
+	}
+	err = st.uc.ProcessarRespostaSaga(context.Background(), usecase.RespostaSaga{
+		MessageID: uuid.New(), Tipo: saga.TipoOrcamentoGerado, SagaID: uuid.New(), OsID: uuid.New(),
+	})
+	if !errors.Is(err, usecase.ErrRespostaSemSaga) {
+		t.Fatalf("OS inexistente: %v", err)
 	}
 }
