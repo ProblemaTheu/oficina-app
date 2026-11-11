@@ -43,7 +43,10 @@ type Server struct {
 //
 // Retorno:
 //   - *Server pronto para ser registrado como StrictServerInterface.
-func NovoServer(db *sql.DB) *Server {
+//
+// osOpts configura dependências opcionais do caso de uso de OS — em especial a
+// saga da Fase 4 (usecase.ComSaga), ligada pelo main quando as filas existem.
+func NovoServer(db *sql.DB, osOpts ...usecase.OSUseCaseOption) *Server {
 	clienteRepo := repository.NovoClienteRepository(db)
 	veiculoRepo := repository.NovoVeiculoRepository(db)
 	servicoRepo := repository.NovoServicoRepository(db)
@@ -58,7 +61,7 @@ func NovoServer(db *sql.DB) *Server {
 		vehicleUseCase: usecase.NewVehicleUseCase(veiculoRepo, clienteRepo),
 		serviceUseCase: usecase.NewServiceUseCase(servicoRepo),
 		partUseCase:    usecase.NewPartUseCase(pecaRepo),
-		osUseCase:      usecase.NewOrdemServicoUseCase(osRepo, clienteRepo, veiculoRepo, servicoRepo, pecaRepo, notifier, usecase.ComEventRecorder(eventos)),
+		osUseCase:      usecase.NewOrdemServicoUseCase(osRepo, clienteRepo, veiculoRepo, servicoRepo, pecaRepo, notifier, append([]usecase.OSUseCaseOption{usecase.ComEventRecorder(eventos)}, osOpts...)...),
 		authUseCase:    usecase.NewAuthUseCase(usuarioRepo),
 	}
 }

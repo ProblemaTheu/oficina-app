@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ProblemaTheu/oficina-app/internal/application/logging"
+	"github.com/ProblemaTheu/oficina-app/internal/application/saga"
 	"github.com/ProblemaTheu/oficina-app/internal/domain/entity"
 	domainerros "github.com/ProblemaTheu/oficina-app/internal/domain/erros"
 	"github.com/google/uuid"
@@ -20,6 +22,7 @@ type OrdemServicoUseCase struct {
 	pecaRepo    pecaRepo
 	notifier    notifier
 	eventos     eventRecorder
+	saga        *DependenciasSaga
 }
 
 // OSUseCaseOption configura dependências opcionais do OrdemServicoUseCase sem
@@ -31,6 +34,29 @@ type OSUseCaseOption func(*OrdemServicoUseCase)
 // e no ambiente local sem New Relic.
 func ComEventRecorder(r eventRecorder) OSUseCaseOption {
 	return func(uc *OrdemServicoUseCase) { uc.eventos = r }
+}
+
+// DependenciasSaga liga a saga da Fase 4 ao caso de uso. Sem ela, CriarOS
+// segue o fluxo da Fase 3 (sem reserva, sem saga, sem mensagem).
+type DependenciasSaga struct {
+	UoW      unidadeDeTrabalho
+	Estoque  estoqueSaga
+	Sagas    sagaRepo
+	Comandos filaComandos
+	// Agora é o relógio da saga; nil = time.Now.
+	Agora func() time.Time
+}
+
+// ComSaga faz a abertura de OS iniciar a saga: OS, histórico, reserva de
+// peças, estado da saga e o comando IniciarDiagnostico gravados numa única
+// transação (F4-1.3).
+func ComSaga(d DependenciasSaga) OSUseCaseOption {
+	return func(uc *OrdemServicoUseCase) {
+		if d.Agora == nil {
+			d.Agora = time.Now
+		}
+		uc.saga = &d
+	}
 }
 
 // NewOrdemServicoUseCase cria uma nova instância do use case. O notifier é
@@ -247,6 +273,10 @@ func (uc *OrdemServicoUseCase) CriarOS(ctx context.Context, input CriarOSInput) 
 		ValorTotal: valorTotal,
 	}
 
+	if uc.saga != nil {
+		return uc.criarOSComSaga(ctx, os, itensServico, itensPeca, veiculo)
+	}
+
 	if _, err := uc.osRepo.Criar(ctx, os, itensServico, itensPeca); err != nil {
 		uc.registrarEvento(ctx, EventoOS{
 			Numero:    numero,
@@ -268,6 +298,63 @@ func (uc *OrdemServicoUseCase) CriarOS(ctx context.Context, input CriarOSInput) 
 	})
 
 	return uc.osRepo.BuscarPorID(ctx, os.ID.String())
+}
+
+// criarOSComSaga grava, numa transação, a OS com seus itens, o histórico
+// inicial, a reserva das peças (T1), a saga em DIAGNOSTICO_PENDENTE e o comando
+// IniciarDiagnostico na outbox. Se qualquer passo falhar — inclusive estoque
+// insuficiente na reserva — nada é persistido e nenhuma saga nasce.
+func (uc *OrdemServicoUseCase) criarOSComSaga(ctx context.Context, os *entity.OrdemServico,
+	itensServico []entity.ItemOsServico, itensPeca []entity.ItemOsPeca, veiculo *entity.Veiculo) (*entity.OrdemServicoCompleta, error) {
+	var nova saga.Saga
+	err := uc.saga.UoW.Executar(ctx, func(ctx context.Context) error {
+		if _, err := uc.osRepo.Criar(ctx, os, itensServico, itensPeca); err != nil {
+			return err
+		}
+		if err := uc.osRepo.RegistrarHistorico(ctx, os.ID, nil, os.StatusID, nil); err != nil {
+			return err
+		}
+		if err := uc.saga.Estoque.Reservar(ctx, os.ID); err != nil {
+			return err
+		}
+		nova = saga.Nova(os.ID, uc.saga.Agora())
+		if err := uc.saga.Sagas.Criar(ctx, nova); err != nil {
+			return err
+		}
+		if err := uc.saga.Sagas.RegistrarEtapa(ctx, nova.ID, saga.EtapaAbertura, saga.ResultadoOK, nil, nil); err != nil {
+			return err
+		}
+		return uc.saga.Comandos.Enfileirar(ctx, nova.ComandoIniciarDiagnostico(saga.PayloadIniciarDiagnostico{
+			NumeroOS:  os.Numero,
+			Veiculo:   saga.Veiculo{Placa: veiculo.Placa, Modelo: veiculo.Modelo},
+			Descricao: valorOuVazio(os.Descricao),
+		}))
+	})
+	if err != nil {
+		uc.registrarEvento(ctx, EventoOS{
+			Numero:    os.Numero,
+			Status:    string(entity.StatusRecebida),
+			Resultado: ResultadoFalha,
+			Motivo:    "abertura_saga",
+		})
+		return nil, err
+	}
+
+	logging.Log(ctx).Info("OS aberta e saga iniciada", "os_id", os.ID, "saga_id", nova.ID, "numero", os.Numero)
+	uc.registrarEvento(ctx, EventoOS{
+		OsID:      os.ID.String(),
+		Numero:    os.Numero,
+		Status:    string(entity.StatusRecebida),
+		Resultado: ResultadoSucesso,
+	})
+	return uc.osRepo.BuscarPorID(ctx, os.ID.String())
+}
+
+func valorOuVazio(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // ListarOSInput são os filtros da listagem.

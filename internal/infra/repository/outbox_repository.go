@@ -26,10 +26,14 @@ var _ mensageria.OutboxStore = (*OutboxRepository)(nil)
 // NovoOutboxRepository cria o repositório.
 func NovoOutboxRepository(db *sql.DB) *OutboxRepository { return &OutboxRepository{db: db} }
 
-// Gravar insere a mensagem na outbox dentro da transação de quem chama. Os
+// Gravar insere a mensagem na outbox dentro da transação do contexto. Os
 // headers de trace são capturados aqui, enquanto a transação do New Relic que
 // originou a mensagem ainda existe.
-func (r *OutboxRepository) Gravar(ctx context.Context, tx *sql.Tx, destino string, env mensageria.Envelope, trace map[string]string) error {
+func (r *OutboxRepository) Gravar(ctx context.Context, destino string, env mensageria.Envelope, trace map[string]string) error {
+	tx, err := txObrigatoria(ctx)
+	if err != nil {
+		return err
+	}
 	if err := env.Validar(); err != nil {
 		return err
 	}

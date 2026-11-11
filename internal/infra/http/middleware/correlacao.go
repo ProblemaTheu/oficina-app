@@ -33,7 +33,7 @@ func Correlacao() func(http.Handler) http.Handler {
 				"http.method", r.Method,
 				"http.route", r.URL.Path,
 			)
-			ctx := logging.ComLogger(r.Context(), logger)
+			ctx := logging.ComCorrelacao(logging.ComLogger(r.Context(), logger), id)
 			response := &statusRecorder{ResponseWriter: w}
 			next.ServeHTTP(response, r.WithContext(ctx))
 			logging.Log(ctx).Info("http request completed",

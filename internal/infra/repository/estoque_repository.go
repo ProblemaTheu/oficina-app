@@ -11,8 +11,8 @@ import (
 
 // EstoqueRepository reserva, libera e baixa as peças de uma OS (F4-1.2).
 //
-// As três operações recebem a transação de quem chama para compor com a saga e
-// a outbox numa transação só — é o que elimina o dual-write do fluxo antigo
+// As três operações usam a transação do contexto (UnitOfWork) para compor com
+// a saga e a outbox numa transação só — é o que elimina o dual-write do fluxo antigo
 // (DeduzirEstoquePecas numa tx, AtualizarStatus em outra).
 //
 // Cada operação só age sobre itens no estado de origem (reserva_estado), o que
@@ -74,7 +74,11 @@ func marcarItem(ctx context.Context, tx *sql.Tx, itemID uuid.UUID, estado string
 // Sem SELECT antes do UPDATE: a condição de saldo vai no próprio UPDATE, então
 // duas OS disputando a última unidade não passam ambas (a segunda espera o lock
 // da linha, reavalia a condição e não encontra saldo).
-func (EstoqueRepository) Reservar(ctx context.Context, tx *sql.Tx, osID uuid.UUID) error {
+func (EstoqueRepository) Reservar(ctx context.Context, osID uuid.UUID) error {
+	tx, err := txObrigatoria(ctx)
+	if err != nil {
+		return err
+	}
 	lista, err := itens(ctx, tx, osID, nil)
 	if err != nil {
 		return fmt.Errorf("EstoqueRepository.Reservar itens: %w", err)
@@ -102,7 +106,11 @@ func (EstoqueRepository) Reservar(ctx context.Context, tx *sql.Tx, osID uuid.UUI
 }
 
 // Liberar desfaz a reserva (compensação de T1).
-func (EstoqueRepository) Liberar(ctx context.Context, tx *sql.Tx, osID uuid.UUID) error {
+func (EstoqueRepository) Liberar(ctx context.Context, osID uuid.UUID) error {
+	tx, err := txObrigatoria(ctx)
+	if err != nil {
+		return err
+	}
 	lista, err := itens(ctx, tx, osID, &estadoReservada)
 	if err != nil {
 		return fmt.Errorf("EstoqueRepository.Liberar itens: %w", err)
@@ -122,7 +130,11 @@ func (EstoqueRepository) Liberar(ctx context.Context, tx *sql.Tx, osID uuid.UUID
 
 // Baixar converte a reserva em saída (início do reparo, pivô T6):
 // estoque_atual -= n e estoque_reservado -= n.
-func (EstoqueRepository) Baixar(ctx context.Context, tx *sql.Tx, osID uuid.UUID) error {
+func (EstoqueRepository) Baixar(ctx context.Context, osID uuid.UUID) error {
+	tx, err := txObrigatoria(ctx)
+	if err != nil {
+		return err
+	}
 	lista, err := itens(ctx, tx, osID, &estadoReservada)
 	if err != nil {
 		return fmt.Errorf("EstoqueRepository.Baixar itens: %w", err)

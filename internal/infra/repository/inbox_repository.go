@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -18,7 +17,11 @@ func NovoInboxRepository() *InboxRepository { return &InboxRepository{} }
 
 // Marcar registra o message_id. nova=false significa duplicata: o efeito já
 // foi aplicado numa entrega anterior.
-func (InboxRepository) Marcar(ctx context.Context, tx *sql.Tx, messageID uuid.UUID, tipo string) (bool, error) {
+func (InboxRepository) Marcar(ctx context.Context, messageID uuid.UUID, tipo string) (bool, error) {
+	tx, err := txObrigatoria(ctx)
+	if err != nil {
+		return false, err
+	}
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO mensagens_processadas (message_id, tipo) VALUES ($1, $2)
 		ON CONFLICT (message_id) DO NOTHING`, messageID, tipo)
