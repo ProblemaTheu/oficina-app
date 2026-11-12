@@ -15,6 +15,7 @@ import (
 
 	"github.com/ProblemaTheu/oficina-app/internal/infra/database"
 	"github.com/ProblemaTheu/oficina-app/internal/infra/http/api"
+	"github.com/ProblemaTheu/oficina-app/internal/infra/http/interno"
 	apimiddleware "github.com/ProblemaTheu/oficina-app/internal/infra/http/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/newrelic/go-agent/v3/integrations/logcontext-v2/nrslog"
@@ -90,6 +91,11 @@ func main() {
 		r.Use(apimiddleware.JWT())
 		api.HandlerFromMuxWithBaseURL(strictHandler, r, "/v1")
 	})
+
+	// ── Rotas internas (serviço → serviço, fora do API Gateway) ───────────────
+	// F4-1.5 / ADR-015: a Lambda auth-token consulta o cliente por aqui em vez
+	// de ler o banco do OS. Sem INTERNAL_TOKEN tudo em /internal/* é 404.
+	r.Mount("/internal", interno.Rotas(os.Getenv("INTERNAL_TOKEN"), server.CasoDeUsoCliente()))
 
 	srv := &http.Server{
 		Addr:              ":8080",

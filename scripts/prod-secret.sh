@@ -11,6 +11,7 @@ REGIAO=${REGIAO:-us-east-1}
 NS=${NS:-oficina-prod}
 SEGREDO_DB=${SEGREDO_DB:-oficina/prod/db}
 SEGREDO_APP=${SEGREDO_APP:-oficina/prod/app}
+SEGREDO_INTERNO=${SEGREDO_INTERNO:-oficina/prod/internal}
 
 ler() { aws secretsmanager get-secret-value --secret-id "$1" --region "$REGIAO" --query SecretString --output text 2>/dev/null; }
 
@@ -31,6 +32,17 @@ print(json.dumps({"jwt_secret": secrets.token_urlsafe(48), "webhook_secret": sec
     --secret-string "$APP_JSON" >/dev/null
 fi
 JWT_SECRET=$(printf '%s' "$APP_JSON" | python3 -c 'import sys,json;print(json.load(sys.stdin)["jwt_secret"])')
+
+# ── Token de serviço das rotas /internal/* (F4-1.5, ADR-015) ────────────────
+# Compartilhado com a Lambda auth-token, que lê o mesmo segredo. Criado aqui
+# na primeira execução; sem ele as rotas internas respondem 404.
+if ! INTERNO_JSON=$(ler "$SEGREDO_INTERNO"); then
+  echo "==> criando $SEGREDO_INTERNO com token aleatório"
+  INTERNO_JSON=$(python3 -c 'import json, secrets; print(json.dumps({"token": secrets.token_urlsafe(48)}))')
+  printf '%s' "$INTERNO_JSON" | aws secretsmanager create-secret --name "$SEGREDO_INTERNO" --region "$REGIAO" \
+    --secret-string file:///dev/stdin >/dev/null
+fi
+INTERNAL_TOKEN=$(printf '%s' "$INTERNO_JSON" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 WEBHOOK_SECRET=$(printf '%s' "$APP_JSON" | python3 -c 'import sys,json;print(json.load(sys.stdin)["webhook_secret"])')
 
 # `apply -f -` em vez de `create`: idempotente, e os valores não aparecem em ps.
@@ -47,4 +59,5 @@ stringData:
   DB_PASSWORD: "${DB_PASSWORD}"
   JWT_SECRET: "${JWT_SECRET}"
   WEBHOOK_SECRET: "${WEBHOOK_SECRET}"
+  INTERNAL_TOKEN: "${INTERNAL_TOKEN}"
 YAML

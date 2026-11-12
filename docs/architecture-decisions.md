@@ -464,7 +464,7 @@ Confirmação em até um ciclo do reconciliador (≈ 10 s) quando o webhook não
 
 ## ADR-015 — Lambda de autenticação passa a usar REST interno
 
-> **Status:** aceita — **implementação pendente** (depende da recriação da conta AWS).
+> **Status:** aceita — **implementada no código** (rota `internal/infra/http/interno` no OS e cliente HTTP na Lambda); aplicação na AWS pendente da conta nova.
 
 ### Contexto
 
@@ -472,7 +472,9 @@ Na Fase 3 a Lambda `auth-token` lia o RDS do OS para validar o CPF. Na Fase 4 ne
 
 ### Decisão
 
-A Lambda consulta o OS Service por **REST interno** (`GET /internal/clientes/por-cpf`), autenticada por um segredo de serviço, e perde a configuração de VPC, o SG de acesso ao RDS e o DSN.
+A Lambda consulta o OS Service por **REST interno** (`GET /internal/clientes/por-cpf/{cpf}`, header `X-Internal-Token` com o token do segredo `oficina/prod/internal`), e perde a configuração de VPC, o SG de acesso ao RDS e o DSN.
+
+"Fora do API Gateway" não é "privada": a Lambda sai da VPC e chama o Classic Load Balancer público do OS, então `/internal/*` é alcançável pela internet e o token é a única proteção. Por isso a rota responde **404** sem token, com token errado ou com o token não configurado (não revela que existe), compara em tempo constante e devolve só `id`, `nome` e `status`. Evolução: CLB interno + Lambda na VPC sem rota para o RDS.
 
 ### Consequências
 
@@ -482,7 +484,7 @@ A emissão do token passa a depender da disponibilidade do OS Service (que já �
 
 ## ADR-016 — EKS Pod Identity para acesso dos pods à AWS
 
-> **Status:** aceita — **implementação pendente** (depende da recriação da conta AWS).
+> **Status:** aceita — **implementada no código** (`infra/servico/pod.tf` aqui e `infra/pod.tf` no Billing e no Execution; ServiceAccount em cada `k8s/base`); aplicação na AWS pendente da conta nova.
 
 ### Contexto
 
