@@ -1,0 +1,989 @@
+{
+  "info": {
+    "_postman_id": "85128f74-1d48-4014-996a-855181875dd5",
+    "name": "Oficina — Fase 4 · Saga da OS",
+    "description": "Fluxo completo da saga orquestrada, na ordem: login → abrir OS → diagnóstico → orçamento → aprovação → pagamento → reparo → resultado.\n\nUse com o ambiente `local` (docker-compose.saga.yml) ou `prod` (API Gateway). Rode as pastas em ordem pelo Collection Runner; os passos assíncronos repetem sozinhos (até 20 s) enquanto a saga avança.\n\nCenários de compensação: *Recusar orçamento* (pasta 3), *Pagamento recusado* (pasta 4) ou `prefixo_placa = FAL` (falha no reparo, com estorno).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0 · Autenticação",
+      "item": [
+        {
+          "name": "Login — atendente/admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{os_url}}/v1/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@oficina.com\",\n  \"senha\": \"Admin@123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_admin\", pm.response.json().access_token);",
+                  "if (pm.environment.get(\"ambiente\") === \"local\") pm.collectionVariables.set(\"token_cliente\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — mecânico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{os_url}}/v1/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"joao@oficina.com\",\n  \"senha\": \"Mecanico@123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_mecanico\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token do cliente por CPF (prod — Lambda)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/token",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"{{cpf_cliente}}\"\n}"
+            },
+            "description": "Só em `prod`: o API Gateway encaminha para a Lambda `auth-token`. Localmente não há Lambda — use o token do admin (`token_cliente` já vem igual a `token_admin` no ambiente local) para aprovar o orçamento."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.environment.get(\"ambiente\") === \"local\") { console.log(\"local: sem Lambda — token_cliente = token_admin\"); pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_cliente\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Rode primeiro. Os tokens ficam em variáveis da coleção."
+    },
+    {
+      "name": "1 · Atendente abre a OS (T1)",
+      "item": [
+        {
+          "name": "Criar cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{os_url}}/v1/clients",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Cliente Postman\",\n  \"documento\": \"{{cpf_cliente}}\",\n  \"email\": \"postman-{{$randomInt}}@exemplo.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// CPF válido aleatório",
+                  "const d=[...Array(9)].map(()=>Math.floor(Math.random()*10));",
+                  "for (const n of [10,11]) { const s=d.reduce((a,v,i)=>a+v*(n-i),0); const r=(s*10)%11; d.push(r===10?0:r); }",
+                  "pm.collectionVariables.set('cpf_cliente', d.join(''));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"cliente_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar veículo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{os_url}}/v1/vehicles",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cliente_id\": \"{{cliente_id}}\",\n  \"placa\": \"{{placa}}\",\n  \"marca\": \"VW\",\n  \"modelo\": \"Gol\",\n  \"ano\": 2020\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Placa Mercosul aleatória com o prefixo da variável `prefixo_placa` (ABC = normal, FAL = falha simulada no reparo)",
+                  "const L='ABCDEFGHIJKLMNOPQRSTUVWXYZ', r=n=>Math.floor(Math.random()*n);",
+                  "const p=(pm.variables.get('prefixo_placa')||'ABC')+r(10)+L[r(26)]+String(r(100)).padStart(2,'0');",
+                  "pm.collectionVariables.set('placa', p);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"veiculo_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar peça (estoque 10)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{os_url}}/v1/parts",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Amortecedor {{$randomInt}}\",\n  \"codigo\": \"PM-{{$timestamp}}\",\n  \"preco\": 189.9,\n  \"estoque_minimo\": 1,\n  \"estoque_atual\": 10\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"peca_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Abrir OS (reserva 2 peças e inicia a saga)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{os_url}}/v1/work-orders",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cliente_id\": \"{{cliente_id}}\",\n  \"veiculo_id\": \"{{veiculo_id}}\",\n  \"descricao\": \"barulho na suspensão\",\n  \"pecas\": [\n    {\n      \"peca_id\": \"{{peca_id}}\",\n      \"quantidade\": 2\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"os_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Peça — estoque reservado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{os_url}}/v1/parts/{{peca_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('2 unidades reservadas', () => pm.expect(pm.response.json().estoque_reservado).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 · Mecânico — diagnóstico (T2, Execution)",
+      "item": [
+        {
+          "name": "Fila de diagnóstico",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{execution_url}}/execution/v1/fila?tipo=DIAGNOSTICO",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_mecanico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tarefas da OS → tarefa de diagnóstico",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{execution_url}}/execution/v1/tarefas?os_id={{os_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_mecanico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const t = pm.response.json().find(x => x.tipo === 'DIAGNOSTICO');",
+                  "const n = Number(pm.collectionVariables.get(\"_tentativas\") || 0);",
+                  "if (!(t) && n < 20) {",
+                  "  pm.collectionVariables.set(\"_tentativas\", n + 1);",
+                  "  console.log(\"aguardando a saga: tarefa de diagnóstico (\" + (n + 1) + \"/20)\");",
+                  "  setTimeout(() => {}, 1000);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set(\"_tentativas\", 0);",
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"tarefa_diagnostico_id\", t.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Iniciar diagnóstico",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{execution_url}}/execution/v1/tarefas/{{tarefa_diagnostico_id}}/iniciar",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_mecanico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Concluir diagnóstico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{execution_url}}/execution/v1/tarefas/{{tarefa_diagnostico_id}}/concluir-diagnostico",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_mecanico}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"diagnostico\": \"amortecedor dianteiro vazando\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Cliente — orçamento (T3/T4, Billing)",
+      "item": [
+        {
+          "name": "Orçamento da OS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{billing_url}}/billing/v1/orcamentos?os_id={{os_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_cliente}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const n = Number(pm.collectionVariables.get(\"_tentativas\") || 0);",
+                  "if (!(pm.response.code === 200) && n < 20) {",
+                  "  pm.collectionVariables.set(\"_tentativas\", n + 1);",
+                  "  console.log(\"aguardando a saga: orçamento (\" + (n + 1) + \"/20)\");",
+                  "  setTimeout(() => {}, 1000);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set(\"_tentativas\", 0);",
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"orcamento_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprovar orçamento → link do Mercado Pago",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{billing_url}}/billing/v1/orcamentos/{{orcamento_id}}/aprovar",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_cliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Em `prod`, abra `{{link_pagamento}}` no navegador e pague no sandbox (cartão de teste, titular `APRO`). Localmente, use a pasta 4."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"mp_order_id\", pm.response.json().pagamento.mp_order_id);",
+                  "pm.collectionVariables.set(\"link_pagamento\", pm.response.json().pagamento.link_pagamento);",
+                  "console.log(\"Pague em: \" + pm.response.json().pagamento.link_pagamento);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 · Pagamento (T5) — stub local",
+      "item": [
+        {
+          "name": "Pagar (stub: processed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{mp_stub_url}}/_stub/pagar",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{mp_order_id}}\",\n  \"resultado\": \"processed\"\n}"
+            },
+            "description": "Só local: o stub do Mercado Pago marca a order como paga; o reconciliador do Billing confirma em até 10 s."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar a order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{mp_stub_url}}/v1/orders/{{mp_order_id}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Em `prod`, pule esta pasta e pague pelo link do Checkout Pro."
+    },
+    {
+      "name": "5 · Mecânico — reparo (T6 pivô / T7, Execution)",
+      "item": [
+        {
+          "name": "Tarefas da OS → tarefa de reparo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{execution_url}}/execution/v1/tarefas?os_id={{os_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_mecanico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const t = pm.response.json().find(x => x.tipo === 'REPARO' && x.estado !== 'CANCELADA');",
+                  "const n = Number(pm.collectionVariables.get(\"_tentativas\") || 0);",
+                  "if (!(t) && n < 20) {",
+                  "  pm.collectionVariables.set(\"_tentativas\", n + 1);",
+                  "  console.log(\"aguardando a saga: tarefa de reparo (pagamento confirmado?) (\" + (n + 1) + \"/20)\");",
+                  "  setTimeout(() => {}, 1000);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set(\"_tentativas\", 0);",
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"tarefa_reparo_id\", t.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Iniciar reparo (pivô: baixa do estoque)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{execution_url}}/execution/v1/tarefas/{{tarefa_reparo_id}}/iniciar",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_mecanico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Concluir reparo → OS finalizada",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{execution_url}}/execution/v1/tarefas/{{tarefa_reparo_id}}/concluir",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_mecanico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Com `prefixo_placa = FAL` (e `PERMITIR_FALHA_SIMULADA=true` no Execution) a tarefa de reparo não é criada: a saga estorna o pagamento e compensa tudo."
+    },
+    {
+      "name": "6 · Resultado",
+      "item": [
+        {
+          "name": "Status da OS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{os_url}}/v1/work-orders/{{os_id}}/status",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const s = pm.response.json().status;",
+                  "const n = Number(pm.collectionVariables.get(\"_tentativas\") || 0);",
+                  "if (![\"finalizada\",\"cancelada\",\"entregue\"].includes(s) && n < 20) {",
+                  "  pm.collectionVariables.set(\"_tentativas\", n + 1);",
+                  "  console.log(\"aguardando a saga terminar: \" + s + \" (\" + (n + 1) + \"/20)\");",
+                  "  setTimeout(() => {}, 1000);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.collectionVariables.set(\"_tentativas\", 0);",
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "console.log(\"status final: \" + s);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OS completa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{os_url}}/v1/work-orders/{{os_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Peça — estoque final",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{os_url}}/v1/parts/{{peca_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Caminho feliz: estoque 8, reservado 0. Compensação: estoque 10, reservado 0."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Orçamento e pagamento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{billing_url}}/billing/v1/orcamentos?os_id={{os_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7 · Alternativas — compensação",
+      "description": "Não rode pelo Runner junto com as outras pastas. Para cada cenário: rode as pastas 0–2 e a primeira requisição da pasta 3, e então **uma** requisição daqui no lugar do caminho feliz; confira o resultado na pasta 6.\n\nFalha no reparo (T6, com estorno): defina `prefixo_placa = FAL` antes da pasta 1 e rode o caminho feliz até a pasta 4 — a tarefa de reparo nunca aparece e a OS termina `cancelada`.",
+      "item": [
+        {
+          "name": "Recusar orçamento (T4) → compensa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{billing_url}}/billing/v1/orcamentos/{{orcamento_id}}/recusar",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_cliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"caro demais\"\n}"
+            },
+            "description": "Cenário de compensação T4. Não rode junto com *Aprovar*."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pagamento recusado no stub (T5) → compensa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{mp_stub_url}}/_stub/pagar",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{mp_order_id}}\",\n  \"resultado\": \"failed\"\n}"
+            },
+            "description": "Cenário de compensação T5: o Billing cancela a order e responde `PagamentoRecusado`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "prefixo_placa",
+      "value": "ABC"
+    },
+    {
+      "key": "token_admin",
+      "value": ""
+    },
+    {
+      "key": "token_mecanico",
+      "value": ""
+    },
+    {
+      "key": "token_cliente",
+      "value": ""
+    },
+    {
+      "key": "cpf_cliente",
+      "value": ""
+    },
+    {
+      "key": "cliente_id",
+      "value": ""
+    },
+    {
+      "key": "veiculo_id",
+      "value": ""
+    },
+    {
+      "key": "placa",
+      "value": ""
+    },
+    {
+      "key": "peca_id",
+      "value": ""
+    },
+    {
+      "key": "os_id",
+      "value": ""
+    },
+    {
+      "key": "tarefa_diagnostico_id",
+      "value": ""
+    },
+    {
+      "key": "orcamento_id",
+      "value": ""
+    },
+    {
+      "key": "mp_order_id",
+      "value": ""
+    },
+    {
+      "key": "link_pagamento",
+      "value": ""
+    },
+    {
+      "key": "tarefa_reparo_id",
+      "value": ""
+    },
+    {
+      "key": "_tentativas",
+      "value": "0"
+    }
+  ]
+}

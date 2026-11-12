@@ -2,6 +2,8 @@
 
 > API REST para gestão completa de uma oficina mecânica: autenticação JWT, clientes, veículos, catálogo de serviços, controle de estoque de peças e ordens de serviço com máquina de estados. Construída em Go com arquitetura API-first o contrato OpenAPI é a fonte da verdade e o código de roteamento/serialização é gerado automaticamente.
 >
+> **Fase 4**: a oficina vira **três microsserviços** — OS Service (este repositório, que também orquestra a saga), [Billing](https://github.com/ProblemaTheu/oficina-billing) e [Execution](https://github.com/ProblemaTheu/oficina-execution) — com banco próprio cada um (PostgreSQL, PostgreSQL e DynamoDB), comunicação assíncrona por **SQS FIFO**, **Saga Pattern orquestrado** com compensações, pagamento real no **Mercado Pago** (sandbox) e testes **BDD** do fluxo ponta a ponta.
+>
 > **Fase 3**: a aplicação subiu para a nuvem AWS gerenciada — autenticação de clientes por CPF no API Gateway (Lambda authorizer), EKS com autoescalonamento (HPA), RDS PostgreSQL, observabilidade no New Relic (APM, logs correlacionados, dashboards de negócio e alerta) e infraestrutura dividida em repositórios de IaC. Mantém o que veio da Fase 2: webhook de aprovação de orçamento, notificação de status por e-mail, Kubernetes e pipeline de CI/CD.
 
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
@@ -15,6 +17,8 @@
 
 ## Índice
 
+- [Fase 4 — Microsserviços e Saga Pattern](#fase-4--microsserviços-e-saga-pattern)
+  - [Saga Pattern — por que orquestrada](#saga-pattern--por-que-orquestrada)
 - [Fase 3 — Nuvem, autenticação por CPF e observabilidade](#fase-3--nuvem-autenticação-por-cpf-e-observabilidade)
 - [Fase 2 — Objetivos e arquitetura da solução](#fase-2--objetivos-e-arquitetura-da-solução)
 - [Quickstart](#quickstart)
@@ -36,6 +40,122 @@
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Gerando código a partir do OpenAPI](#gerando-código-a-partir-do-openapi)
 - [Documentação adicional](#documentação-adicional)
+
+---
+
+## Fase 4 — Microsserviços e Saga Pattern
+
+A Fase 4 decompõe a oficina em **três microsserviços**, cada um com repositório, banco, pipeline e deploy próprios, coordenados por uma **saga orquestrada** sobre **Amazon SQS FIFO**:
+
+| Serviço | Repositório | Banco | Responsabilidade |
+|---|---|---|---|
+| **OS Service** + orquestrador | [`oficina-app`](https://github.com/ProblemaTheu/oficina-app) (este) | PostgreSQL | Clientes, veículos, catálogo, estoque com **reserva**, ciclo de vida da OS e **orquestração da saga** |
+| **Billing Service** | [`oficina-billing`](https://github.com/ProblemaTheu/oficina-billing) | PostgreSQL (instância própria) | Orçamento, aprovação/recusa, cobrança no **Mercado Pago** (Checkout Pro, API de Orders), estorno |
+| **Execution Service** | [`oficina-execution`](https://github.com/ProblemaTheu/oficina-execution) | **DynamoDB** (NoSQL) | Fila de diagnóstico e reparo, API do mecânico |
+
+```mermaid
+flowchart LR
+    os["OS Service<br/>+ orquestrador"] -- "comandos" --> qb[["billing-commands.fifo"]] --> bill["Billing"]
+    os -- "comandos" --> qe[["execution-commands.fifo"]] --> exec["Execution"]
+    bill -- "respostas" --> qr[["os-saga-replies.fifo"]]
+    exec -- "respostas" --> qr
+    qr --> os
+    bill <-- "Orders API · webhook" --> mp["Mercado Pago"]
+    os --- pgos[("PostgreSQL OS")]
+    bill --- pgb[("PostgreSQL Billing")]
+    exec --- ddb[("DynamoDB")]
+```
+
+Nenhum serviço lê o banco de outro: toda colaboração passa pelas filas (comandos e respostas da saga) ou por REST autenticado com o mesmo JWT. O desenho completo — componentes na AWS, posse de dados, sequências e catálogo de mensagens — está em **[docs/planejamentos/fase-4/arquitetura.md](docs/planejamentos/fase-4/arquitetura.md)**; as decisões em **[RFC-005](docs/rfcs/RFC-005-decomposicao-em-microsservicos.md)**, **[RFC-006](docs/rfcs/RFC-006-saga-e-consistencia-distribuida.md)** e nas **[ADRs 009–016](docs/architecture-decisions.md#adr-009--banco-por-serviço-postgresql-os-billing-e-dynamodb-execution)**.
+
+### Saga Pattern — por que orquestrada
+
+O fluxo da OS é **linear** (diagnóstico → orçamento → aprovação → pagamento → reparo), tem **três participantes** e inclui **esperas humanas** (aprovação do cliente e pagamento). Nesse cenário a saga **orquestrada** vence a coreografada em tudo que importa:
+
+| Critério | Orquestrada (escolhida) | Coreografada |
+|---|---|---|
+| Onde está o fluxo | Uma máquina de estados pura, num só arquivo ([`orquestrador.go`](internal/application/saga/orquestrador.go)) | Implícito, espalhado pelos *handlers* dos 3 serviços |
+| Quem decide compensar | O orquestrador, com a lista de etapas concluídas na mão | Cada serviço precisa ouvir as falhas dos outros |
+| Estado de uma OS no meio do caminho | `SELECT * FROM sagas_os WHERE os_id = …` + histórico em `sagas_os_etapas` | Reconstruir a partir de eventos em 3 bancos |
+| Esperas humanas com prazo | Natural: estado + `prazo_em` | Ninguém é dono do timer |
+| Acoplamento | O OS conhece os comandos dos outros (catálogo explícito) | Cada serviço conhece os eventos dos outros |
+| Muitos participantes | Pior | Melhor |
+
+O custo assumido — o OS Service conhece o contrato de comandos do Billing e do Execution — fica explícito no [catálogo de mensagens](docs/planejamentos/fase-4/arquitetura.md#52-catálogo). A argumentação completa está na [RFC-006](docs/rfcs/RFC-006-saga-e-consistencia-distribuida.md).
+
+**Máquina de estados**
+
+```mermaid
+stateDiagram-v2
+    [*] --> DIAGNOSTICO_PENDENTE: POST /v1/work-orders (T1: OS + reserva + IniciarDiagnostico na mesma TX)
+    DIAGNOSTICO_PENDENTE --> ORCAMENTO_PENDENTE: DiagnosticoConcluido (T2)
+    ORCAMENTO_PENDENTE --> AGUARDANDO_APROVACAO: OrcamentoGerado (T3)
+    AGUARDANDO_APROVACAO --> AGUARDANDO_PAGAMENTO: OrcamentoAprovado (T4)
+    AGUARDANDO_PAGAMENTO --> EXECUCAO_PENDENTE: PagamentoConfirmado (T5)
+    EXECUCAO_PENDENTE --> EM_EXECUCAO: ExecucaoIniciada (T6, pivô, baixa do estoque)
+    EM_EXECUCAO --> CONCLUIDA: ExecucaoConcluida (T7)
+    DIAGNOSTICO_PENDENTE --> COMPENSANDO: DiagnosticoFalhou
+    ORCAMENTO_PENDENTE --> COMPENSANDO: OrcamentoFalhou
+    AGUARDANDO_APROVACAO --> COMPENSANDO: OrcamentoRecusado
+    AGUARDANDO_PAGAMENTO --> COMPENSANDO: PagamentoRecusado
+    EXECUCAO_PENDENTE --> COMPENSANDO: ExecucaoFalhou
+    COMPENSANDO --> COMPENSADA: compensações confirmadas + reserva liberada
+    CONCLUIDA --> [*]
+    COMPENSADA --> [*]
+```
+
+**Compensações** — sequenciais, em ordem inversa, cada uma esperando a confirmação da anterior:
+
+| Falha em | Compensações (nesta ordem) | Resultado |
+|---|---|---|
+| T1 — peça sem saldo | — (a transação local não comita) | `422`, nenhuma saga |
+| T2 — diagnóstico falhou | `LiberarReserva` (local) | OS `cancelada` |
+| T3 — orçamento falhou | `CancelarTarefas` → `LiberarReserva` | OS `cancelada` |
+| T4 — **cliente recusou o orçamento** | `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada` |
+| T5 — **pagamento recusado** | `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada`, order do MP cancelada |
+| T6 — **falha ao iniciar o reparo** | `EstornarPagamento` → `CancelarOrcamento` → `CancelarTarefas` → `LiberarReserva` | OS `cancelada`, **refund** no MP |
+| Depois de T6 | — **pivô**: peças já baixadas, carro desmontado; trata-se na oficina | — |
+
+**Garantias de consistência**
+
+- **Transactional Outbox:** estado da saga, mudança da OS e comando seguinte gravados na **mesma transação**; um *relay* publica a outbox no SQS ([ADR-012](docs/architecture-decisions.md#adr-012--transactional-outbox--inbox-idempotente-relay-com-líder-único)).
+- **Inbox idempotente:** toda mensagem consumida é marcada em `mensagens_processadas` na transação do efeito — reentrega do SQS não duplica nada.
+- **Ordem por saga:** `MessageGroupId = saga_id` nas filas FIFO; relay com líder único (*advisory lock* do Postgres).
+- **Concorrência:** lock otimista em `sagas_os.versao`; réplicas do OS podem consumir em paralelo.
+- **Pagamento tardio:** um `PagamentoConfirmado` que chega com a saga já compensando é **estornado** — o cliente nunca fica pagando por OS cancelada.
+- **Falha de compensação:** reentrega até 5 vezes, depois DLQ; a saga fica em `COMPENSANDO` até o reprocessamento. Nunca vira `COMPENSADA` sem todas as confirmações.
+
+### Rodando a saga localmente
+
+Com os três repositórios lado a lado (`…/oficina-app`, `…/oficina-billing`, `…/oficina-execution`), sobe tudo — 3 serviços, 2 Postgres, LocalStack (SQS + DynamoDB), Mailpit e o stub do Mercado Pago:
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.saga.yml --profile saga up -d --build
+./scripts/demo-saga.sh feliz        # ou: falha-reparo | recusa | cartao-recusado | todos
+```
+
+| Porta | Serviço |
+|---|---|
+| 8080 | OS Service |
+| 8081 | Billing |
+| 8082 | Execution |
+| 8090 | Stub do Mercado Pago (API de Orders + página de checkout) |
+| 8025 | Mailpit (e-mails de orçamento) |
+| 4566 | LocalStack |
+
+A coleção Postman do fluxo completo está em [`docs/postman/fase-4-saga.json`](docs/postman/fase-4-saga.json), com os ambientes [`local`](docs/postman/local.postman_environment.json) e [`prod`](docs/postman/prod.postman_environment.json). Pelo Collection Runner, rode as pastas 0–6 em ordem (os passos assíncronos repetem sozinhos enquanto a saga avança); a pasta 7 traz os cenários de compensação.
+
+### Testes BDD
+
+Os quatro cenários da saga — caminho feliz, falha no reparo com estorno, orçamento recusado e cartão recusado — estão em [`features/saga_os.feature`](features/saga_os.feature) (Gherkin em português, `godog`). Rodam **só por HTTP** contra os três serviços reais:
+
+```bash
+docker compose -f docker-compose.saga.yml --profile saga up -d --build
+go test -tags bdd ./features/ -v
+```
+
+No CI, o workflow [`bdd.yml`](.github/workflows/bdd.yml) faz checkout dos três repositórios, sobe o compose e roda os cenários a cada PR.
 
 ---
 
@@ -658,14 +778,17 @@ Toda OS percorre um fluxo de status com transições controladas. Tentativas de 
 | Documento | Conteúdo |
 |-----------|----------|
 | [docs/objectives.md](docs/objectives.md) | Objetivos do sistema, escopo, requisitos funcionais e não-funcionais |
+| [docs/planejamentos/fase-4/arquitetura.md](docs/planejamentos/fase-4/arquitetura.md) | Arquitetura da Fase 4: os 3 microsserviços, saga (estados, etapas, compensações), sequências, catálogo de mensagens e modelo de dados por serviço |
 | [docs/planejamentos/fase-3/arquitetura.md](docs/planejamentos/fase-3/arquitetura.md) | Arquitetura da Fase 3: diagrama de componentes (AWS), sequência da autenticação e da abertura de OS, e o modelo ER |
-| [docs/rfcs/](docs/rfcs/) | RFCs: escolha da nuvem, banco de dados, autenticação e estratégia de ambientes |
-| [docs/architecture-decisions.md](docs/architecture-decisions.md) | 8 ADRs: PostgreSQL, chi, oapi-codegen, EKS, HPA, padrão de comunicação, observabilidade (New Relic) e notificação por e-mail |
+| [docs/rfcs/](docs/rfcs/) | RFCs: escolha da nuvem, banco de dados, autenticação, estratégia de ambientes, decomposição em microsserviços e saga |
+| [docs/architecture-decisions.md](docs/architecture-decisions.md) | 16 ADRs: PostgreSQL, chi, oapi-codegen, EKS, HPA, padrão de comunicação, observabilidade, e-mail; e da Fase 4 — banco por serviço, SQS FIFO, saga orquestrada, outbox/inbox, mensageria duplicada, Mercado Pago, Lambda via REST e Pod Identity |
 | [docs/ubiquitous-language.md](docs/ubiquitous-language.md) | Glossário dos termos do domínio (linguagem ubíqua) |
 | [docs/ddd-aggregates.md](docs/ddd-aggregates.md) | Agregados DDD, entidades internas e invariantes |
 | [docs/bounded-contexts.md](docs/bounded-contexts.md) | Contextos delimitados e mapa de contextos |
 | [docs/openapi.yaml](docs/openapi.yaml) | Contrato OpenAPI completo da API |
 | [docs/postman_collection.json](docs/postman_collection.json) | Coleção Postman com todos os endpoints |
+| [docs/postman/fase-4-saga.json](docs/postman/fase-4-saga.json) | Coleção Postman da Fase 4: fluxo completo da saga nos 3 serviços |
+| [scripts/demo-saga.sh](scripts/demo-saga.sh) | Conduz os 4 cenários da saga no ambiente local |
 
 Os números de OS são gerados automaticamente no formato `OS-YYYY-NNNNN` (ex: `OS-2025-00001`).
 

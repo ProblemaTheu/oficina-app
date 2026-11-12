@@ -1,6 +1,6 @@
-# RFCs — Tech Challenge Fase 3
+# RFCs — Tech Challenge
 
-Este diretório reúne as **Request for Comments** (RFCs) da Fase 3: as decisões
+Este diretório reúne as **Request for Comments** (RFCs) das Fases 3 e 4: as decisões
 técnicas de maior impacto, registradas com o contexto, as alternativas
 consideradas e as consequências assumidas — no momento em que foram tomadas.
 
@@ -15,6 +15,8 @@ consideradas e as consequências assumidas — no momento em que foram tomadas.
 | [RFC-002](RFC-002-banco-de-dados.md) | Banco de dados gerenciado e modelo relacional | Aceita |
 | [RFC-003](RFC-003-autenticacao.md) | Estratégia de autenticação: CPF serverless, API Gateway e JWT | Aceita |
 | [RFC-004](RFC-004-estrategia-de-ambientes.md) | Estratégia de ambientes e CI/CD | Aceita |
+| [RFC-005](RFC-005-decomposicao-em-microsservicos.md) | Decomposição em microsserviços (Fase 4) | Aceita |
+| [RFC-006](RFC-006-saga-e-consistencia-distribuida.md) | Saga e consistência distribuída (Fase 4) | Aceita |
 
 ## Convenções
 
@@ -22,4 +24,5 @@ consideradas e as consequências assumidas — no momento em que foram tomadas.
 - Uma RFC aceita não é reescrita: se a decisão muda, cria-se uma nova RFC que
   **substitui** a anterior (registrando o número).
 - As decisões aqui sintetizam o planejamento detalhado em
-  [`docs/planejamentos/fase-3/`](../planejamentos/fase-3/).
+  [`docs/planejamentos/fase-3/`](../planejamentos/fase-3/) e
+  [`docs/planejamentos/fase-4/`](../planejamentos/fase-4/).
