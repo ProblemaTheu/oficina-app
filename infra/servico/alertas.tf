@@ -1,13 +1,46 @@
 # Alarme da DLQ (F4-7.4): mensagem que falhou 5× é falha de saga que ninguém
 # vai ver no APM. Métrica da AWS, então fica no CloudWatch (+ SNS).
 
-# Sem criptografia de propósito: o CloudWatch NÃO publica em tópico cifrado
-# com a chave gerenciada aws/sns (a key policy dela não pode liberar
-# cloudwatch.amazonaws.com) — o alarme falharia em silêncio. Uma CMK própria
-# custaria US$ 1/mês para proteger uma mensagem que só diz "há itens na DLQ";
-# o payload da mensagem continua na fila, que é cifrada.
+# Tópico cifrado com chave KMS PRÓPRIA. A chave gerenciada aws/sns não
+# serve: a key policy dela não pode liberar cloudwatch.amazonaws.com, e o
+# alarme falharia em silêncio ao publicar. US$ 1/mês enquanto o ambiente
+# existir.
+data "aws_iam_policy_document" "alertas_kms" {
+  statement {
+    sid       = "AdministracaoPelaConta"
+    actions   = ["kms:*"]
+    resources = ["*"] # numa key policy, "*" é a própria chave
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${local.conta}:root"]
+    }
+  }
+  statement {
+    sid       = "CloudWatchPublicaNoTopico"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.conta]
+    }
+  }
+}
+
+resource "aws_kms_key" "alertas" {
+  description             = "SNS de alertas do ${local.nome}"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.alertas_kms.json
+}
+
 resource "aws_sns_topic" "alertas" {
-  name = "${local.nome}-alertas"
+  name              = "${local.nome}-alertas"
+  kms_master_key_id = aws_kms_key.alertas.arn
 }
 
 resource "aws_sns_topic_subscription" "email" {
