@@ -85,7 +85,8 @@ services:
       DB_NAME: ${DB_NAME}
       JWT_SECRET: ${JWT_SECRET:?copie .env.example para .env}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:?copie .env.example para .env}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-token-interno-local}
+      # Rotas /internal/* (F4-1.5): desligadas (404) com menos de 32 caracteres.
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-token-interno-local-somente-para-desenvolvimento}
       NOTIFIER: ${NOTIFIER:-smtp}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025

@@ -66,6 +66,10 @@ func NovoServer(db *sql.DB, osOpts ...usecase.OSUseCaseOption) *Server {
 	}
 }
 
+// CasoDeUsoCliente expõe o caso de uso de clientes para as rotas internas
+// (/internal/*, F4-1.5), que ficam fora do OpenAPI público.
+func (s *Server) CasoDeUsoCliente() *usecase.ClientUseCase { return s.clientUseCase }
+
 // CasoDeUsoOS expõe o caso de uso de OS para os consumidores de mensagens da
 // saga (o orquestrador processa as respostas pelo mesmo caso de uso).
 func (s *Server) CasoDeUsoOS() *usecase.OrdemServicoUseCase { return s.osUseCase }

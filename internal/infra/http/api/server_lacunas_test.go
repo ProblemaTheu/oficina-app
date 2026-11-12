@@ -22,6 +22,13 @@ func TestNovoServer_ConstroiTodasAsDependencias(t *testing.T) {
 	}
 }
 
+func TestCasoDeUsoCliente_ExpoeOMesmoDoServer(t *testing.T) {
+	srv := NovoServer(nil)
+	if srv.CasoDeUsoCliente() != srv.clientUseCase {
+		t.Error("CasoDeUsoCliente deve devolver o caso de uso montado no construtor")
+	}
+}
+
 func TestGetClientsIdVehicles_ClienteInexistente(t *testing.T) {
 	f := novasFixtures()
 	cliR := &stubClienteRepo{err: &domainerros.ErrNaoEncontrado{Recurso: "cliente"}}
