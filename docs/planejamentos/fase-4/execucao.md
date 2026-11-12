@@ -26,12 +26,14 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 
 | Item | Valor |
 |---|---|
+| Conta AWS (nova) | `584481982243` · usuário IAM `admin-cli` · membro da organization `o-7hzscs8ddo` (management `564612156833`) · caso de suporte **179445505200032** (restrição de conta nova) |
+| Bucket de state | `oficina-tfstate-584481982243` |
 | Repo Billing | `ProblemaTheu/oficina-billing` |
 | Repo Execution | `ProblemaTheu/oficina-execution` |
 | Aplicação Mercado Pago | `7172532218475199` (Checkout Pro · API de Orders · conta do vendedor de teste) · vendedor de teste `TESTUSER38172746988478263` (id `3832864978`) · comprador de teste id `3832647366` |
 | Segredo do Billing | `oficina/prod/billing` (`db_password`, `mp_access_token`, `mp_webhook_secret`, `webhook_secret`) |
 | Token interno | `oficina/prod/internal` |
-| Filas | `[URLs]` |
+| Filas | `os-saga-replies.fifo`, `billing-commands.fifo`, `execution-commands.fifo` (+ `-dlq.fifo`) — URLs na SSM `/oficina/prod/{os,billing,execution}/fila-*-url` |
 | Tabela DynamoDB | `execution-tarefas` |
 | RDS Billing | `[endpoint]` |
 | CLBs | OS `[dns]` · Billing `[dns]` · Execution `[dns]` |
@@ -46,8 +48,8 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 | Branch protection nos repos existentes | ✅ ativa (confirmado em 31/10) |
 | Repos novos criados (`oficina-billing`, `oficina-execution` — sem o sufixo `-service`) | ✅ 10/11 14:38, **vazios** (sem commit, sem `main`) |
 | Mesmo ruleset nos 2 repos novos (+ `required_status_checks`) | ⬜ — só depois do 1º commit na `main` |
-| Roles OIDC `gha-oficina-billing` / `gha-oficina-execution` | ⬜ [infra-k8s#3](https://github.com/ProblemaTheu/oficina-infra-k8s/pull/3) |
-| 3º nó, access entries e namespaces `billing-prod` / `execution-prod` | ⬜ [infra-k8s#4](https://github.com/ProblemaTheu/oficina-infra-k8s/pull/4) (depois do #3) |
+| Roles OIDC `gha-oficina-billing` / `gha-oficina-execution` | ✅ [infra-k8s#3](https://github.com/ProblemaTheu/oficina-infra-k8s/pull/3) (bootstrap reaplicado na conta nova) |
+| 3º nó, access entries e namespaces `billing-prod` / `execution-prod` | ⬜ [infra-k8s#5](https://github.com/ProblemaTheu/oficina-infra-k8s/pull/5) — plan ok (86 to add); merge depois da quota de vCPU |
 | Environment `prod` com reviewer | ⬜ |
 | `soat-architecture` nos repos | ⬜ |
 | Chave do Sonar `tech-challenge-1` → `oficina-app` | ⬜ |
@@ -58,6 +60,32 @@ Confirmar no D1 (ter 10/11) — o ambiente pode ter sido destruído após a entr
 ---
 
 ## Registro
+
+## 12/11 — Deploy pronto no código; conta AWS nova restrita
+
+**Entregável verificado:** os 3 serviços com `k8s/` (base + overlay prod), `infra/` próprio e CD independente (testes com gate de 80% → imagem → deploy no EKS → smoke → rollback), mergeados e com o CD verde no `main` (deploy pulado por `DEPLOY_ENABLED`): imagens `problematheu/oficina-billing:9df3b43` e `problematheu/oficina-execution:3c65f67` publicadas. Lambda sem acesso ao banco do OS (F4-1.5) e `SagaEvent` (F4-7.2) implementados. Push direto na `main` rejeitado nos 3 repos de serviço (`docs/evidencias/`).
+
+| PR | Conteúdo |
+|---|---|
+| app [#30](https://github.com/ProblemaTheu/oficina-app/pull/30) · billing [#4](https://github.com/ProblemaTheu/oficina-billing/pull/4) · execution [#5](https://github.com/ProblemaTheu/oficina-execution/pull/5) | F4-6.1–6.3: `infra/` (filas + DLQ + alarme, RDS do Billing, DynamoDB, Pod Identity, SSM), manifestos, CD |
+| app [#31](https://github.com/ProblemaTheu/oficina-app/pull/31) · lambda-auth [#6](https://github.com/ProblemaTheu/oficina-lambda-auth/pull/6) | F4-1.5: `GET /internal/clientes/por-cpf/{cpf}`; Lambda fora da VPC, sem DSN; rotas `/billing/*` e `/execution/*` no Gateway |
+| app [#32](https://github.com/ProblemaTheu/oficina-app/pull/32) | F4-7.2/7.3: `SagaEvent` + `observability/dashboard-saga.json` + NRQL do alerta |
+| infra-k8s [#5](https://github.com/ProblemaTheu/oficina-infra-k8s/pull/5) · infra-db [#4](https://github.com/ProblemaTheu/oficina-infra-db/pull/4) · lambda-auth [#5](https://github.com/ProblemaTheu/oficina-lambda-auth/pull/5) | Recriados a partir de branches do repo (substituem os PRs de fork) |
+
+### Ajustes em relação ao backlog
+| Escrito no backlog | O que foi feito | Por quê |
+|---|---|---|
+| `SagaEvent` com `sagaId`, `estado`… e painéis por `estado IN ('CONCLUIDA','COMPENSADA')` | Atributos em snake_case (como `OrdemServicoEvent` e os logs) e `terminou = true` só na transição terminal | A última compensação registra 2 etapas na mesma transição e respostas atrasadas chegam com a saga já terminal: contar por `estado` inflava os desfechos |
+| DNS do CLB do OS fixo em `backend_url` (lambda-auth) e endpoint do RDS fixo no overlay prod | CLBs descobertos pela tag `kubernetes.io/service-name`; `DB_HOST` e filas lidos da SSM pelo CD | Os dois valores eram da conta antiga e mudam a cada recriação |
+| Execution com 1 réplica | 1 réplica **e** estratégia `Recreate` | O surge de um rolling update também colocaria 2 relays sem líder ao mesmo tempo |
+| SNS do alarme da DLQ sem detalhe | SNS cifrado com **CMK própria** | A chave gerenciada `aws/sns` não permite o CloudWatch publicar (alarme falharia em silêncio); sem cifrar, Sonar e Trivy reprovam |
+
+### Achados que custaram tempo
+- **Conta nova restrita pela AWS:** quota de vCPU On-Demand = **0** (padrão 5), `RequestServiceQuotaIncrease` e Lambda com `AccessDenied` mesmo para `AdministratorAccess`. Não é SCP (`simulate-principal-policy` mostra `AllowedByOrganizations: true`). A API de suporte exige plano pago → caso aberto pelo console (*Account and billing*).
+- **PR de fork não roda `terraform plan`:** workflows de `pull_request` vindos de fork não recebem as *variables* do repo nem `id-token: write` — o plan falhava com `Input required and not supplied: aws-region`, com qualquer valor de variável. Resolvido com Write nos repos de infra e PRs a partir de branches do próprio repo. Os plans autenticam com as roles `-plan` da conta nova (infra-k8s: `86 to add`; infra-db e lambda-auth falham só por SSM que o infra-k8s ainda vai criar).
+- **gitleaks varre todos os commits do PR:** placeholder `troque-me-com-pelo-menos-32-caracteres` foi pego por `generic-api-key` (entropia); corrigir num commit novo não basta — os branches foram reescritos.
+- **Teste de relay instável** nos 3 repos (`publicadas 28 de 50`): 50 ciclos fixos com 3 réplicas disputando a liderança; em runner lento quase todo ciclo volta sem publicar. Agora drena a outbox com prazo.
+- **`soat-architecture`** aparece como colaborador só no `oficina-app` (404 nos outros 5) — conferir convites pendentes (exige admin).
 
 ## 11/11 — Código da saga e documentação concluídos (conta AWS perdida)
 
