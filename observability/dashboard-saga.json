@@ -1,0 +1,214 @@
+{
+  "name": "Oficina — Saga da OS (Fase 4)",
+  "description": "Desfechos, compensações e tempo por etapa da saga orquestrada (SagaEvent) e saúde dos 3 microsserviços. Versionado em oficina-app/observability/dashboard-saga.json.",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "Saga",
+      "description": null,
+      "widgets": [
+        {
+          "title": "Sagas por desfecho",
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  8465573
+                ],
+                "query": "SELECT count(*) FROM SagaEvent WHERE terminou IS true FACET estado TIMESERIES AUTO SINCE 1 day ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Taxa de compensação",
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  8465573
+                ],
+                "query": "SELECT percentage(count(*), WHERE estado = 'COMPENSADA') AS 'Compensadas' FROM SagaEvent WHERE terminou IS true SINCE 1 day ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Duração ponta a ponta (s)",
+          "layout": {
+            "column": 9,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  8465573
+                ],
+                "query": "SELECT percentile(duracao_total_segundos, 50, 95) FROM SagaEvent WHERE terminou IS true AND estado = 'CONCLUIDA' SINCE 1 day ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Onde as sagas falham",
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  8465573
+                ],
+                "query": "SELECT count(*) FROM SagaEvent WHERE resultado = 'falha' FACET etapa, motivo SINCE 1 day ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Tempo médio por etapa (s)",
+          "layout": {
+            "column": 5,
+            "row": 4,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  8465573
+                ],
+                "query": "SELECT average(duracao_etapa_segundos) FROM SagaEvent WHERE resultado = 'ok' AND duracao_etapa_segundos > 0 FACET etapa SINCE 1 day ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Transições recentes",
+          "layout": {
+            "column": 9,
+            "row": 4,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.table"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  8465573
+                ],
+                "query": "SELECT saga_id, os_id, etapa, estado_anterior, estado, resultado, motivo, tipo_mensagem FROM SagaEvent SINCE 1 day ago LIMIT 50"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Latência p95 por serviço (ms)",
+          "layout": {
+            "column": 1,
+            "row": 7,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  8465573
+                ],
+                "query": "SELECT percentile(duration * 1000, 95) FROM Transaction WHERE appName IN ('oficina-api-prod','oficina-billing-prod','oficina-execution-prod') FACET appName TIMESERIES AUTO SINCE 1 day ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Erros por serviço (%)",
+          "layout": {
+            "column": 7,
+            "row": 7,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountIds": [
+                  8465573
+                ],
+                "query": "SELECT percentage(count(*), WHERE error IS true) FROM Transaction WHERE appName IN ('oficina-api-prod','oficina-billing-prod','oficina-execution-prod') FACET appName TIMESERIES AUTO SINCE 1 day ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variables": []
+}

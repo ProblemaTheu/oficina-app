@@ -45,6 +45,8 @@ func (uc *OrdemServicoUseCase) ProcessarRespostaSaga(ctx context.Context, r Resp
 
 	var (
 		dec      saga.Decisao
+		antes    saga.Saga
+		agora    time.Time
 		os       *entity.OrdemServicoCompleta
 		duplicat bool
 	)
@@ -66,7 +68,8 @@ func (uc *OrdemServicoUseCase) ProcessarRespostaSaga(ctx context.Context, r Resp
 			return err
 		}
 
-		dec = saga.Decidir(*s, r.Tipo, dados, uc.saga.Agora())
+		antes, agora = *s, uc.saga.Agora()
+		dec = saga.Decidir(*s, r.Tipo, dados, agora)
 		if dec.MudouSaga {
 			if err := uc.saga.Sagas.Atualizar(ctx, dec.Saga, s.Versao); err != nil {
 				return err
@@ -112,6 +115,12 @@ func (uc *OrdemServicoUseCase) ProcessarRespostaSaga(ctx context.Context, r Resp
 	})
 	if err != nil {
 		return err
+	}
+
+	// SagaEvent só depois do commit e só para resposta nova: uma duplicata
+	// não é transição (F4-7.2).
+	if !duplicat {
+		uc.registrarEventosSaga(ctx, eventosDaDecisao(antes, dec, r.Tipo, agora)...)
 	}
 
 	log := logging.Log(ctx).With("os_id", r.OsID, "saga_id", r.SagaID, "tipo_mensagem", r.Tipo)

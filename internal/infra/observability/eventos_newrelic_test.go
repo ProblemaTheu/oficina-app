@@ -93,3 +93,53 @@ func TestRegistrarEventoOS_ComTransacao(t *testing.T) {
 		Motivo:         "atualizacao_status",
 	})
 }
+
+func TestMontarAtributosSaga_TransicaoTerminal(t *testing.T) {
+	a := montarAtributosSaga(usecase.EventoSaga{
+		SagaID: "s1", OsID: "o1", EstadoAnterior: "COMPENSANDO", Estado: "COMPENSADA",
+		Etapa: "T1", Resultado: "compensada", TipoMensagem: "OrcamentoCancelado",
+		DuracaoEtapa: 1.5, DuracaoTotal: 42, Terminou: true,
+	}, "trace-1", "span-1")
+
+	esperado := map[string]interface{}{
+		"saga_id": "s1", "os_id": "o1", "estado_anterior": "COMPENSANDO", "estado": "COMPENSADA",
+		"etapa": "T1", "resultado": "compensada", "tipo_mensagem": "OrcamentoCancelado",
+		"duracao_etapa_segundos": 1.5, "duracao_total_segundos": 42.0, "terminou": true,
+		"trace.id": "trace-1", "span.id": "span-1",
+	}
+	if len(a) != len(esperado) {
+		t.Fatalf("atributos = %v", a)
+	}
+	for k, v := range esperado {
+		if a[k] != v {
+			t.Errorf("%s = %v, quer %v", k, a[k], v)
+		}
+	}
+}
+
+// Abertura: sem estado anterior, motivo nem tipo de mensagem; duração total só
+// em transição terminal; sem trace, sem trace.id.
+func TestMontarAtributosSaga_OpcionaisAusentes(t *testing.T) {
+	a := montarAtributosSaga(usecase.EventoSaga{SagaID: "s1", OsID: "o1", Estado: "DIAGNOSTICO_PENDENTE", Etapa: "T1", Resultado: "ok"}, "", "")
+	for _, k := range []string{"estado_anterior", "motivo", "tipo_mensagem", "duracao_total_segundos", "trace.id", "span.id"} {
+		if _, ok := a[k]; ok {
+			t.Errorf("%s não deveria estar presente: %v", k, a)
+		}
+	}
+	if a["terminou"] != false {
+		t.Errorf("terminou = %v", a["terminou"])
+	}
+}
+
+func TestRegistrarEventoSaga_SemEComTransacao(t *testing.T) {
+	NovoEventRecorder().RegistrarEventoSaga(context.Background(), usecase.EventoSaga{SagaID: "s1"})
+
+	app, err := newrelic.NewApplication(newrelic.ConfigAppName("test"), newrelic.ConfigEnabled(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	txn := app.StartTransaction("teste")
+	defer txn.End()
+	NovoEventRecorder().RegistrarEventoSaga(newrelic.NewContext(context.Background(), txn),
+		usecase.EventoSaga{SagaID: "s1", Estado: "CONCLUIDA", Terminou: true})
+}
