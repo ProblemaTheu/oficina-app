@@ -1,6 +1,6 @@
 name: CD
 
-# Build → Docker Hub → EKS. Dispara em push na `main` (ou tag v*) e sob
+# Testes → build → Docker Hub → EKS. Dispara em push na `main` (ou tag v*) e sob
 # demanda; `homolog` é só integração (o ambiente de homologação foi
 # dispensado — corte 10 da Fase 3), então não implanta.
 #
@@ -33,10 +33,38 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────
+  # F4-6.1 — Testes antes do build: "deploy automatizado com validação de
+  # testes" visível no mesmo run. Mesmo gate dos outros dois serviços.
+  # ─────────────────────────────────────────────
+  testes:
+    name: Testes (gate de 80%)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Testes unitários com -race e cobertura ≥ 80%
+        id: cobertura
+        run: ./scripts/cobertura.sh
+
+      - name: Resumo
+        if: always()
+        run: |
+          echo "### OS Service — testes antes do deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "Cobertura unitária (critério do Sonar): **${{ steps.cobertura.outputs.cobertura }}%** (mínimo 80%). Abaixo disso a imagem nem é construída." >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────
   # F2-6.2 — Build + push da imagem no Docker Hub
   # ─────────────────────────────────────────────
   build-and-push:
     name: Build e push da imagem
+    needs: testes
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.sha_tag }}
@@ -117,6 +145,28 @@ jobs:
             --query Parameter.Value --output text)
           aws eks update-kubeconfig --name "$CLUSTER" --region "${{ vars.AWS_REGION }}"
 
+      # F4-6.1 — o que depende do ambiente vem da SSM, não de endpoint fixo
+      # no overlay: o RDS do oficina-infra-db, a fila de respostas do
+      # infra/servico deste repo e as filas de entrada do Billing e do
+      # Execution (infra/ de cada um). Parâmetro ausente falha aqui, antes de
+      # mexer no cluster, com a instrução certa.
+      - name: Config do ambiente (SSM → ConfigMap oficina-ambiente)
+        run: |
+          ssm() {
+            aws ssm get-parameter --name "$1" --query Parameter.Value --output text \
+              || { echo "::error::parâmetro SSM $1 ausente — $2"; exit 1; }
+          }
+          DB_HOST=$(ssm /oficina/prod/db/host "aplique o oficina-infra-db")
+          FILA_RESPOSTAS_URL=$(ssm /oficina/prod/os/fila-respostas-url "aplique o infra/servico deste repositório")
+          FILA_BILLING_URL=$(ssm /oficina/prod/billing/fila-comandos-url "aplique o infra/ do oficina-billing")
+          FILA_EXECUTION_URL=$(ssm /oficina/prod/execution/fila-comandos-url "aplique o infra/ do oficina-execution")
+          kubectl -n "$NAMESPACE" create configmap oficina-ambiente \
+            --from-literal=DB_HOST="$DB_HOST" \
+            --from-literal=FILA_RESPOSTAS_URL="$FILA_RESPOSTAS_URL" \
+            --from-literal=FILA_BILLING_URL="$FILA_BILLING_URL" \
+            --from-literal=FILA_EXECUTION_URL="$FILA_EXECUTION_URL" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Instalar kustomize
         run: |
           if ! command -v kustomize >/dev/null; then
@@ -142,12 +192,18 @@ jobs:
         id: rollout
         run: kubectl -n "$NAMESPACE" rollout status deployment/api --timeout=300s
 
+      # Smoke test de dentro do pod (/health/ready inclui o banco). Não depende
+      # do DNS do Classic Load Balancer, que leva minutos na primeira criação.
+      - name: Smoke test (/health/ready)
+        id: smoke
+        run: kubectl -n "$NAMESPACE" exec deployment/api -- wget -qO- http://localhost:8080/health/ready
+
       # Rollout que não converge (imagem quebrada, probe falhando) volta para a
       # revisão anterior sozinho — sem deixar o ambiente pela metade. Só depois
       # do apply: falha antes disso não mexeu em nada, e desfazer reverteria
       # um deploy saudável.
       - name: Rollback em caso de falha
-        if: failure() && (steps.apply.outcome == 'failure' || steps.rollout.outcome == 'failure')
+        if: failure() && (steps.apply.outcome == 'failure' || steps.rollout.outcome == 'failure' || steps.smoke.outcome == 'failure')
         run: |
           kubectl -n "$NAMESPACE" rollout undo deployment/api
           kubectl -n "$NAMESPACE" rollout status deployment/api --timeout=180s

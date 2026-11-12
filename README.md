@@ -514,6 +514,29 @@ terraform -chdir=infra/environments/aws plan
 
 Recursos criados, variáveis e instruções de destroy: [infra/README.md](infra/README.md).
 
+### Fase 4 — infraestrutura do OS Service (`infra/servico`)
+
+Cada microsserviço provisiona **a sua** parte da saga no próprio repositório (F4-6.2). A do OS Service:
+
+| Recurso | Para quê |
+|---|---|
+| `os-saga-replies.fifo` + DLQ (redrive após 5) | Fila de entrada do orquestrador: respostas do Billing e do Execution |
+| Role `oficina-os-pod` + **EKS Pod Identity** (`oficina-prod` / SA `api`) | Envia só para `billing-commands.fifo` e `execution-commands.fifo` (ARN por convenção, sem ler o state dos outros) e consome só a própria fila |
+| Alarme da DLQ (CloudWatch + SNS) | F4-7.4 |
+| SSM `/oficina/prod/os/fila-respostas-url` | Lido pelo CD do Billing e do Execution |
+
+O CD gera o ConfigMap `oficina-ambiente` a partir da SSM (`DB_HOST` do `oficina-infra-db` e as três URLs de fila). Assim nenhum endpoint fica fixo no overlay. O Secret continua vindo de `scripts/prod-secret.sh`.
+
+**Ordem da primeira subida da Fase 4** (os três `infra/` aplicam em qualquer ordem entre si):
+
+```bash
+# 1. plataforma: oficina-infra-k8s (cluster, namespaces, access entries) → oficina-infra-db (RDS do OS)
+# 2. infra de cada serviço — aqui, no oficina-billing e no oficina-execution:
+terraform -chdir=infra/servico init && terraform -chdir=infra/servico apply
+# 3. Secrets: ./scripts/prod-secret.sh aqui (cria o JWT compartilhado), depois nos outros dois
+# 4. deploy: variable DEPLOY_ENABLED=true nos três repositórios e merge/`gh workflow run cd.yml`
+```
+
 ---
 
 ## Dados de seed

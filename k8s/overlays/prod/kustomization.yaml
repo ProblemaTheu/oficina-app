@@ -1,7 +1,9 @@
 # Overlay de produção — EKS + RDS na AWS.
 #
 # Diferenças em relação ao local:
-#   - sem Postgres in-cluster: DB_HOST aponta para o RDS
+#   - sem Postgres in-cluster: DB_HOST (endpoint do RDS) e as URLs das filas
+#     da saga vêm do ConfigMap oficina-ambiente, gerado pelo CD a partir da
+#     SSM — nada de endpoint fixo que muda a cada conta/recriação
 #   - sem Mailpit: NOTIFIER=log (corte 5 — SES ficou fora do escopo, e a
 #     integração SMTP é demonstrada no ambiente local)
 #   - Service type LoadBalancer (NLB): corte 1, sem VPC Link nem ALB interno
@@ -38,7 +40,6 @@ patches:
       metadata:
         name: oficina-config
       data:
-        DB_HOST: oficina-prod.c6v88i2ao3cy.us-east-1.rds.amazonaws.com
         DB_PORT: "5432"
         DB_NAME: oficina
         # O RDS recusa conexão sem TLS (rds.force_ssl=1). "require" cifra o
@@ -46,6 +47,21 @@ patches:
         # seria o passo seguinte, e depende de montar o certificado.
         DB_SSLMODE: require
         NOTIFIER: log
+        # O SDK da AWS não descobre a região sozinho com Pod Identity.
+        AWS_REGION: us-east-1
+
+  # ConfigMap do ambiente (CD: SSM → oficina-ambiente) entre o estático e o
+  # Secret: envFrom posterior prevalece, então DB_HOST e FILA_* daqui
+  # sobrescrevem o oficina-config. Só em prod: no kind ele não existe.
+  - target:
+      kind: Deployment
+      name: api
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/1
+        value:
+          configMapRef:
+            name: oficina-ambiente
 
   # Expõe a API pela borda — Classic Load Balancer, de propósito.
   #

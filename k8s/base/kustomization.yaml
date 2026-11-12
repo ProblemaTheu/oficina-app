@@ -5,6 +5,7 @@ namespace: oficina
 
 resources:
   - namespace.yaml
+  - serviceaccount.yaml
   - configmap.yaml
   - deployment.yaml
   - service.yaml
