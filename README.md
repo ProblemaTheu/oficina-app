@@ -851,6 +851,9 @@ O banco é criado e versionado via migrations em `internal/infra/database/migrat
 ## Testes
 
 ```bash
+# Gate de cobertura (o mesmo do CI/CD)
+./scripts/cobertura.sh
+
 # Rodar todos os testes
 go test ./...
 
@@ -861,7 +864,15 @@ go test -v ./...
 go test ./internal/application/usecase/...
 ```
 
-Os testes cobrem a máquina de estados das ordens de serviço (`ordem_servico_usecase_test.go`), validando transições válidas e inválidas com repositórios mockados (sem necessidade de banco de dados).
+**Cobertura unitária: 97,9%** no critério do Sonar (mínimo 80%, gate em `./scripts/cobertura.sh`). Entre outros, os testes cobrem a máquina de estados das ordens de serviço (`ordem_servico_usecase_test.go`), validando transições válidas e inválidas com repositórios mockados (sem necessidade de banco de dados).
+
+### Evidências de cobertura e de proteção da `main`
+
+![Cobertura de testes unitários por pacote](docs/evidencias/cobertura.png)
+
+Gerado por `./scripts/cobertura.sh` (o mesmo gate de **80%** que roda no CI e no job de testes do CD, antes do build da imagem). A cobertura publicada no SonarCloud usa o mesmo critério: badge **Coverage** no topo deste README.
+
+A `main` é protegida por ruleset: só entra por **pull request aprovado**, sem push direto, sem force-push e sem deleção. Prova em [`docs/evidencias/push-main-rejeitado.txt`](docs/evidencias/push-main-rejeitado.txt): `push declined due to repository rule violations`.
 
 ---
 
