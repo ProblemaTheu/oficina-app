@@ -344,6 +344,7 @@ func (uc *OrdemServicoUseCase) criarOSComSaga(ctx context.Context, os *entity.Or
 	}
 
 	logging.Log(ctx).Info("OS aberta e saga iniciada", "os_id", os.ID, "saga_id", nova.ID, "numero", os.Numero)
+	uc.registrarEventosSaga(ctx, eventoAbertura(nova))
 	uc.registrarEvento(ctx, EventoOS{
 		OsID:      os.ID.String(),
 		Numero:    os.Numero,

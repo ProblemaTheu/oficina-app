@@ -69,3 +69,58 @@ func montarAtributos(e usecase.EventoOS, traceID, spanID string) map[string]inte
 	}
 	return atributos
 }
+
+// TipoEventoSaga é o eventType das transições da saga (F4-7.2). O dashboard
+// observability/dashboard-saga.json e o alerta de compensação consultam este
+// nome.
+const TipoEventoSaga = "SagaEvent"
+
+// RegistrarEventoSaga publica um SagaEvent. Mesmo contrato do
+// RegistrarEventoOS: no-op sem transação New Relic no contexto (no consumidor
+// da fila a transação é a "sqs/<fila>" aberta pelo mensageria.Tracer), e sem
+// dado pessoal no evento.
+func (NewRelicEventRecorder) RegistrarEventoSaga(ctx context.Context, e usecase.EventoSaga) {
+	txn := newrelic.FromContext(ctx)
+	if txn == nil {
+		return
+	}
+	app := txn.Application()
+	if app == nil {
+		return
+	}
+	md := txn.GetTraceMetadata()
+	app.RecordCustomEvent(TipoEventoSaga, montarAtributosSaga(e, md.TraceID, md.SpanID))
+}
+
+// montarAtributosSaga converte um EventoSaga no mapa do custom event. Nomes em
+// snake_case, como no OrdemServicoEvent e nos logs (saga_id, os_id): a mesma
+// chave filtra Logs e eventos. Pura, para ser testável sem o agente.
+func montarAtributosSaga(e usecase.EventoSaga, traceID, spanID string) map[string]interface{} {
+	a := map[string]interface{}{
+		"saga_id":                e.SagaID,
+		"os_id":                  e.OsID,
+		"estado":                 e.Estado,
+		"etapa":                  e.Etapa,
+		"resultado":              e.Resultado,
+		"terminou":               e.Terminou,
+		"duracao_etapa_segundos": e.DuracaoEtapa,
+	}
+	opcionais := map[string]string{
+		"estado_anterior": e.EstadoAnterior,
+		"motivo":          e.Motivo,
+		"tipo_mensagem":   e.TipoMensagem,
+	}
+	for k, v := range opcionais {
+		if v != "" {
+			a[k] = v
+		}
+	}
+	if e.Terminou {
+		a["duracao_total_segundos"] = e.DuracaoTotal
+	}
+	if traceID != "" {
+		a["trace.id"] = traceID
+		a["span.id"] = spanID
+	}
+	return a
+}

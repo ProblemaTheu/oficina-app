@@ -122,6 +122,35 @@ type eventRecorder interface {
 	RegistrarEventoOS(ctx context.Context, e EventoOS)
 }
 
+// EventoSaga descreve uma transição da saga da OS (F4-7.2): um por etapa
+// registrada em sagas_os_etapas. Alimenta o dashboard da saga (desfechos, taxa
+// de compensação, onde falham, tempo por etapa) e o alerta de compensação.
+// Mesma regra de LGPD do EventoOS: sem CPF, e-mail ou valor pago.
+type EventoSaga struct {
+	SagaID         string
+	OsID           string
+	EstadoAnterior string  // estado da saga antes da resposta ("" na abertura)
+	Estado         string  // estado da saga depois da resposta
+	Etapa          string  // T1–T7
+	Resultado      string  // ok | falha | compensada | ignorada
+	Motivo         string  // falha: motivo; ignorada: tipo da resposta inesperada
+	TipoMensagem   string  // resposta que causou a transição ("" na abertura)
+	DuracaoEtapa   float64 // segundos desde a transição anterior da saga
+	DuracaoTotal   float64 // segundos desde a abertura — só quando Terminou
+	// Terminou marca o ÚNICO evento da transição que levou a saga a
+	// CONCLUIDA ou COMPENSADA. Contar desfechos por `estado` inflaria: uma
+	// transição terminal registra várias etapas, e respostas atrasadas chegam
+	// com a saga já terminal (ignoradas).
+	Terminou bool
+}
+
+// sagaEventRecorder é a extensão opcional do eventRecorder para a saga. É uma
+// interface à parte para que emissores só de EventoOS continuem válidos: o
+// caso de uso descobre a capacidade por type assertion.
+type sagaEventRecorder interface {
+	RegistrarEventoSaga(ctx context.Context, e EventoSaga)
+}
+
 type osRepo interface {
 	BuscarStatusID(ctx context.Context, nome entity.Status) (uuid.UUID, error)
 	GerarNumeroOS(ctx context.Context) (string, error)

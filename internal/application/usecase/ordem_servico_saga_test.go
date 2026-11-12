@@ -109,7 +109,7 @@ type cenarioSaga struct {
 	uow      *uowFake
 	sagas    *sagaRepoFake
 	comandos *filaComandosFake
-	eventos  *fakeEventRecorder
+	eventos  *fakeEventRecorderSaga
 	input    usecase.CriarOSInput
 }
 
@@ -122,7 +122,7 @@ func novoCenarioSaga(estoque *estoqueSagaFake, comandos *filaComandosFake) cenar
 		return os, nil
 	}}
 	c := cenarioSaga{
-		uow: &uowFake{}, sagas: &sagaRepoFake{}, comandos: comandos, eventos: &fakeEventRecorder{},
+		uow: &uowFake{}, sagas: &sagaRepoFake{}, comandos: comandos, eventos: &fakeEventRecorderSaga{},
 		input: usecase.CriarOSInput{
 			ClienteID: clienteID.String(), VeiculoID: veiculoID.String(), Descricao: &desc,
 			Pecas: []usecase.ItemPecaOSInput{{PecaID: uuid.New().String(), Quantidade: 1}},

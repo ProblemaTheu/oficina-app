@@ -94,7 +94,7 @@ type cenarioOrquestrador struct {
 	uow      *uowFake
 }
 
-func novoOrquestrador(estado saga.Estado, statusOS entity.Status, diagnostico *string) cenarioOrquestrador {
+func novoOrquestrador(estado saga.Estado, statusOS entity.Status, diagnostico *string, opts ...usecase.OSUseCaseOption) cenarioOrquestrador {
 	osR := novoOsRepoSaga(statusOS, diagnostico)
 	sg := saga.Nova(osR.os.ID, time.Now())
 	sg.Estado = estado
@@ -107,6 +107,12 @@ func novoOrquestrador(estado saga.Estado, statusOS entity.Status, diagnostico *s
 		&osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, nil,
 		usecase.ComSaga(usecase.DependenciasSaga{UoW: c.uow, Estoque: &estoqueSagaFake{}, Sagas: c.sagas, Comandos: c.comandos,
 			Inbox: c.inbox, Cancelamento: c.cancel}))
+	if len(opts) > 0 {
+		c.uc = usecase.NewOrdemServicoUseCase(osR, &osCliRepo{cliente: &entity.Cliente{ID: osR.os.ClienteID, Nome: "Maria", Email: &email}},
+			&osVeicRepo{}, &osSvcRepo{}, &osPecaRepo{}, nil,
+			append([]usecase.OSUseCaseOption{usecase.ComSaga(usecase.DependenciasSaga{UoW: c.uow, Estoque: &estoqueSagaFake{}, Sagas: c.sagas, Comandos: c.comandos,
+				Inbox: c.inbox, Cancelamento: c.cancel})}, opts...)...)
+	}
 	return c
 }
 
