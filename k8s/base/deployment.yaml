@@ -21,6 +21,13 @@ spec:
         app.kubernetes.io/name: api
         app.kubernetes.io/part-of: tech-challenge
     spec:
+      serviceAccountName: api
+      # O pod não fala com a API do Kubernetes. A credencial AWS do Pod
+      # Identity chega por um volume projetado próprio, independente disto.
+      automountServiceAccountToken: false
+      # O consumidor de respostas da saga termina a mensagem em andamento
+      # antes de sair (visibility timeout da fila: 60 s).
+      terminationGracePeriodSeconds: 90
       containers:
         - name: api
           # Tag substituída pelo kustomize (overlays) e pelo CI/CD
