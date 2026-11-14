@@ -1,0 +1,16 @@
+# Dependências dos 3 serviços no cluster local — os equivalentes do RDS (x2),
+# do SQS FIFO + DynamoDB (LocalStack), do Mercado Pago (stub) e do e-mail
+# (Mailpit). Cada serviço continua com o PRÓPRIO banco: dois Postgres
+# separados, e o DynamoDB do Execution no LocalStack.
+#
+# Os Secrets (senhas dos bancos) e o ConfigMap do script do LocalStack são
+# criados pelo local/subir.sh a partir do .env, não versionados.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: infra
+resources:
+  - postgres-os.yaml
+  - postgres-billing.yaml
+  - localstack.yaml
+  - mp-stub.yaml
+  - mailpit.yaml

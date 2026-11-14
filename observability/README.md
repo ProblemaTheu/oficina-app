@@ -21,9 +21,16 @@ Não há CPF, e-mail nem valor pago (mesma regra de LGPD do `OrdemServicoEvent`)
 
 **Por que `terminou` e não `estado = 'COMPENSADA'`:** uma transição terminal registra várias etapas (ex.: T2 e T1 compensadas na mesma resposta). Além disso, respostas atrasadas chegam com a saga já terminal e viram `ignorada`. Contar por `estado` inflaria os desfechos; `terminou IS true` conta cada saga uma vez.
 
-## Dashboard
+## Aplicar no New Relic (dashboard + alerta)
 
-[`dashboard-saga.json`](dashboard-saga.json): New Relic → **Dashboards → Import dashboard** → colar o JSON. A conta `8465573` já está nas queries; troque se for outra.
+```bash
+export NEW_RELIC_API_KEY=NRAK-...   # User key
+./observability/aplicar-newrelic.py --email equipe@exemplo.com
+```
+
+O script cria, via NerdGraph, o dashboard a partir de [`dashboard-saga.json`](dashboard-saga.json), a policy **Oficina — Saga (Fase 4)** com a condição abaixo e, com `--email`, o workflow de notificação. Ele é idempotente: o que já existe é reaproveitado. Alternativa manual: **Dashboards → Import dashboard** e colar o JSON (as queries usam a conta `8465573`).
+
+## Dashboard
 
 | Painel | Pergunta que responde |
 |---|---|
@@ -33,11 +40,11 @@ Não há CPF, e-mail nem valor pago (mesma regra de LGPD do `OrdemServicoEvent`)
 | Onde as sagas falham | Etapa × motivo das falhas |
 | Tempo médio por etapa | Onde a saga espera (aprovação humana e pagamento dominam) |
 | Transições recentes | Tabela para achar o `saga_id` e seguir nos Logs e no trace |
-| Latência p95 / erros por serviço | Os 3 APMs (`oficina-api-prod`, `oficina-billing-prod`, `oficina-execution-prod`) |
+| Latência p95 / erros por serviço | Os 3 APMs: `oficina-{api,billing,execution}-prod` no EKS ou `-local` no cluster local (`local/`) |
 
 ## Alerta de compensação (F4-7.4)
 
-**Alerts → Alert conditions → New alert condition → NRQL**:
+Criado pelo `aplicar-newrelic.py` (ou manualmente em **Alerts → Alert conditions → New alert condition → NRQL**):
 
 ```sql
 SELECT percentage(count(*), WHERE estado = 'COMPENSADA')

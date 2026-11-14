@@ -174,7 +174,7 @@
                 "accountIds": [
                   8465573
                 ],
-                "query": "SELECT percentile(duration * 1000, 95) FROM Transaction WHERE appName IN ('oficina-api-prod','oficina-billing-prod','oficina-execution-prod') FACET appName TIMESERIES AUTO SINCE 1 day ago"
+                "query": "SELECT percentile(duration * 1000, 95) FROM Transaction WHERE appName IN ('oficina-api-prod','oficina-billing-prod','oficina-execution-prod','oficina-api-local','oficina-billing-local','oficina-execution-local') FACET appName TIMESERIES AUTO SINCE 1 day ago"
               }
             ],
             "platformOptions": {
@@ -199,7 +199,7 @@
                 "accountIds": [
                   8465573
                 ],
-                "query": "SELECT percentage(count(*), WHERE error IS true) FROM Transaction WHERE appName IN ('oficina-api-prod','oficina-billing-prod','oficina-execution-prod') FACET appName TIMESERIES AUTO SINCE 1 day ago"
+                "query": "SELECT percentage(count(*), WHERE error IS true) FROM Transaction WHERE appName IN ('oficina-api-prod','oficina-billing-prod','oficina-execution-prod','oficina-api-local','oficina-billing-local','oficina-execution-local') FACET appName TIMESERIES AUTO SINCE 1 day ago"
               }
             ],
             "platformOptions": {

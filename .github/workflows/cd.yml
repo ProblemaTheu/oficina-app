@@ -110,15 +110,51 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ─────────────────────────────────────────────
+  # Deploy em Kubernetes efêmero (kind)
+  # ─────────────────────────────────────────────
+  # Implanta a imagem que acabou de ser publicada (tag = SHA) num cluster
+  # kind criado no próprio runner, com os manifests k8s/base de produção e as
+  # dependências do serviço (Postgres + LocalStack), e valida com rollout +
+  # smoke /health/ready. DEPLOY_ENABLED escolhe o destino: kind (padrão) ou
+  # EKS (true).
+  deploy-kind:
+    name: Deploy no Kubernetes (kind)
+    needs: build-and-push
+    if: vars.DEPLOY_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.build-and-push.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Deploy, rollout e smoke test
+        run: ./local/deploy-ci.sh os "${IMAGEM}:${TAG}"
+
+      - name: Job Summary
+        if: always()
+        run: |
+          {
+            echo "# ☸️ CD — Deploy no Kubernetes (kind)"
+            echo
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "Imagem \`${IMAGEM}:${TAG}\` implantada em \`oficina-prod/api\` (manifests \`k8s/base\`) — rollout ok e \`/health/ready\` UP."
+            else
+              echo "**Deploy falhou** — ver o diagnóstico no log do passo anterior."
+            fi
+            echo
+            echo "> Cluster efêmero criado no runner. Com \`DEPLOY_ENABLED=true\`, o deploy vai para o EKS."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────
   # F3-1.5 — Deploy no EKS
   # ─────────────────────────────────────────────
   deploy:
     name: Deploy no EKS
     needs: build-and-push
-    # Liga/desliga o deploy sem mexer no workflow: a conta AWS da Fase 3 foi
-    # encerrada (fim do crédito) e não há cluster. A imagem continua sendo
-    # publicada no Docker Hub a cada merge; com o cluster de volta, basta criar
-    # a variable DEPLOY_ENABLED=true no repo.
+    # Destino escolhido sem mexer no workflow: com a variable
+    # DEPLOY_ENABLED=true o deploy vai para o EKS; sem ela, para o kind
+    # efêmero do job anterior.
     if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: prod

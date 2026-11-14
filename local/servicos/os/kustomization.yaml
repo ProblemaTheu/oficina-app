@@ -1,0 +1,66 @@
+# OS Service no cluster local — mesmo k8s/base de produção, mesmo namespace
+# (oficina-prod). Só muda o que é do ambiente: imagem local, endereços das
+# dependências (infra/*) e a porta exposta no host (8080).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: oficina-prod
+resources:
+  - ../../../k8s/base
+images:
+  - name: docker.io/problematheu/oficina-api
+    newName: oficina-api
+    newTag: local
+configMapGenerator:
+  # Equivalente do ConfigMap que o CD gera a partir da SSM em produção.
+  - name: oficina-ambiente
+    literals:
+      - DB_HOST=postgres-os.infra
+      - FILA_RESPOSTAS_URL=http://localstack.infra:4566/000000000000/os-saga-replies.fifo
+      - FILA_BILLING_URL=http://localstack.infra:4566/000000000000/billing-commands.fifo
+      - FILA_EXECUTION_URL=http://localstack.infra:4566/000000000000/execution-commands.fifo
+      - AWS_ENDPOINT_URL=http://localstack.infra:4566
+      - AWS_REGION=us-east-1
+patches:
+  - target: { kind: Namespace }
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: oficina
+  # 1 réplica e sem HPA: o kind não tem metrics-server e a máquina é pequena.
+  - target: { kind: HorizontalPodAutoscaler }
+    patch: |-
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: api
+  - target: { kind: Deployment, name: api }
+    patch: |-
+      - { op: replace, path: /spec/replicas, value: 1 }
+      - { op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: Never }
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/1
+        value: { configMapRef: { name: oficina-ambiente } }
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: oficina-config
+      data:
+        DB_NAME: tech_challenge_db
+        DB_SSLMODE: disable
+        NOTIFIER: smtp
+        SMTP_HOST: mailpit.infra
+        SMTP_PORT: "1025"
+        NEW_RELIC_APP_NAME: oficina-api-local
+  - patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api
+      spec:
+        type: NodePort
+        ports:
+          - { name: http, port: 80, targetPort: http, nodePort: 30080 }
