@@ -1,0 +1,47 @@
+# Caixa de e-mail de teste: orçamento (Billing) e mudanças de status (OS).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  labels: { app.kubernetes.io/name: mailpit, app.kubernetes.io/part-of: oficina }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: mailpit } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: mailpit, app.kubernetes.io/part-of: oficina }
+    spec:
+      # Nenhum destes pods fala com a API do Kubernetes.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.21
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            readOnlyRootFilesystem: true
+          ports: [{ name: smtp, containerPort: 1025 }, { name: ui, containerPort: 8025 }]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi, ephemeral-storage: 64Mi }
+            limits: { cpu: 500m, memory: 128Mi, ephemeral-storage: 512Mi }
+          # Root filesystem somente leitura; a base temporária do Mailpit vai para /tmp.
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  labels: { app.kubernetes.io/name: mailpit, app.kubernetes.io/part-of: oficina }
+spec:
+  type: NodePort
+  selector: { app.kubernetes.io/name: mailpit }
+  ports:
+    - { name: smtp, port: 1025, targetPort: smtp }
+    - { name: ui, port: 8025, targetPort: ui, nodePort: 30025 }

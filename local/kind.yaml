@@ -1,0 +1,15 @@
+# Cluster Kubernetes local da Fase 4: kind sobre o Colima (ou Docker).
+# As portas do host são as mesmas do
+# docker-compose.saga.yml, então scripts/demo-saga.sh e a coleção Postman
+# (ambiente local) funcionam sem mudança.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: oficina
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - { containerPort: 30080, hostPort: 8080 } # OS Service
+      - { containerPort: 30081, hostPort: 8081 } # Billing
+      - { containerPort: 30082, hostPort: 8082 } # Execution
+      - { containerPort: 30090, hostPort: 8090 } # stub do Mercado Pago
+      - { containerPort: 30025, hostPort: 8025 } # Mailpit (UI)

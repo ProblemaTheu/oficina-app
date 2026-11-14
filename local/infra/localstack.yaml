@@ -1,0 +1,65 @@
+# SQS FIFO + DynamoDB locais. O hook "ready" roda o MESMO scripts/localstack-init.sh
+# do compose e do BDD: as 3 filas FIFO (+ DLQ, redrive após 5) e a tabela
+# execution-tarefas (GSI + TTL), com os atributos do Terraform de cada serviço.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+  labels: { app.kubernetes.io/name: localstack, app.kubernetes.io/part-of: oficina }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: localstack } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: localstack, app.kubernetes.io/part-of: oficina }
+    spec:
+      # Nenhum destes pods fala com a API do Kubernetes.
+      automountServiceAccountToken: false
+      securityContext:
+        # Usuário 'localstack' da própria imagem.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: localstack
+          image: localstack/localstack:4
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            readOnlyRootFilesystem: true
+          ports: [{ name: edge, containerPort: 4566 }]
+          env:
+            - { name: SERVICES, value: "sqs,dynamodb" }
+            - { name: AWS_DEFAULT_REGION, value: us-east-1 }
+          readinessProbe:
+            # Só fica pronto depois que o init criou a tabela (último passo).
+            exec: { command: ["awslocal", "dynamodb", "describe-table", "--table-name", "execution-tarefas"] }
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 60
+          resources:
+            requests: { cpu: 100m, memory: 384Mi, ephemeral-storage: 64Mi }
+            limits: { cpu: 500m, memory: 1Gi, ephemeral-storage: 512Mi }
+          volumeMounts:
+            - { name: init, mountPath: /etc/localstack/init/ready.d }
+            # Root filesystem somente leitura: estado e temporários em emptyDir.
+            - { name: estado, mountPath: /var/lib/localstack }
+            - { name: tmp, mountPath: /tmp }
+            - { name: home, mountPath: /home/localstack }
+      volumes:
+        - name: init
+          configMap: { name: localstack-init, defaultMode: 0755 }
+        - { name: estado, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+        - { name: home, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack
+  labels: { app.kubernetes.io/name: localstack, app.kubernetes.io/part-of: oficina }
+spec:
+  selector: { app.kubernetes.io/name: localstack }
+  ports: [{ name: edge, port: 4566, targetPort: edge }]

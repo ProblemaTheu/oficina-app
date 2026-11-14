@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Conduz a saga da Fase 4 no ambiente local (docker-compose.saga.yml), passo a
-# passo, como fariam o atendente, o mecânico, o cliente e o Mercado Pago.
+# Conduz a saga da Fase 4 no ambiente local, passo a passo, como fariam o
+# atendente, o mecânico, o cliente e o Mercado Pago.
 #
-# Pré-requisito: docker compose -f docker-compose.saga.yml --profile saga up -d --build
+# Pré-requisito (um dos dois):
+#   docker compose -f docker-compose.saga.yml --profile saga up -d --build
+#   ./local/subir.sh            # Kubernetes local (kind) — use AMBIENTE=k8s
 #
 # Uso: scripts/demo-saga.sh [feliz|falha-reparo|recusa|cartao-recusado|todos]
 set -euo pipefail
@@ -16,7 +18,18 @@ MP=${MP_URL:-http://localhost:8090}
 dc() { docker compose -f docker-compose.saga.yml --profile saga "$@"; }
 j() { python3 -c "import json,sys;d=json.load(sys.stdin);print($1)"; }
 passo() { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
-psqlos() { dc exec -T os-db psql -U postgres -d tech_challenge_db -tA -c "$1"; }
+# Leitura do banco do OS só para MOSTRAR o estado da saga (o fluxo é todo por
+# HTTP). AMBIENTE=k8s lê do pod postgres-os do cluster local.
+AMBIENTE=${AMBIENTE:-compose}
+psqlos() {
+  local sql="$1"
+  if [[ "$AMBIENTE" = k8s ]]; then
+    kubectl --context "${KUBE_CONTEXT:-kind-oficina}" -n infra exec -i deploy/postgres-os -- \
+      sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' <<<"$sql"
+  else
+    dc exec -T os-db psql -U postgres -d tech_challenge_db -tA -c "$sql"
+  fi
+}
 
 login() {
   curl -sf -X POST "$OS/v1/auth/login" -H 'Content-Type: application/json' \
@@ -35,7 +48,11 @@ estado() {
 
 esperar_estado() { # esperar_estado OS_ID PREFIXO
   local e
-  for _ in $(seq 1 60); do
+  # Até 90 s: logo após um restart dos serviços, a primeira resposta da saga
+  # pode voltar só depois do visibility timeout da fila (60 s) — reentrega, sem
+  # perda nem efeito duplicado (inbox). O local/subir.sh já faz uma saga de
+  # aquecimento para a demo não pegar esse caso.
+  for _ in $(seq 1 180); do
     e=$(estado "$1")
     if [[ "$e" == "$2"* ]]; then echo "  saga: $e"; return 0; fi
     sleep 0.5

@@ -1,0 +1,46 @@
+# Billing Service no cluster local — k8s/base do oficina-billing (pasta irmã,
+# como no docker-compose.saga.yml), namespace billing-prod, porta 8081.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: billing-prod
+resources:
+  - ../../../../oficina-billing/k8s/base
+images:
+  - name: docker.io/problematheu/oficina-billing
+    newName: oficina-billing
+    newTag: local
+configMapGenerator:
+  - name: billing-ambiente
+    literals:
+      - DB_HOST=postgres-billing.infra
+      - FILA_BILLING_URL=http://localstack.infra:4566/000000000000/billing-commands.fifo
+      - FILA_RESPOSTAS_URL=http://localstack.infra:4566/000000000000/os-saga-replies.fifo
+      - URL_PUBLICA=http://localhost:8081
+      - AWS_ENDPOINT_URL=http://localstack.infra:4566
+patches:
+  - target: { kind: Deployment, name: billing }
+    patch: |-
+      - { op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: Never }
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: billing-config
+      data:
+        DB_SSLMODE: disable
+        # Stub por padrão; o local/subir.sh troca para o sandbox real com MP_REAL=1.
+        MP_BASE_URL: http://mp-stub.infra:8090
+        MP_RECONCILIAR_INTERVALO: 5s
+        NOTIFIER: smtp
+        SMTP_HOST: mailpit.infra
+        SMTP_PORT: "1025"
+        NEW_RELIC_APP_NAME: oficina-billing-local
+  - patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: billing
+      spec:
+        type: NodePort
+        ports:
+          - { name: http, port: 80, targetPort: http, nodePort: 30081 }
