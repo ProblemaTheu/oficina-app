@@ -320,7 +320,7 @@ No vídeo, a notificação é demonstrada com **Mailpit** local capturando o e-m
 
 # Fase 4 — Microsserviços e Saga
 
-> ADRs 009–016. As decisões de maior alcance (decomposição e estratégia de saga) estão nas [RFC-005](rfcs/RFC-005-decomposicao-em-microsservicos.md) e [RFC-006](rfcs/RFC-006-saga-e-consistencia-distribuida.md).
+> ADRs 009–017. As decisões de maior alcance (decomposição e estratégia de saga) estão nas [RFC-005](rfcs/RFC-005-decomposicao-em-microsservicos.md) e [RFC-006](rfcs/RFC-006-saga-e-consistencia-distribuida.md).
 
 ---
 
@@ -464,7 +464,7 @@ Confirmação em até um ciclo do reconciliador (≈ 10 s) quando o webhook não
 
 ## ADR-015 — Lambda de autenticação passa a usar REST interno
 
-> **Status:** aceita — **implementada no código** (rota `internal/infra/http/interno` no OS e cliente HTTP na Lambda); aplicação na AWS pendente da conta nova.
+> **Status:** aceita — implementada: rota `internal/infra/http/interno` no OS Service ([#31](https://github.com/ProblemaTheu/oficina-app/pull/31)) e cliente HTTP + Terraform sem VPC na Lambda ([oficina-lambda-auth#6](https://github.com/ProblemaTheu/oficina-lambda-auth/pull/6)).
 
 ### Contexto
 
@@ -484,7 +484,7 @@ A emissão do token passa a depender da disponibilidade do OS Service (que já �
 
 ## ADR-016 — EKS Pod Identity para acesso dos pods à AWS
 
-> **Status:** aceita — **implementada no código** (`infra/servico/pod.tf` aqui e `infra/pod.tf` no Billing e no Execution; ServiceAccount em cada `k8s/base`); aplicação na AWS pendente da conta nova.
+> **Status:** aceita — implementada: `infra/servico/pod.tf` aqui e `infra/pod.tf` no Billing e no Execution; ServiceAccount em cada `k8s/base`.
 
 ### Contexto
 
@@ -505,3 +505,32 @@ Uma role por serviço, associada à ServiceAccount do seu namespace, com **míni
 ### Consequências
 
 Sem credencial estática nos pods; o SDK da AWS resolve credenciais sozinho. A política IAM de cada role é a prova do isolamento entre serviços.
+
+---
+
+## ADR-017 — Ambiente Kubernetes local e deploy em kind no CD
+
+> **Status:** aceita — implementada ([#34](https://github.com/ProblemaTheu/oficina-app/pull/34), [oficina-billing#6](https://github.com/ProblemaTheu/oficina-billing/pull/6), [oficina-execution#7](https://github.com/ProblemaTheu/oficina-execution/pull/7)).
+
+### Contexto
+
+O `docker-compose.saga.yml` sobe os 3 serviços, mas não exercita o que vai para produção: os manifests `k8s/`, os namespaces, as probes, o `securityContext`, os Secrets e ConfigMaps montados por `envFrom`. Um erro de manifest só apareceria no deploy no EKS. O EKS, por sua vez, custa por hora, e manter um cluster ligado só para validar cada merge e para demonstrações não se justifica.
+
+### Alternativas consideradas
+
+| Alternativa | Contras |
+|---|---|
+| Só compose local + deploy no EKS | Manifests validados só no EKS; cada merge exige cluster pago ligado |
+| minikube / k3d | Equivalentes; o kind já é usado desde a Fase 2 (`scripts/k8s-local-deploy.sh`) e vem instalado nos runners do GitHub |
+| **kind local + kind efêmero no CD, EKS opcional** | O kind não tem LoadBalancer nem Pod Identity: os Services viram NodePort e as credenciais AWS são as fictícias do LocalStack |
+
+### Decisão
+
+- **`local/`** sobe a Fase 4 inteira num kind. Usa os **mesmos `k8s/base`** de cada repositório e os **mesmos namespaces** de produção, com dependências equivalentes no namespace `infra`: Postgres ×2 (um por serviço), LocalStack (SQS FIFO + DynamoDB, criado pelo mesmo `localstack-init.sh`), stub do Mercado Pago e Mailpit. Os overlays usam `configMapGenerator` no lugar do ConfigMap que o CD gera a partir da SSM.
+- **No CD de cada serviço**, o job *Deploy no Kubernetes (kind)* cria um cluster no runner e sobe só as dependências daquele serviço. Em seguida aplica os manifests com a **imagem recém-publicada** (tag = SHA) e valida com `rollout status` + smoke `/health/ready`.
+- **`DEPLOY_ENABLED`** escolhe o destino: kind (padrão) ou EKS (`true`). O Terraform de EKS, RDS, SQS e DynamoDB continua em `infra/` de cada repositório.
+
+### Consequências
+
+Todo merge passa por um deploy real em Kubernetes antes de qualquer custo de nuvem, e a demonstração roda numa máquina comum. Rodar no kind não valida o que é específico da AWS: Pod Identity, CLB e as policies IAM. Isso fica no Terraform e nos `plan` dos PRs de infraestrutura. A telemetria vai para a mesma conta do New Relic, com apps `*-local` separados dos `*-prod`.
+

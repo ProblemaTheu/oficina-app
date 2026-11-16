@@ -19,6 +19,10 @@
 
 - [Fase 4 — Microsserviços e Saga Pattern](#fase-4--microsserviços-e-saga-pattern)
   - [Saga Pattern — por que orquestrada](#saga-pattern--por-que-orquestrada)
+  - [Rodando a saga localmente](#rodando-a-saga-localmente)
+  - [Ambientes e deploy](#ambientes-e-deploy)
+  - [Observabilidade da saga](#observabilidade-da-saga)
+  - [Qualidade e evidências](#qualidade-e-evidências)
 - [Fase 3 — Nuvem, autenticação por CPF e observabilidade](#fase-3--nuvem-autenticação-por-cpf-e-observabilidade)
 - [Fase 2 — Objetivos e arquitetura da solução](#fase-2--objetivos-e-arquitetura-da-solução)
 - [Quickstart](#quickstart)
@@ -66,7 +70,7 @@ flowchart LR
     exec --- ddb[("DynamoDB")]
 ```
 
-Nenhum serviço lê o banco de outro: toda colaboração passa pelas filas (comandos e respostas da saga) ou por REST autenticado com o mesmo JWT. O desenho completo — componentes na AWS, posse de dados, sequências e catálogo de mensagens — está em **[docs/planejamentos/fase-4/arquitetura.md](docs/planejamentos/fase-4/arquitetura.md)**; as decisões em **[RFC-005](docs/rfcs/RFC-005-decomposicao-em-microsservicos.md)**, **[RFC-006](docs/rfcs/RFC-006-saga-e-consistencia-distribuida.md)** e nas **[ADRs 009–016](docs/architecture-decisions.md#adr-009--banco-por-serviço-postgresql-os-billing-e-dynamodb-execution)**.
+Nenhum serviço lê o banco de outro: toda colaboração passa pelas filas (comandos e respostas da saga) ou por REST autenticado com o mesmo JWT. O desenho completo — componentes na AWS, posse de dados, sequências e catálogo de mensagens — está em **[docs/planejamentos/fase-4/arquitetura.md](docs/planejamentos/fase-4/arquitetura.md)**; as decisões em **[RFC-005](docs/rfcs/RFC-005-decomposicao-em-microsservicos.md)**, **[RFC-006](docs/rfcs/RFC-006-saga-e-consistencia-distribuida.md)** e nas **[ADRs 009–017](docs/architecture-decisions.md#adr-009--banco-por-serviço-postgresql-os-billing-e-dynamodb-execution)**.
 
 ### Saga Pattern — por que orquestrada
 
@@ -127,13 +131,21 @@ stateDiagram-v2
 
 ### Rodando a saga localmente
 
-Com os três repositórios lado a lado (`…/oficina-app`, `…/oficina-billing`, `…/oficina-execution`), sobe tudo — 3 serviços, 2 Postgres, LocalStack (SQS + DynamoDB), Mailpit e o stub do Mercado Pago:
+Com os três repositórios lado a lado (`…/oficina-app`, `…/oficina-billing`, `…/oficina-execution`), há dois jeitos de subir tudo — 3 serviços, 2 Postgres, LocalStack (SQS + DynamoDB), Mailpit e o stub do Mercado Pago:
 
 ```bash
 cp .env.example .env
+
+# Kubernetes local (kind) — os manifests k8s/base de produção, nos mesmos namespaces
+./local/subir.sh
+AMBIENTE=k8s ./scripts/demo-saga.sh todos     # ou: feliz | falha-reparo | recusa | cartao-recusado
+
+# ou Docker Compose
 docker compose -f docker-compose.saga.yml --profile saga up -d --build
-./scripts/demo-saga.sh feliz        # ou: falha-reparo | recusa | cartao-recusado | todos
+./scripts/demo-saga.sh todos
 ```
+
+Os dois usam as mesmas portas (use um de cada vez). Detalhes do Kubernetes local, inclusive o Mercado Pago sandbox real (`MP_REAL=1`) e o New Relic: [local/README.md](local/README.md).
 
 | Porta | Serviço |
 |---|---|
@@ -156,6 +168,43 @@ go test -tags bdd ./features/ -v
 ```
 
 No CI, o workflow [`bdd.yml`](.github/workflows/bdd.yml) faz checkout dos três repositórios, sobe o compose e roda os cenários a cada PR.
+
+### Ambientes e deploy
+
+Cada serviço tem **pipeline próprio** (`ci.yml` em PR, `cd.yml` em merge na `main`). O CD faz testes com gate de 80% → imagem no Docker Hub (tag = SHA) → deploy em Kubernetes:
+
+| Destino | Quando | O que valida |
+|---|---|---|
+| **Kubernetes efêmero (kind) no runner** | padrão | Manifests `k8s/base` de produção com a imagem recém-publicada e as dependências do serviço, `rollout status`, smoke `/health/ready` ([ADR-017](docs/architecture-decisions.md#adr-017--ambiente-kubernetes-local-e-deploy-em-kind-no-cd)) |
+| **EKS** | variable `DEPLOY_ENABLED=true` | Config da SSM → ConfigMap, `kubectl apply -k`, rollout, smoke, rollback automático, marcador de deploy no New Relic |
+
+| Ambiente | Como sobe | Para quê |
+|---|---|---|
+| Kubernetes local (kind) | [`./local/subir.sh`](local/README.md) | Desenvolvimento e demonstração, com os mesmos manifests e namespaces de produção |
+| Docker Compose | `docker-compose.saga.yml` | BDD no CI e desenvolvimento rápido |
+| AWS (EKS, RDS, SQS, DynamoDB) | Terraform em `infra/` de cada serviço e nos repositórios de plataforma ([abaixo](#fase-4--infraestrutura-do-os-service-infraservico)) | Produção |
+
+A `main` dos 3 repositórios é protegida: só entra por PR aprovado com os checks obrigatórios verdes ([evidência](docs/evidencias/push-main-rejeitado.txt)).
+
+### Observabilidade da saga
+
+New Relic, como na Fase 3, agora nos 3 serviços ([observability/](observability/README.md)):
+
+- **Trace distribuído** atravessando as filas: o contexto vai nos atributos da mensagem SQS, então um trace tem spans do OS, do Billing e do Execution.
+- **Logs correlacionados** por `saga_id`, `os_id`, `message_id` e `tipo_mensagem` nos 3 serviços.
+- **`SagaEvent`** a cada transição da saga (etapa, resultado, motivo, durações), com `terminou` só no desfecho.
+- **Dashboard da saga** (desfechos, taxa de compensação, onde falham, tempo por etapa, latência e erros por serviço) e **alerta de taxa de compensação > 30%** com notificação por e-mail, criados por [`observability/aplicar-newrelic.py`](observability/aplicar-newrelic.py).
+- **DLQ** de cada fila com alarme no CloudWatch (Terraform em `infra/`).
+
+### Qualidade e evidências
+
+| Serviço | Cobertura unitária | Evidência |
+|---|---|---|
+| OS Service | **97,9%** | [docs/evidencias/cobertura.png](docs/evidencias/cobertura.png) |
+| Billing | **97,9%** | [oficina-billing/docs/evidencias](https://github.com/ProblemaTheu/oficina-billing/tree/main/docs/evidencias) |
+| Execution | **98,8%** | [oficina-execution/docs/evidencias](https://github.com/ProblemaTheu/oficina-execution/tree/main/docs/evidencias) |
+
+Gate de 80% no CI e no CD (`scripts/cobertura.sh`, mesmo critério do SonarCloud); quality gate do SonarCloud em todo PR; BDD da saga completa contra os 3 serviços (`bdd.yml`); `gitleaks`, `gosec`, `govulncheck` e Trivy no `security.yml`.
 
 ---
 
