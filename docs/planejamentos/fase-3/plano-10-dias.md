@@ -168,7 +168,7 @@ Reserve os ~20 min do EKS — não é travamento. E **não interrompa um apply**
 - [F3-5.3](backlog.md#f3-53--seeds-e-credenciais-em-ambiente-de-nuvem) — seed com cliente **ativo** e **inativo** (CPFs válidos!)
 - Overlay `prod` + `Service type: LoadBalancer` + deploy manual (`kubectl apply -k`)
 
-> ⚠️ **Esta conta AWS não cria NLB nem ALB.** A API ELBv2 responde `OperationNotPermitted` — restrição de conta nova, não quota. O `Service` **sem** anotação de tipo sobe um **Classic Load Balancer**, que funciona e custa US$ 0,05/dia a mais. Não muda o corte 1: o `HTTP_PROXY` do Gateway não distingue os dois. Detalhes em [execucao.md](execucao.md#a-conta-não-cria-nlb-nem-alb--só-classic).
+> **Balanceador:** o `Service` **sem** anotação de tipo sobe um **Classic Load Balancer** (sem AWS Load Balancer Controller), por US$ 0,05/dia a mais que um NLB. Não muda o corte 1: o `HTTP_PROXY` do Gateway não distingue os dois. Detalhes em [execucao.md](execucao.md#balanceador-classic-load-balancer).
 
 ✅ **Entregável:** `curl http://<nlb>/health/ready` responde `UP` e a primeira OS é criada. **A partir de hoje o gráfico de volume diário começa a existir.**
 

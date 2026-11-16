@@ -534,10 +534,47 @@ oficina-<servico>/
 │       ├── mensageria/         # envelope, publisher SQS, consumer, outbox relay, inbox
 │       ├── repository/         # Postgres ou DynamoDB
 │       └── observability/      # New Relic
-├── docs/openapi.yaml · docs/arquitetura.md
+├── docs/openapi.yaml · docs/arquitetura.md · docs/evidencias/
 ├── features/                   # (só no OS) BDD godog
 ├── k8s/base · k8s/overlays/prod
-├── infra/                      # Terraform dos recursos do serviço
-├── Dockerfile · docker-compose.yml
-└── .github/workflows/ ci.yml · security.yml · cd.yml · terraform.yml
+├── infra/                      # Terraform dos recursos do serviço (no OS: infra/servico)
+├── local/                      # (só no OS) Kubernetes local + script de deploy em kind do CD
+├── Dockerfile
+└── .github/workflows/ ci.yml · cd.yml   (no OS também: security.yml · integration.yml · bdd.yml)
 ```
+
+## 8. Ambientes de execução
+
+Os três serviços usam os **mesmos manifests `k8s/base`** e os **mesmos namespaces** em todos os ambientes; muda só o overlay ([ADR-017](../../architecture-decisions.md#adr-017--ambiente-kubernetes-local-e-deploy-em-kind-no-cd)).
+
+```mermaid
+flowchart LR
+    subgraph ci["GitHub Actions — cd.yml de cada serviço"]
+        t["Testes<br/>gate 80%"] --> b["Build e push<br/>imagem:SHA"]
+        b --> kd["Deploy no Kubernetes (kind)<br/>rollout + smoke"]
+        b -. "DEPLOY_ENABLED=true" .-> eks["Deploy no EKS<br/>rollout + smoke + rollback"]
+    end
+    subgraph local["Kubernetes local (kind) — local/subir.sh"]
+        subgraph ns["oficina-prod · billing-prod · execution-prod"]
+            os2["OS"] & bi2["Billing"] & ex2["Execution"]
+        end
+        subgraph infra["infra"]
+            pg["Postgres OS · Postgres Billing"]
+            ls["LocalStack<br/>SQS FIFO + DynamoDB"]
+            mp["stub do Mercado Pago · Mailpit"]
+        end
+        ns --- infra
+    end
+    local -. "APM · logs · traces · SagaEvent" .-> nr["New Relic"]
+    eks -. "APM · logs · traces · SagaEvent" .-> nr
+```
+
+| | Kubernetes local / CI (kind) | AWS |
+|---|---|---|
+| Cluster | kind | EKS |
+| Banco do OS e do Billing | Postgres no namespace `infra` (um por serviço) | RDS ×2 |
+| Filas e tabela do Execution | LocalStack (mesmo `localstack-init.sh` do BDD) | SQS FIFO + DynamoDB (Terraform de cada serviço) |
+| Configuração do ambiente | `configMapGenerator` nos overlays de `local/` | CD: SSM → ConfigMap `*-ambiente` |
+| Credenciais AWS dos pods | fictícias do LocalStack | EKS Pod Identity (ADR-016) |
+| Exposição | NodePort (8080–8082) | Classic Load Balancer + API Gateway |
+| Mercado Pago | stub ou sandbox real (`MP_REAL=1`) | sandbox |

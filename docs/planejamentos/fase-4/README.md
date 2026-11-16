@@ -114,7 +114,7 @@ Cada linha vira uma ADR ou RFC (ver [F4-8.2](backlog.md#f4-82--rfcs-e-adrs-da-fa
 | **E5** | Testes e qualidade | ≥ 80% por serviço, BDD do fluxo, testes de contrato, Sonar | Alta |
 | **E6** | CI/CD e infraestrutura | Pipelines independentes, Terraform por serviço, capacidade do cluster, rotas no Gateway | Alta |
 | **E7** | Observabilidade distribuída | Tracing atravessando SQS, `saga_id` nos logs, dashboard da saga, alertas | Média |
-| **E8** | Documentação | READMEs, RFC-005/006, ADRs 009–016, diagramas, OpenAPI e Postman | Alta |
+| **E8** | Documentação | READMEs, RFC-005/006, ADRs 009–017, diagramas, OpenAPI e Postman | Alta |
 | **E9** | Entrega | Vídeo, PDF, teardown | Alta |
 
 Detalhamento completo em [backlog.md](backlog.md).
@@ -145,7 +145,7 @@ Levantamento feito sobre o código e a infraestrutura ao fim da Fase 3 (`main` e
 
 10. **Os eventos de negócio (`OrdemServicoEvent`) ficaram parcialmente implementados na Fase 3** (registrado no diário de 06–07/09). A observabilidade da Fase 4 parte deles para o `SagaEvent`; conferir antes que o painel da Fase 3 tem dados. → **F4-7.2**
 
-11. **O ambiente AWS provavelmente foi destruído após a entrega da Fase 3** (o `kubeconfig` local não tem contexto). O `apply` completo leva ~25 min e o pedido de quota de vCPU para 32 estava `CASE_OPENED`. Confirmar quota e estado no dia 1. → **F4-0.3**
+11. **O ambiente AWS da Fase 3 é recriado do zero pelos repositórios de IaC** (o `apply` completo leva ~25 min). Conferir quota de vCPU e estado da conta no dia 1. → **F4-0.3**
 
 12. **(10/11) O plano de 7 dias não começou.** Em 10/11 — data do D6 no plano original — não existiam os 2 repositórios novos, a migration `000007` nem código de saga, e o diário estava vazio. O cronograma foi refeito para 4 dias, com os cortes 7′ e 18–25 ([plano](plano-execucao.md)), e a revisão corrigiu defeitos de desenho no webhook do Mercado Pago, no relay do DynamoDB, na migration e na máquina de estados ([arquitetura](arquitetura.md), [backlog](backlog.md)).
 

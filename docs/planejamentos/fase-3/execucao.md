@@ -296,18 +296,9 @@ aws ec2 describe-route-tables --filters Name=vpc-id,Values=<vpc-id> \
 
 Sem `0.0.0.0/0` na route table das subnets dos nós, é isso. `apply -target=module.vpc` antes de tudo evita o problema.
 
-### A conta não cria NLB nem ALB — só Classic
+### Balanceador: Classic Load Balancer
 
-`Service type: LoadBalancer` com a anotação `aws-load-balancer-type: nlb` ficou 6 minutos em `<pending>`. O motivo só aparece em `kubectl describe svc`:
-
-```
-OperationNotPermitted: This AWS account currently does not support creating
-load balancers. For more information, please contact AWS Support.
-```
-
-Não é quota (`describe-account-limits` mostra 50) nem configuração: é **restrição de conta nova**, e vale para toda a API **ELBv2** — NLB e ALB. A API clássica **não** é afetada: removida a anotação de tipo, o mesmo Service subiu um CLB em segundos.
-
-Consequência prática: nenhuma. O corte 1 aponta o API Gateway para o DNS público do balanceador, e `HTTP_PROXY` não distingue CLB de NLB. Custa US$ 0,05/dia a mais. Abrir caso no Support só valeria a pena se ALB voltasse ao escopo.
+O `Service type: LoadBalancer` ficou **sem** a anotação `aws-load-balancer-type: nlb`, e o controlador de serviço do EKS cria um **Classic Load Balancer**, que sobe em segundos. Um NLB exigiria o AWS Load Balancer Controller e mais uma role IAM, sem ganho para este volume. O corte 1 aponta o API Gateway para o DNS público do balanceador, e o `HTTP_PROXY` não distingue CLB de NLB. A diferença de custo é de US$ 0,05/dia.
 
 > Se aparecer `<pending>` em Service `LoadBalancer`, **leia `kubectl describe svc` antes de mexer em subnet, tag ou security group** — o controller escreve a causa real nos eventos.
 
